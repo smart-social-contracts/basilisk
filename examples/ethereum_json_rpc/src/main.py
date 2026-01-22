@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     Alias,
     Async,
     CallResult,
@@ -11,7 +11,7 @@ from kybra import (
     update,
     void,
 )
-from kybra.canisters.management import (
+from basilisk.canisters.management import (
     HttpResponse,
     HttpTransformArgs,
     management_canister,

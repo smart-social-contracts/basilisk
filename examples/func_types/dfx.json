@@ -1,7 +1,7 @@
 {
     "canisters": {
         "func_types": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/func_types/main.py",
             "declarations": {
                 "output": "test/dfx_generated/func_types",
@@ -9,7 +9,7 @@
             }
         },
         "notifiers": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/notifiers/main.py",
             "declarations": {
                 "output": "test/dfx_generated/notifiers",

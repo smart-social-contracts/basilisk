@@ -1,7 +1,7 @@
 {
     "canisters": {
         "rejections": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/rejections/rejections.py",
             "declarations": {
                 "output": "test/dfx_generated/rejections",
@@ -9,7 +9,7 @@
             }
         },
         "some_service": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/some_service/some_service.py",
             "declarations": {
                 "output": "test/dfx_generated/some_service",

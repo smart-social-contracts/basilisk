@@ -1,4 +1,4 @@
-from kybra import GuardResult, ic, int32, Manual, query, Record, update
+from basilisk import GuardResult, ic, int32, Manual, query, Record, update
 
 # region Types
 

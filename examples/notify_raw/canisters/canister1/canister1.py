@@ -1,4 +1,4 @@
-from kybra import ic, init, Principal, RejectionCode, update, Variant, void
+from basilisk import ic, init, Principal, RejectionCode, update, Variant, void
 
 
 class SendNotificationResult(Variant, total=False):

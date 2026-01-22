@@ -1,4 +1,4 @@
-from kybra import ic, inspect_message, update, void
+from basilisk import ic, inspect_message, update, void
 
 
 @inspect_message

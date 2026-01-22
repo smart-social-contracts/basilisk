@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "kybra/compiler/kybra_compile_python_stdlib",
-    "kybra/compiler/kybra_generate",
-    "kybra/compiler/kybra_vm_value_derive",
+    "basilisk/compiler/basilisk_compile_python_stdlib",
+    "basilisk/compiler/basilisk_generate",
+    "basilisk/compiler/basilisk_vm_value_derive",
 ]
 exclude = ["examples"]
 edition = "2018"

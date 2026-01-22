@@ -1,4 +1,4 @@
-from kybra import nat32, query, update, Vec
+from basilisk import nat32, query, update, Vec
 from src.candid_types import Thread
 from src.state import state, StateThread, StateUser
 

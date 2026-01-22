@@ -1,4 +1,4 @@
-from kybra import blob, null, Principal, query, Record, Variant
+from basilisk import blob, null, Principal, query, Record, Variant
 
 
 class User(Record):

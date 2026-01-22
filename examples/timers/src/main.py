@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     Async,
     blob,
     CallResult,
@@ -12,7 +12,7 @@ from kybra import (
     update,
     void,
 )
-from kybra.canisters.management import management_canister
+from basilisk.canisters.management import management_canister
 
 
 class StatusReport(Record):

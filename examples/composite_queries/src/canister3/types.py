@@ -1,4 +1,4 @@
-from kybra import Service, service_query
+from basilisk import Service, service_query
 
 
 class Canister3(Service):

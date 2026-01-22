@@ -13,7 +13,7 @@ def process_file(filepath):
             for key, value in canister_data.items():
                 new_canister_data[key] = value
                 if key == 'build':
-                    new_canister_data['post_install'] = f'.kybra/{canister_name}/post_install.sh'
+                    new_canister_data['post_install'] = f'.basilisk/{canister_name}/post_install.sh'
             data['canisters'][canister_name] = new_canister_data
             updated = True
 

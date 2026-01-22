@@ -1,4 +1,4 @@
-from kybra import nat, query, update, void
+from basilisk import nat, query, update, void
 
 counter: nat = 0
 

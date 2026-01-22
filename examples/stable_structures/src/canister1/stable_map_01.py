@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     blob,
     Opt,
     query,
@@ -7,7 +7,7 @@ from kybra import (
     update,
     Vec,
 )
-from kybra import nat64, nat16
+from basilisk import nat64, nat16
 
 
 stable_map1 = StableBTreeMap[nat16, blob](

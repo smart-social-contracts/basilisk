@@ -1,4 +1,4 @@
-from kybra import query
+from basilisk import query
 
 
 @query

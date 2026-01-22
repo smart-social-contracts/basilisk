@@ -26,11 +26,11 @@ def update_dfx_file(dfx_file_path):
 
     modified = False
     for canister_name, canister_config in data.get("canisters", {}).items():
-        if canister_config.get("build", "").startswith("python -m kybra"):
+        if canister_config.get("build", "").startswith("python -m basilisk"):
             candid_service_path = canister_config.get("candid", "")
             new_metadata = [
                 {"name": "candid:service", "path": candid_service_path},
-                {"name": "cdk:name", "content": "kybra"},
+                {"name": "cdk:name", "content": "basilisk"},
             ]
             if "metadata" in canister_config:
                 existing_names = [md["name"] for md in canister_config["metadata"]]

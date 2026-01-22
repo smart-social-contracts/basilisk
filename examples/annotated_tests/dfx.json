@@ -1,7 +1,7 @@
 {
     "canisters": {
         "annotated_tests": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/main.py",
             "declarations": {
                 "output": "test/dfx_generated/annotated_tests",

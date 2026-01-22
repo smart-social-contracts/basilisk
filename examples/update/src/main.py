@@ -1,4 +1,4 @@
-from kybra import query, update, text, void
+from basilisk import query, update, text, void
 
 current_message: text = ''
 

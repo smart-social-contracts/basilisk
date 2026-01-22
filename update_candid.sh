@@ -6,7 +6,7 @@
 # cd motoko_examples
 # ../update_candid ../..
 
-# set path to kybra package. Default to ../../ (for when run from example dir)
+# set path to basilisk package. Default to ../../ (for when run from example dir)
 KYBRA_PATH="../../"
 
 upgrade_candid()
@@ -17,7 +17,7 @@ upgrade_candid()
   ~/.pyenv/versions/3.10.7/bin/python -m venv venv
   # activate new virtual environment
   source venv/bin/activate
-  # install kybra package
+  # install basilisk package
   # pip install $KYBRA_PATH
   pip install $KYBRA_PATH # TODO change this as appropriate
   # start dfx replica in background

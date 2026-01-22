@@ -1,6 +1,6 @@
 import secrets
 
-from kybra import (
+from basilisk import (
     blob,
     ic,
     nat64,

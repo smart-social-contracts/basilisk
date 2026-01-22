@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     blob,
     empty,
     ic,

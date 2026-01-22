@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     Opt,
     query,
     StableBTreeMap,
@@ -6,8 +6,8 @@ from kybra import (
     update,
     Vec,
 )
-from kybra import nat64
-from kybra import float64
+from basilisk import nat64
+from basilisk import float64
 
 
 stable_map9 = StableBTreeMap[float64, Vec[str]](

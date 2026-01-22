@@ -1,4 +1,4 @@
-from kybra import Opt, query, Record, update, Vec
+from basilisk import Opt, query, Record, update, Vec
 from typing import TypedDict
 
 

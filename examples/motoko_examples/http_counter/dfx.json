@@ -1,7 +1,7 @@
 {
     "canisters": {
         "http_counter": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/main.py",
             "declarations": {
                 "output": "test/dfx_generated/http_counter",

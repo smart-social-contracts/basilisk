@@ -1,4 +1,4 @@
-from kybra import init, Opt, query, Record, Tuple, void
+from basilisk import init, Opt, query, Record, Tuple, void
 
 
 class User(Record):

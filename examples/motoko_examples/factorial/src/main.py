@@ -1,4 +1,4 @@
-from kybra import nat, update
+from basilisk import nat, update
 
 
 # Calculate the product of all positive integers less than or equal to `n`

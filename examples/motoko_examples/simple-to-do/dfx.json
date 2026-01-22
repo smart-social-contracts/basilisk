@@ -1,7 +1,7 @@
 {
     "canisters": {
         "simple_to_do": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/main.py",
             "declarations": {
                 "output": "test/dfx_generated/simple_to_do",

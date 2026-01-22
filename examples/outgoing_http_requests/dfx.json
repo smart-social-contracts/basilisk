@@ -1,7 +1,7 @@
 {
     "canisters": {
         "outgoing_http_requests": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/main.py",
             "declarations": {
                 "output": "test/dfx_generated/outgoing_http_requests",

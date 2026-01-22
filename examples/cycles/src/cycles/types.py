@@ -1,4 +1,4 @@
-from kybra import nat, nat64, Service, service_update
+from basilisk import nat, nat64, Service, service_update
 
 
 class Cycles(Service):

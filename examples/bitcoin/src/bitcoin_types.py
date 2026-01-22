@@ -1,5 +1,5 @@
-from kybra import Variant, Vec
-from kybra.canisters.management import GetUtxosResult, MillisatoshiPerByte, Satoshi
+from basilisk import Variant, Vec
+from basilisk.canisters.management import GetUtxosResult, MillisatoshiPerByte, Satoshi
 
 
 class ExecuteGetBalanceResult(Variant, total=False):

@@ -1,7 +1,7 @@
 {
     "canisters": {
         "ledger_canister": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/ledger_canister/ledger_canister.py",
             "declarations": {
                 "output": "test/dfx_generated/ledger_canister",

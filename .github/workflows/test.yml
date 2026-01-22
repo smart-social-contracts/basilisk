@@ -137,7 +137,7 @@ jobs:
                   BRANCH_NAME="${{ github.head_ref }}"
                   RELEASE_VERSION="${BRANCH_NAME:9}"
                   COMMIT_MESSAGE=$(git log -1 --pretty=format:"%s")
-                  if [[ "${{ contains(github.head_ref, 'release--') }}" == "true" && "$COMMIT_MESSAGE" != "kybra-bot automated release $RELEASE_VERSION" ]]
+                  if [[ "${{ contains(github.head_ref, 'release--') }}" == "true" && "$COMMIT_MESSAGE" != "basilisk-bot automated release $RELEASE_VERSION" ]]
                   then
                     ./publish-github-action.sh $RELEASE_VERSION ${{ toJSON(steps.example_directories.outputs.example_directories) }}
                   else
@@ -148,7 +148,7 @@ jobs:
         runs-on: ubuntu-latest
         env:
             ETHEREUM_URL: ${{ secrets.ETHEREUM_URL }}
-            KYBRA_COMPILE_RUST_PYTHON_STDLIB: ${{ matrix.kybra_source == 'repo' }}
+            KYBRA_COMPILE_RUST_PYTHON_STDLIB: ${{ matrix.basilisk_source == 'repo' }}
         strategy:
             fail-fast: false # We want to see which example tests succeed and which ones fail, we don't want one example test to cancel the rest
             matrix:
@@ -156,12 +156,12 @@ jobs:
                 include_pypi:
                     # Only include pypi in the matrix if you've pushed to main and the last commit was a merge of a release branch, or the base branch of the pull request is a release branch
                     - ${{ (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, 'demergent-labs/release--')) || contains(github.head_ref, 'release--') }}
-                kybra_source:
+                basilisk_source:
                     - pypi
                     - repo
                 exclude:
                     - include_pypi: false
-                      kybra_source: pypi
+                      basilisk_source: pypi
                 # If should_run_tests is false, we still want the steps of this job to execute so that check-basic-integration-tests-success will run. We do this by creating an array with one dummy element
                 example_directories: ${{ needs.release-candidate-deploy.outputs.should_run_tests == 'true' && fromJSON(needs.release-candidate-deploy.outputs.example_directories) || fromJSON('["dummy"]') }}
         steps:
@@ -174,13 +174,13 @@ jobs:
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               uses: actions/cache@v3
               with:
-                  path: ~/.config/kybra
-                  key: kybra-cargo-${{ hashFiles('kybra/cargotoml.py') }}
+                  path: ~/.config/basilisk
+                  key: basilisk-cargo-${{ hashFiles('basilisk/cargotoml.py') }}
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               uses: actions/cache@v3
               with:
                   path: ~/.cache/dfinity
-                  key: kybra-dfx-0.23.0
+                  key: basilisk-dfx-0.23.0
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               name: Install dfx
               run: |
@@ -195,21 +195,21 @@ jobs:
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               working-directory: ${{ matrix.example_directories }}
               run: ~/.pyenv/versions/3.10.7/bin/python -m venv venv
-            - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests && matrix.kybra_source == 'repo' && !startsWith(matrix.example_directories, 'examples/motoko_examples') }}
+            - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests && matrix.basilisk_source == 'repo' && !startsWith(matrix.example_directories, 'examples/motoko_examples') }}
               shell: bash -l {0}
               working-directory: ${{ matrix.example_directories }}
               run: source venv/bin/activate && pip install ../..
-            - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests && matrix.kybra_source == 'repo' && startsWith(matrix.example_directories, 'examples/motoko_examples') }}
+            - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests && matrix.basilisk_source == 'repo' && startsWith(matrix.example_directories, 'examples/motoko_examples') }}
               shell: bash -l {0}
               working-directory: ${{ matrix.example_directories }}
               run: source venv/bin/activate && pip install ../../..
-            - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests && matrix.kybra_source == 'pypi' }}
+            - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests && matrix.basilisk_source == 'pypi' }}
               shell: bash -l {0}
               working-directory: ${{ matrix.example_directories }}
               run: source venv/bin/activate && pip install -r requirements.txt
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               working-directory: ${{ matrix.example_directories }}
-              run: source venv/bin/activate && python -m kybra install-dfx-extension
+              run: source venv/bin/activate && python -m basilisk install-dfx-extension
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               working-directory: ${{ matrix.example_directories }}
               run: dfx start --clean --background --host 127.0.0.1:8000

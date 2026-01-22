@@ -1,4 +1,4 @@
-from kybra import nat64, query, update
+from basilisk import nat64, query, update
 from typing import TypedDict
 
 

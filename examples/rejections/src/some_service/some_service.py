@@ -1,4 +1,4 @@
-from kybra import empty, ic, Manual, query
+from basilisk import empty, ic, Manual, query
 
 
 @query

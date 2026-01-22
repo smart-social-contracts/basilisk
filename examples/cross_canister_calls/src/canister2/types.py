@@ -1,4 +1,4 @@
-from kybra import nat64, Opt, Record, Service, service_query, service_update, Vec, void
+from basilisk import nat64, Opt, Record, Service, service_query, service_update, Vec, void
 from typing import TypedDict
 
 

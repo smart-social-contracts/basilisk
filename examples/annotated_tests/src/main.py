@@ -1,5 +1,5 @@
 from typing import TypeAlias
-from kybra import Alias, Func, FuncTuple, nat8, Principal, query, StableBTreeMap, Query
+from basilisk import Alias, Func, FuncTuple, nat8, Principal, query, StableBTreeMap, Query
 
 
 stable_map0: StableBTreeMap[nat8, str] = StableBTreeMap[nat8, str](

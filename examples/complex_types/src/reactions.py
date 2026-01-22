@@ -1,4 +1,4 @@
-from kybra import nat32, query, update, Vec
+from basilisk import nat32, query, update, Vec
 from src.candid_types import Reaction, ReactionType
 from src.state import state, StatePost, StateReaction, StateUser
 

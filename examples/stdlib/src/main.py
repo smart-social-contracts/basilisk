@@ -8,7 +8,7 @@ import string
 import urllib.parse
 import uuid
 
-from kybra import blob, float64, query, update, Vec
+from basilisk import blob, float64, query, update, Vec
 
 @query
 def test_base64() -> blob:

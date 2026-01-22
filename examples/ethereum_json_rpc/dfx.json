@@ -1,7 +1,7 @@
 {
     "canisters": {
         "ethereum_json_rpc": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/main.py",
             "declarations": {
                 "output": "test/dfx_generated/ethereum_json_rpc",

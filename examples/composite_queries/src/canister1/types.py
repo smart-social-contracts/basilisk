@@ -1,4 +1,4 @@
-from kybra import nat, Service, service_query, Variant
+from basilisk import nat, Service, service_query, Variant
 
 
 class Canister1(Service):

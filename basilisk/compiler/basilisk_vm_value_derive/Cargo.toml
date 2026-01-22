@@ -1,0 +1,13 @@
+[package]
+name = "basilisk-vm-value-derive"
+version = "0.0.0"
+edition = "2018"
+
+[lib]
+proc_macro = true
+
+[dependencies]
+quote = "1.0.17"
+syn = "1.0.90"
+proc-macro2 = "1.0.36"
+cdk_framework = { git = "https://github.com/demergent-labs/cdk_framework", rev = "86b5acf42f2eba83728328b64112f446a3f8f4cb" }

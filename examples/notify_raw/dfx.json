@@ -1,7 +1,7 @@
 {
     "canisters": {
         "canister1": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "canisters/canister1/canister1.py",
             "declarations": {
                 "output": "test/dfx_generated/canister1",
@@ -9,7 +9,7 @@
             }
         },
         "canister2": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "canisters/canister2/canister2.py",
             "declarations": {
                 "output": "test/dfx_generated/canister2",

@@ -1,7 +1,7 @@
 {
     "canisters": {
         "complex_init": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/main.py",
             "declarations": {
                 "output": "test/dfx_generated/complex_init",

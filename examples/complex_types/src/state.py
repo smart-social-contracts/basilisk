@@ -1,4 +1,4 @@
-from kybra import Vec
+from basilisk import Vec
 from src.candid_types import ReactionType
 from typing import TypedDict
 

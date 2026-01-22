@@ -1,4 +1,4 @@
-from kybra import ic, query, void
+from basilisk import ic, query, void
 
 
 @query

@@ -1,4 +1,4 @@
-from kybra import ic, query
+from basilisk import ic, query
 from src.notifiers.types import NotifierFunc
 
 

@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     nat64,
     nat8,
     Opt,

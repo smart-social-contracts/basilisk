@@ -1,7 +1,7 @@
 {
     "canisters": {
         "hello": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/main.py",
             "declarations": {
                 "output": "test/dfx_generated/hello",

@@ -5,9 +5,9 @@
 
 
 # These three bring in a lot of stuff that doesn't work and is enumerated bellow
-# from kybra import query, opt, text, Record
-# import kybra as kybra2
-# from kybra import thing
+# from basilisk import query, opt, text, Record
+# import basilisk as basilisk2
+# from basilisk import thing
 
 
 # BasicFunc: TypeAlias = Func(Query[[str], str])

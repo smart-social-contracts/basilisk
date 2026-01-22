@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     Opt,
     query,
     Record,
@@ -7,8 +7,8 @@ from kybra import (
     update,
     Vec,
 )
-from kybra import nat64
-from kybra import float32
+from basilisk import nat64
+from basilisk import float32
 
 
 class BlogPost(Record):

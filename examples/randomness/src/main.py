@@ -1,6 +1,6 @@
 import random
 
-from kybra import float64, update
+from basilisk import float64, update
 
 
 @update

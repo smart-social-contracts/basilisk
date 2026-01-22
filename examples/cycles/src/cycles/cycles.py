@@ -1,4 +1,4 @@
-from kybra import ic, nat, nat64, query, update
+from basilisk import ic, nat, nat64, query, update
 
 @update
 def receive_cycles() -> nat64:

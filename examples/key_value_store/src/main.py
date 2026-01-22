@@ -1,4 +1,4 @@
-from kybra import Opt, query, update, void
+from basilisk import Opt, query, update, void
 
 Store = dict[str, str]
 

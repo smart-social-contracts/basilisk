@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     blob,
     null,
     Opt,
@@ -9,7 +9,7 @@ from kybra import (
     Vec,
     Variant,
 )
-from kybra import nat64
+from basilisk import nat64
 
 
 class Reaction(Variant):

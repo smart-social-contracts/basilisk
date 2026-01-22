@@ -1,4 +1,4 @@
-from kybra import init, null, Opt, Principal, query, Record, Variant, void
+from basilisk import init, null, Opt, Principal, query, Record, Variant, void
 
 
 class User(Record):

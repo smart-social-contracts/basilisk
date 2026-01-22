@@ -1,4 +1,4 @@
-from kybra import ic, null, query, Record, update, void
+from basilisk import ic, null, query, Record, update, void
 
 
 class PartiallyNullRecord(Record):

@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     ic,
     init,
     nat64,

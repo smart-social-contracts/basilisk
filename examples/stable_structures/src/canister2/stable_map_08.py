@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     null,
     Opt,
     query,
@@ -7,7 +7,7 @@ from kybra import (
     update,
     Vec,
 )
-from kybra import nat64
+from basilisk import nat64
 
 stable_map8 = StableBTreeMap[bool, null](
     memory_id=8, max_key_size=100, max_value_size=1_000

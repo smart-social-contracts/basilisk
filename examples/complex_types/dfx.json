@@ -1,7 +1,7 @@
 {
     "canisters": {
         "complex_types": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/complex_types.py",
             "declarations": {
                 "output": "test/dfx_generated/complex_types",

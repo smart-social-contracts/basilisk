@@ -1,4 +1,4 @@
-from kybra import nat, Service, service_query, service_update
+from basilisk import nat, Service, service_query, service_update
 from src.canister1.types import StringQueryResult
 
 

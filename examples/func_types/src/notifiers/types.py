@@ -1,4 +1,4 @@
-from kybra import blob, Func, Oneway, Service, service_query, void
+from basilisk import blob, Func, Oneway, Service, service_query, void
 
 NotifierFunc = Func(Oneway[[blob], void])
 

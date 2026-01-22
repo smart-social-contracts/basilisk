@@ -1,4 +1,4 @@
-from kybra import empty, Service, service_query
+from basilisk import empty, Service, service_query
 
 
 class SomeService(Service):

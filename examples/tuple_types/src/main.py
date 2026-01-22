@@ -1,6 +1,6 @@
 # TODO Add in Canister types like in the Azle tuple_types example
 
-from kybra import nat8, nat64, null, Principal, query, Record, Tuple, Vec, Variant
+from basilisk import nat8, nat64, null, Principal, query, Record, Tuple, Vec, Variant
 
 
 class User(Record):

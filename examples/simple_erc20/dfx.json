@@ -1,7 +1,7 @@
 {
     "canisters": {
         "simple_erc20": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/main.py",
             "declarations": {
                 "output": "test/dfx_generated/simple_erc20",

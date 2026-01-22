@@ -1,4 +1,4 @@
-from kybra import Opt, Record, query, update, void
+from basilisk import Opt, Record, query, update, void
 
 
 class Entry(Record):

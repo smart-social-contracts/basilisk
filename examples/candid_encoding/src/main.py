@@ -1,4 +1,4 @@
-from kybra import blob, ic, query
+from basilisk import blob, ic, query
 
 @query
 def candid_encode(candid_string: str) -> blob:

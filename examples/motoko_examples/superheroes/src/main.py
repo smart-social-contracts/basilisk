@@ -1,4 +1,4 @@
-from kybra import Alias, nat32, Opt, query, Record, Tuple, update
+from basilisk import Alias, nat32, Opt, query, Record, Tuple, update
 
 SuperheroId = Alias[nat32]
 

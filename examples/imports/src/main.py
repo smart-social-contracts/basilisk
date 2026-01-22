@@ -2,7 +2,7 @@ import hashlib
 import math
 
 import boltons.mathutils
-from kybra import float64, query
+from basilisk import float64, query
 
 import import1
 import import2

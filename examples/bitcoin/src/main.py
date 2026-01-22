@@ -1,5 +1,5 @@
-from kybra import Async, blob, CallResult, match, update, Vec, void
-from kybra.canisters.management import (
+from basilisk import Async, blob, CallResult, match, update, Vec, void
+from basilisk.canisters.management import (
     GetUtxosResult,
     management_canister,
     MillisatoshiPerByte,

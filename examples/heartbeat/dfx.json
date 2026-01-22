@@ -1,7 +1,7 @@
 {
     "canisters": {
         "heartbeat_async": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/heartbeat_async/main.py",
             "declarations": {
                 "output": "test/dfx_generated/heartbeat_async",
@@ -9,7 +9,7 @@
             }
         },
         "heartbeat_sync": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/heartbeat_sync/main.py",
             "declarations": {
                 "output": "test/dfx_generated/heartbeat_sync",

@@ -1,0 +1,34 @@
+{
+    "name": "basilisk",
+    "version": "0.7.1",
+    "homepage": "https://github.com/dfinity/dfx-extensions",
+    "authors": "",
+    "summary": "",
+    "categories": [],
+    "keywords": [],
+    "canister_type": {
+        "defaults": {
+            "candid": ".basilisk/{{canister_name}}/{{canister_name}}.did",
+            "build": "python -m basilisk {{canister_name}} {{canister.main}}",
+            "wasm": ".basilisk/{{canister_name}}/{{canister_name}}.wasm",
+            "gzip": true,
+            "metadata": [
+                {
+                    "name": "candid:service"
+                },
+                {
+                    "name": "cdk:name",
+                    "content": "basilisk"
+                }
+            ],
+            "tech_stack": {
+                "cdk": {
+                    "basilisk": {}
+                },
+                "language": {
+                    "python": {}
+                }
+            }
+        }
+    }
+}

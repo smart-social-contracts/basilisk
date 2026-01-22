@@ -1,4 +1,4 @@
-from kybra import query, update
+from basilisk import query, update
 
 notified: bool = False
 

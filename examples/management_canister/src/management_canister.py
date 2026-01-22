@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     Async,
     blob,
     CallResult,
@@ -9,7 +9,7 @@ from kybra import (
     update,
     void,
 )
-from kybra.canisters.management import (
+from basilisk.canisters.management import (
     CreateCanisterResult,
     CanisterStatusArgs,
     CanisterStatusResult,

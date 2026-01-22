@@ -1,4 +1,4 @@
-from kybra import blob, query, Vec
+from basilisk import blob, query, Vec
 
 
 @query

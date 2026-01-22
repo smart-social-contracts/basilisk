@@ -1,5 +1,5 @@
-from kybra import Async, blob, CallResult, ic, match, Record, update, Variant
-from kybra.canisters.management import (
+from basilisk import Async, blob, CallResult, ic, match, Record, update, Variant
+from basilisk.canisters.management import (
     management_canister,
     EcdsaPublicKeyResult,
     SignWithEcdsaResult,

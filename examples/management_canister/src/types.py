@@ -1,5 +1,5 @@
-from kybra import blob, Variant
-from kybra.canisters.management import CanisterStatusResult, CreateCanisterResult
+from basilisk import blob, Variant
+from basilisk.canisters.management import CanisterStatusResult, CreateCanisterResult
 
 
 class DefaultResult(Variant, total=False):

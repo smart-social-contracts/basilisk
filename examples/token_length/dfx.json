@@ -1,7 +1,7 @@
 {
     "canisters": {
         "works": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/works/works.py",
             "declarations": {
                 "output": "test/dfx_generated/works",
@@ -9,7 +9,7 @@
             }
         },
         "wip": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/wip/wip.py",
             "declarations": {
                 "output": "test/dfx_generated/wip",
@@ -17,7 +17,7 @@
             }
         },
         "breaks": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/breaks/breaks.py",
             "declarations": {
                 "output": "test/dfx_generated/breaks",

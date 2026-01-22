@@ -1,4 +1,4 @@
-from kybra import null, Record, Variant, Vec
+from basilisk import null, Record, Variant, Vec
 
 
 class Post(Record):

@@ -1,4 +1,4 @@
-from kybra import Opt, update, void
+from basilisk import Opt, update, void
 
 cell: int = 0
 

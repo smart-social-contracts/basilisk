@@ -1,7 +1,7 @@
 {
     "canisters": {
         "inspect_message": {
-            "type": "kybra",
+            "type": "basilisk",
             "main": "src/main.py",
             "declarations": {
                 "output": "test/dfx_generated/inspect_message",

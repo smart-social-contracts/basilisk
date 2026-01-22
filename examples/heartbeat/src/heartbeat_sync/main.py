@@ -1,4 +1,4 @@
-from kybra import heartbeat, query, void
+from basilisk import heartbeat, query, void
 
 initialized: bool = False
 

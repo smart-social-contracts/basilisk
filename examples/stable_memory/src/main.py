@@ -1,4 +1,4 @@
-from kybra import blob, ic, nat32, nat64, query, StableGrowResult, Stable64GrowResult, update, void
+from basilisk import blob, ic, nat32, nat64, query, StableGrowResult, Stable64GrowResult, update, void
 
 
 @query

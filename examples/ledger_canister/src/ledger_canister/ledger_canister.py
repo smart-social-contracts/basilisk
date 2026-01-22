@@ -1,4 +1,4 @@
-from kybra import (
+from basilisk import (
     Async,
     CallResult,
     init,
@@ -12,7 +12,7 @@ from kybra import (
     Variant,
     void,
 )
-from kybra.canisters.ledger import (
+from basilisk.canisters.ledger import (
     Address,
     Archives,
     DecimalsResult,
