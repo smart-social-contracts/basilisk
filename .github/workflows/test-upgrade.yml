@@ -1,0 +1,56 @@
+# Standalone test for the upgrade_test example
+# This test verifies decentralized canister upgrades using IC's chunked code upload API
+
+name: Upgrade Test
+on:
+    push:
+        branches:
+            - main
+    pull_request:
+
+jobs:
+    upgrade-test:
+        runs-on: ubuntu-latest
+        env:
+            BASILISK_COMPILE_RUST_PYTHON_STDLIB: true
+        steps:
+            - uses: actions/checkout@v3
+
+            - uses: actions/cache@v3
+              with:
+                  path: ~/.config/basilisk
+                  key: basilisk-cargo-${{ hashFiles('basilisk/cargotoml.py') }}
+
+            - uses: actions/cache@v3
+              with:
+                  path: ~/.cache/dfinity
+                  key: basilisk-dfx-0.23.0
+
+            - name: Install dfx
+              run: |
+                  DFXVM_INIT_YES=true DFX_VERSION=0.23.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Install Python 3.10
+              run: |
+                  curl https://pyenv.run | bash
+                  ~/.pyenv/bin/pyenv install 3.10.7
+
+            - name: Setup venv and install basilisk from repo
+              working-directory: examples/upgrade_test
+              run: |
+                  ~/.pyenv/versions/3.10.7/bin/python -m venv venv
+                  source venv/bin/activate
+                  pip install ../..
+
+            - name: Install basilisk dfx extension
+              working-directory: examples/upgrade_test
+              run: |
+                  source venv/bin/activate
+                  python -m basilisk install-dfx-extension
+
+            - name: Run upgrade test
+              working-directory: examples/upgrade_test
+              run: |
+                  source venv/bin/activate
+                  bash test_upgrade.sh

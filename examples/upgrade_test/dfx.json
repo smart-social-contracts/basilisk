@@ -1,0 +1,16 @@
+{
+  "canisters": {
+    "controller": {
+      "type": "basilisk",
+      "main": "src/controller/main.py"
+    },
+    "target": {
+      "type": "basilisk",
+      "main": "src/target/main.py"
+    },
+    "target_v2": {
+      "type": "basilisk",
+      "main": "src/target_v2/main.py"
+    }
+  }
+}
