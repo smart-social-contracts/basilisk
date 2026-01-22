@@ -27,7 +27,7 @@ def construct_bin_paths(paths: Paths) -> tuple[str, str]:
 
 
 def check_rebuild(bin_path: str) -> bool:
-    return not os.path.exists(bin_path) or os.environ.get("KYBRA_REBUILD") == "true"
+    return not os.path.exists(bin_path) or os.environ.get("BASILISK_REBUILD") == "true"
 
 
 def run_build(
@@ -93,7 +93,7 @@ def validate_process(
 def print_error_and_exit_basilisk_generate(
     result: subprocess.CompletedProcess[bytes], error_parser: Callable[[bytes], str]
 ) -> None:
-    print(red("\n💣 Kybra error: compilation\n"))
+    print(red("\n💣 Basilisk error: compilation\n"))
     print(error_parser(result.stderr))
     print_help_message()
     sys.exit(1)

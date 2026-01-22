@@ -1,14 +1,15 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: basilisk
 Version: 0.7.1
-Summary: UNKNOWN
-Home-page: UNKNOWN
-License: UNKNOWN
-Platform: UNKNOWN
 Description-Content-Type: text/markdown
 License-File: LICENSE
 License-File: NOTICE
 License-File: NOTICE_PYTHON
+Requires-Dist: modulegraph==0.19.3
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: license-file
+Dynamic: requires-dist
 
 <div align="center">
     <a href="https://github.com/demergent-labs/basilisk" target="_blank" rel="noopener noreferrer">
@@ -56,5 +57,3 @@ Feel free to open issues or join us in the [Discord channel](https://discord.gg/
 ## Contributing
 
 Not currently taking contributions, but definitely taking issues and questions. Please allow time for initial code architecture and governance/legal/token work to be put in place. Basilisk will most likely have a license extension [similar to Azle's](https://github.com/demergent-labs/azle/blob/main/LICENSE_EXTENSION.md).
-
-

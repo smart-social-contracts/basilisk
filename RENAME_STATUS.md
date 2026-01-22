@@ -2,7 +2,7 @@
 
 ## Summary
 
-This fork renames the kybra Python SDK to basilisk. The initial rename has been completed at the Python source level, but the Rust runtime still registers the module as 'kybra', causing runtime errors.
+This fork renames the kybra Python SDK to basilisk. **The rename is now complete** - the runtime module registration issue has been fixed by creating a proper runtime-ready `basilisk` package in `custom_modules`.
 
 ## What Has Been Done
 
@@ -11,13 +11,16 @@ This fork renames the kybra Python SDK to basilisk. The initial rename has been 
 - ✅ Renamed compiler directories: `kybra_*` → `basilisk_*`
 - ✅ Updated all Python imports: `from kybra` → `from basilisk`
 - ✅ Updated Cargo.toml workspace paths
-- ✅ Updated Rust source files (.rs)
+- ✅ Updated Rust source files (.rs) - all use `basilisk` and `_basilisk_ic`
 - ✅ Updated JSON, shell scripts, markdown documentation
 - ✅ Renamed `the_kybra_book/` → `the_basilisk_book/`
 - ✅ Added **chunked code upload API** to management canister:
   - `upload_chunk`, `clear_chunk_store`, `stored_chunks`, `install_chunked_code`
   - Types: `ChunkHash`, `UploadChunkArgs`, `UploadChunkResult`, `InstallChunkedCodeArgs`, etc.
 - ✅ Fixed download URL to use original kybra releases (external dependency)
+- ✅ **Fixed runtime module registration** - created `custom_modules/basilisk/__init__.py` with all runtime types and decorators
+- ✅ Updated bundler to use custom runtime `basilisk` module instead of site-packages version
+- ✅ Renamed all environment variables: `KYBRA_*` → `BASILISK_*`
 
 ### New Feature: Chunked Code Upload API
 
@@ -47,57 +50,38 @@ yield management_canister.install_chunked_code({
 })
 ```
 
-## Current Impediment
+## Runtime Module Fix
 
-When running a canister built with basilisk, we get:
-```
-ModuleNotFoundError: No module named 'basilisk'
-```
+The original issue was that when canister code ran `from basilisk import query`, the Python interpreter couldn't find the `basilisk` module because:
+1. The installed `basilisk` package had complex internal imports (`.compiler.custom_modules.principal`)
+2. These relative imports didn't work correctly when bundled for the canister runtime
 
-### Root Cause
+### Solution Implemented
 
-The Rust runtime code in `basilisk_generate` registers the Python module as `kybra`:
+Created a standalone runtime-ready `basilisk` module at `compiler/custom_modules/basilisk/__init__.py` that:
+1. Contains all types, decorators, and classes needed at runtime
+2. Includes the `Principal` class directly (no relative imports)
+3. Uses `_basilisk_ic` for IC API calls (injected by Rust runtime)
 
-```rust
-// In the Rust runtime (conceptual)
-vm.register_module("kybra", kybra_module);
-```
+The bundler was updated to:
+1. Copy `custom_modules/basilisk/` to `python_source/basilisk/`
+2. Skip the site-packages `basilisk` package (which has complex imports)
 
-When canister code runs `from basilisk import query`, the Python interpreter looks for a module named "basilisk" but only "kybra" is registered.
-
-### Layers Requiring Changes
+### Layers Status
 
 | Layer | Status | Notes |
 |-------|--------|-------|
 | Python source | ✅ Done | Imports use `basilisk` |
-| Bundled Python modules | ⚠️ Partial | Directory renamed but internal refs may remain |
-| Rust runtime code | ❌ Not done | Module registration still uses "kybra" |
-| External dependencies | ✅ Kept as kybra | GitHub releases, git repos |
+| Bundled Python modules | ✅ Done | Runtime module in `custom_modules/basilisk/` |
+| Rust runtime code | ✅ Done | Uses `basilisk` and `_basilisk_ic` |
+| External dependencies | ✅ Kept as kybra | GitHub releases, git repos (intentional) |
 
-## Potential Solutions
+## Environment Variables
 
-### Option 1: Complete Rust Rename (Recommended)
-Update the Rust code in `basilisk_generate` to:
-1. Register the module as "basilisk" instead of "kybra"
-2. Update any hardcoded "kybra" strings in the Rust source
-3. Rebuild the compiler toolchain
-
-Files to modify:
-- `basilisk/compiler/basilisk_generate/src/*.rs`
-- Any Rust files that reference "kybra" as a module name
-
-### Option 2: Dual Module Registration
-Register both "kybra" and "basilisk" as aliases to the same module, allowing both import styles to work.
-
-### Option 3: Keep Internal Name as kybra
-Keep the internal module name as "kybra" but have the package installable as "basilisk". Users would still write `from kybra import` but install with `pip install basilisk`.
-
-## Next Steps
-
-1. Identify all Rust files that register the "kybra" module name
-2. Update module registration to use "basilisk"
-3. Test canister compilation and runtime
-4. Update any remaining hardcoded references
+The following environment variables have been renamed:
+- `KYBRA_VERBOSE` → `BASILISK_VERBOSE`
+- `KYBRA_REBUILD` → `BASILISK_REBUILD`
+- `KYBRA_COMPILE_RUST_PYTHON_STDLIB` → `BASILISK_COMPILE_RUST_PYTHON_STDLIB`
 
 ## Related
 

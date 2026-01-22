@@ -23,7 +23,7 @@ def build_wasm_binary_or_exit(
 def compile_or_download_rust_python_stdlib(
     paths: Paths, cargo_env: dict[str, str], verbose: bool
 ):
-    if os.environ.get("KYBRA_COMPILE_RUST_PYTHON_STDLIB") == "true":
+    if os.environ.get("BASILISK_COMPILE_RUST_PYTHON_STDLIB") == "true":
         compile_rust_python_stdlib(paths, cargo_env, verbose)
     else:
         rust_python_stdlib_global_path = (
@@ -127,7 +127,7 @@ def download_rust_python_stdlib_tar_gz(
         [
             "curl",
             "-Lf",
-            f"https://github.com/demergent-labs/kybra/releases/download/{basilisk.__version__}/rust_python_stdlib.tar.gz",
+            f"https://github.com/demergent-labs/kybra/releases/download/{basilisk.__version__}/rust_python_stdlib.tar.gz",  # Keep kybra URL - external dependency
             "-o",
             "rust_python_stdlib.tar.gz",
         ],
@@ -243,7 +243,7 @@ def create_file(path: str, content: str):
 
 
 def print_error_and_exit(result: subprocess.CompletedProcess[bytes]):
-    print(red("\n💣 Kybra error: building Wasm binary"))
+    print(red("\n💣 Basilisk error: building Wasm binary"))
     print(result.stderr.decode("utf-8"))
     print("💀 Build failed")
     sys.exit(1)

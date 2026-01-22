@@ -1,3 +1,6 @@
+# Runtime module for basilisk - this is the version that gets bundled into canisters
+# It contains all types and decorators needed at runtime without complex relative imports
+
 import sys
 from typing import (
     Annotated,
@@ -14,14 +17,133 @@ from typing import (
     Union,
 )
 
-# TODO I think we can simplify this just like we're doing with canisters
-from .compiler.custom_modules.principal import Principal as PrincipalRenamed
+# Principal class is included directly to avoid import issues
+import zlib
+import math
+import base64
+import hashlib
+from enum import Enum
 
-__version__ = "0.7.1"
-__rust_version__ = "1.87.0"
+CRC_LENGTH_IN_BYTES = 4
+HASH_LENGTH_IN_BYTES = 28
+MAX_LENGTH_IN_BYTES = 29
 
-Principal = PrincipalRenamed
 
+class PrincipalClass(Enum):
+    OpaqueId = 1
+    SelfAuthenticating = 2
+    DerivedId = 3
+    Anonymous = 4
+
+
+class Principal:
+    def __init__(self, bytes: bytes = b""):
+        self._len = len(bytes)
+        self._bytes = bytes
+        self.hex = str(self._bytes.hex()).upper()
+        self._isPrincipal = True
+
+    @staticmethod
+    def management_canister():
+        return Principal()
+
+    @staticmethod
+    def self_authenticating(pubkey: Union[str, bytes]):
+        if isinstance(pubkey, str):
+            pubkey = bytes.fromhex(pubkey)
+        hash_ = hashlib.sha224(pubkey).digest()
+        hash_ += bytes([PrincipalClass.SelfAuthenticating.value])
+        return Principal(bytes=hash_)
+
+    @staticmethod
+    def anonymous():
+        return Principal(bytes=b"\x04")
+
+    @property
+    def len(self):
+        return self._len
+
+    @property
+    def bytes(self):
+        return self._bytes
+
+    @property
+    def isPrincipal(self):
+        return self._isPrincipal
+
+    @staticmethod
+    def from_str(s: str):
+        s1 = s.replace("-", "")
+        pad_len = math.ceil(len(s1) / 8) * 8 - len(s1)
+        b = base64.b32decode(s1.upper().encode() + b"=" * pad_len)
+        if len(b) < CRC_LENGTH_IN_BYTES:
+            raise Exception("principal length error")
+        p = Principal(bytes=b[CRC_LENGTH_IN_BYTES:])
+        if not p.to_str() == s:
+            raise Exception("principal format error")
+        return p
+
+    @staticmethod
+    def from_hex(s: str):
+        return Principal(bytes.fromhex(s.lower()))
+
+    def to_str(self):
+        checksum = zlib.crc32(self._bytes) & 0xFFFFFFFF
+        b = b""
+        b += checksum.to_bytes(CRC_LENGTH_IN_BYTES, byteorder="big")
+        b += self.bytes
+        s = base64.b32encode(b).decode("utf-8").lower().replace("=", "")
+        ret = ""
+        while len(s) > 5:
+            ret += s[:5]
+            ret += "-"
+            s = s[5:]
+        ret += s
+        return ret
+
+    def to_account_id(self, sub_account: int = 0):
+        return AccountIdentifier.new(self, sub_account)
+
+    def __repr__(self):
+        return "Principal(" + self.to_str() + ")"
+
+    def __str__(self):
+        return self.to_str()
+
+
+class AccountIdentifier:
+    def __init__(self, hash: bytes) -> None:
+        assert len(hash) == 32
+        self._hash = hash
+
+    def to_str(self):
+        return "0x" + self._hash.hex()
+
+    def __repr__(self):
+        return "Account(" + self.to_str() + ")"
+
+    def __str__(self):
+        return self.to_str()
+
+    @property
+    def bytes(self) -> bytes:
+        return self._hash
+
+    @staticmethod
+    def new(principal: Principal, sub_account: int = 0):
+        sha224 = hashlib.sha224()
+        sha224.update(b"\x0Aaccount-id")
+        sha224.update(principal.bytes)
+
+        sub_account = sub_account.to_bytes(32, byteorder="big")  # type: ignore
+        sha224.update(sub_account)  # type: ignore
+        hash = sha224.digest()
+        checksum = zlib.crc32(hash) & 0xFFFFFFFF
+        account = checksum.to_bytes(CRC_LENGTH_IN_BYTES, byteorder="big") + hash
+        return AccountIdentifier(account)
+
+
+# Type aliases
 int64 = int
 int32 = int
 int16 = int
@@ -55,7 +177,7 @@ null: TypeAlias = None
 void: TypeAlias = None
 
 reserved = Any
-empty: TypeAlias = NoReturn  # TODO in Python 3.11 I believe there is a Never type
+empty: TypeAlias = NoReturn
 
 Async = Generator[Any, Any, T]
 
@@ -143,7 +265,6 @@ def inspect_message(
         return decorator(_func)
 
 
-# TODO need service
 Query = Callable
 Update = Callable
 Oneway = Callable
@@ -164,14 +285,6 @@ class CallResult(Generic[T]):
     def with_cycles128(self, cycles: nat) -> "CallResult[T]": ...
 
 
-# TODO Once RustPython supports Python 3.11, we can use the below and unify CallResult with the other Variants
-# TODO The problem is that you can't really use generics with TypedDict yet: https://github.com/python/cpython/issues/89026
-# TODO We could also consider a hack where we remove all references to CallResult before runtime, since this is really an analysis-time consideration
-# class CallResult(Variant, Generic[T], total=False):
-#     Ok: T
-#     Err: str
-
-
 class RejectionCode(Variant, total=False):
     NoError: null
     SysFatal: null
@@ -182,7 +295,6 @@ class RejectionCode(Variant, total=False):
     Unknown: null
 
 
-# TODO we might want this to act more like CallResult
 class NotifyResult(Variant, total=False):
     Ok: null
     Err: RejectionCode
@@ -255,45 +367,14 @@ class ic(Generic[T]):
 
     @staticmethod
     def caller() -> Principal:
-        """Returns the caller of the current call.
-
-        Returns:
-            (Principal): the caller of the current call.
-        Raises:
-            TypeError: the caller could not be converted to a Principal.
-        """
         return _basilisk_ic.caller()  # type: ignore
 
     @staticmethod
     def candid_encode(candid_string: str) -> blob:
-        """Converts the provided string into a Candid value.
-
-        Args:
-            candid_string (str): a string representation of a Candid value
-
-        Returns:
-            (blob): a Candid value
-
-        Raises:
-            CandidError: an error occurred while processing the input.
-            TypeError: the provided value was not of the correct type.
-        """
         return _basilisk_ic.candid_encode(candid_string)  # type: ignore
 
     @staticmethod
     def candid_decode(candid_encoded: blob) -> str:
-        """Converts the provided Candid bytes into a string representation.
-
-        Args:
-            candid_encode (blob): a blob representing a Candid value.
-
-        Returns:
-            (blob): a string representation of the value.
-
-        Raises:
-            CandidError: an error occurred while processing the input.
-            TypeError: the provided value was not of the correct type.
-        """
         return _basilisk_ic.candid_decode(candid_encoded)  # type: ignore
 
     @staticmethod
@@ -477,8 +558,6 @@ class AsyncInfo:
         return getattr(_basilisk_ic, notify_function_name)(self.args)  # type: ignore
 
 
-# TODO this decorator is removing the static type checking of the self parameter for instance methods
-# TODO watch out for *kwargs
 def service_method(func: Callable[P, T]) -> Callable[P, CallResult[T]]:
     def intermediate_func(*args):  # type: ignore
         the_self = args[0]  # type: ignore
@@ -515,99 +594,36 @@ class ValueTooLarge(Record):
 
 
 class StableBTreeMap(Generic[K, V]):
-    """
-    A map based on a self-balancing tree that persists across canister upgrades.
-    """
+    """A map based on a self-balancing tree that persists across canister upgrades."""
 
     def __init__(self, memory_id: nat8, max_key_size: int, max_value_size: int):
-        """
-        Initialize the stable B-tree map.
-
-        :param memory_id: The memory ID of the stable B-tree map.
-        :param max_key_size: The maximum size of the keys (in bytes) in the map.
-        :param max_value_size: The maximum size of the values (in bytes) in the map.
-        """
         self.memory_id = memory_id
 
     def contains_key(self, key: K) -> bool:
-        """
-        Check if the map contains a key.
-
-        :param key: The key to check for in the map.
-        :return: True if the key is in the map, False otherwise.
-        """
         return _basilisk_ic.stable_b_tree_map_contains_key(self.memory_id, key)  # type: ignore
 
     def get(self, key: K) -> Opt[V]:
-        """
-        Get the value associated with a key in the map.
-
-        :param key: The key to get the value for.
-        :return: The value associated with the key, or None if the key is not in the map.
-        """
         return _basilisk_ic.stable_b_tree_map_get(self.memory_id, key)  # type: ignore
 
     def insert(self, key: K, value: V) -> Opt[V]:
-        """
-        Insert a key-value pair into the map.
-
-        :param key: The key to insert.
-        :param value: The value to insert.
-        :return: An instance of InsertResult containing an ok attribute if the insertion succeeded
-        or an err attribute if the insertion failed. If the insertion succeeded the ok attribute
-        will contain the previous value associated with the key, if any. If the insertion failed,
-        the err attribute will contain an instance of InsertError indicating the reason for the
-        failure.
-        """
         return _basilisk_ic.stable_b_tree_map_insert(self.memory_id, key, value)  # type: ignore
 
     def is_empty(self) -> bool:
-        """
-        Check if the map is empty.
-
-        :return: True if the map is empty, False otherwise.
-        """
         return _basilisk_ic.stable_b_tree_map_is_empty(self.memory_id)  # type: ignore
 
     def items(self) -> Vec[Tuple[K, V]]:
-        """
-        Get a list of all key-value pairs in the map.
-
-        :return: A list of tuples containing all key-value pairs in the map.
-        """
         return _basilisk_ic.stable_b_tree_map_items(self.memory_id)  # type: ignore
 
     def keys(self) -> Vec[K]:
-        """
-        Get a list of all keys in the map.
-
-        :return: A list of all keys in the map.
-        """
         return _basilisk_ic.stable_b_tree_map_keys(self.memory_id)  # type: ignore
 
     def len(self) -> nat64:
-        """
-        Get the number of key-value pairs in the map.
-
-        :return: The number of key-value pairs in the map.
-        """
         return _basilisk_ic.stable_b_tree_map_len(self.memory_id)  # type: ignore
 
     def remove(self, key: K) -> Opt[V]:
-        """
-        Remove a key-value pair from the map.
-
-        :param key: The key of the key-value pair to remove.
-        :return: The value associated with the key, or None if the key is not in the map.
-        """
         return _basilisk_ic.stable_b_tree_map_remove(self.memory_id, key)  # type: ignore
 
     def values(self) -> Vec[V]:
-        """
-        Get a list of all values in the map.
-
-        :return: A list of all values in the map.
-        """
         return _basilisk_ic.stable_b_tree_map_values(self.memory_id)  # type: ignore
 
 
@@ -622,8 +638,6 @@ def match(
             if key == "_":
                 return value(None)
     else:
-        # This only works for Result (Ok, Err) objects
-        # This is temporary until we either use dataclasses for all variants or TypedDicts for all variants
         err_value = getattr(variant, "Err", None)
 
         if err_value is not None:
@@ -634,7 +648,7 @@ def match(
     raise Exception("No matching case found")
 
 
-# region Exceptions
+# Exceptions
 class Error(Exception):
     """Base exception for all errors raised by Basilisk"""
 
@@ -645,6 +659,3 @@ class CandidError(Error):
     """Raised when converting to/from Candid values."""
 
     pass
-
-
-# endregion Exceptions

@@ -242,6 +242,7 @@ basilisk/compiler/custom_modules/__init__.py
 basilisk/compiler/custom_modules/principal.py
 basilisk/compiler/custom_modules/__pycache__/__init__.cpython-310.pyc
 basilisk/compiler/custom_modules/__pycache__/principal.cpython-310.pyc
+basilisk/compiler/custom_modules/basilisk/__init__.py
 basilisk/compiler/dfx_extension/extension.json
 basilisk/compiler/dfx_extension/install.sh
 basilisk/compiler/src/lib.rs

@@ -23,7 +23,7 @@ export RUSTUP_HOME="$global_basilisk_rust_dir"
 
 function run() {
     if ! rustup_exists || ! cargo_exists || ! rustc_exists || ! wasm32_wasip1_target_installed || ! wasi2ic_exists || ! candid_extractor_exists || ! cargo_binstall_exists; then
-        echo -e "\nKybra "$basilisk_version" prerequisite installation (this may take a few minutes)\n"
+        echo -e "\nBasilisk "$basilisk_version" prerequisite installation (this may take a few minutes)\n"
 
         mkdir -p "$global_basilisk_rust_dir"
         mkdir -p "$global_basilisk_logs_dir"

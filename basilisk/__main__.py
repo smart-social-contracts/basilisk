@@ -34,7 +34,7 @@ def main():
 
     args = parse_args_or_exit(sys.argv)
     paths = create_paths(args)
-    is_verbose = args["flags"]["verbose"] or os.environ.get("KYBRA_VERBOSE") == "true"
+    is_verbose = args["flags"]["verbose"] or os.environ.get("BASILISK_VERBOSE") == "true"
 
     subprocess.run(
         [
@@ -96,7 +96,7 @@ def parse_args_or_exit(args: list[str]) -> Args:
         sys.exit(0)
 
     if len(args) != 2:
-        print(red("\n💣 Kybra error: wrong number of arguments\n"))
+        print(red("\n💣 Basilisk error: wrong number of arguments\n"))
         print("Usage: basilisk [-v|--verbose] <canister_name> <entry_point>")
         print("\n💀 Build failed!")
         sys.exit(1)
@@ -122,7 +122,7 @@ def create_paths(args: Args) -> Paths:
     canister_path = f".basilisk/{canister_name}"
 
     # We want to bundle/gather all Python files into the python_source directory for RustPython freezing
-    # The location that Kybra will look to when running py_freeze!
+    # The location that Basilisk will look to when running py_freeze!
     # py_freeze! will compile all of the Python code in the directory recursively (modules must have an __init__.py to be included)
     python_source_path = f"{canister_path}/python_source"
 
@@ -132,9 +132,9 @@ def create_paths(args: Args) -> Paths:
     did_path = os.environ.get("CANISTER_CANDID_PATH")
 
     if did_path is None:
-        raise Exception("Kybra: CANISTER_CANDID_PATH is not defined")
+        raise Exception("Basilisk: CANISTER_CANDID_PATH is not defined")
 
-    # This is the path to the Kybra compiler Rust code delivered with the Python package
+    # This is the path to the Basilisk compiler Rust code delivered with the Python package
     compiler_path = os.path.dirname(basilisk.__file__) + "/compiler"
 
     # This is the final generated Rust file that is the canister
@@ -224,6 +224,9 @@ def bundle_python_code(paths: Paths):
             )
 
         if type(node) == modulegraph.modulegraph.Package:  # type: ignore
+            # Skip the installed basilisk package - we use our custom runtime version
+            if should_skip_package(node.identifier, node.packagepath[0]):  # type: ignore
+                continue
             shutil.copytree(
                 node.packagepath[0],  # type: ignore
                 f"{python_source_path}/{node.identifier}",  # type: ignore
@@ -263,6 +266,13 @@ def ignore_specific_dir(dirname: str, filenames: list[str]) -> list[str]:
         return []
 
 
+def should_skip_package(node_identifier: str, node_packagepath: str) -> bool:
+    """Skip the installed basilisk package - we use our custom runtime version instead."""
+    if node_identifier == "basilisk" and "site-packages" in node_packagepath:
+        return True
+    return False
+
+
 def parse_basilisk_generate_error(stdout: bytes) -> str:
     err = stdout.decode("utf-8")
     std_err_lines = err.splitlines()
@@ -299,7 +309,7 @@ def run_rustfmt_or_exit(paths: Paths, cargo_env: dict[str, str], verbose: bool =
     )
 
     if rustfmt_result.returncode != 0:
-        print(red("\n💣 Kybra error: internal Rust formatting"))
+        print(red("\n💣 Basilisk error: internal Rust formatting"))
         print(
             f'\nPlease open an issue at https://github.com/demergent-labs/basilisk/issues/new\nincluding this message and the following error:\n\n {red(rustfmt_result.stderr.decode("utf-8"))}'
         )
