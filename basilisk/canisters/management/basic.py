@@ -123,11 +123,11 @@ class StoredChunksArgs(Record):
 
 
 class StoredChunksResult(Record):
-    hash: ChunkHash
+    chunks: Vec[ChunkHash]
 
 
 class InstallChunkedCodeArgs(Record):
-    mode: "InstallCodeMode"
+    mode: InstallCodeMode
     target_canister: Principal
     store_canister: Opt[Principal]
     chunk_hashes_list: Vec[ChunkHash]

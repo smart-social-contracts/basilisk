@@ -23,9 +23,8 @@ uploaded_hashes: dict[str, list[bytes]] = {}
 def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> Async[UpgradeResult]:
     """Upload a WASM chunk to IC's chunk store via management canister"""
     canister_key = str(target_canister_id)
-    chunk_size = len(chunk)
     
-    ic.print(f"Uploading chunk for {target_canister_id}, size: {chunk_size} bytes")
+    ic.print(f"Uploading chunk for {target_canister_id}, size: {len(chunk)} bytes")
     
     # Upload chunk to the management canister's chunk store
     call_result: CallResult[UploadChunkResult] = yield management_canister.upload_chunk({
@@ -40,7 +39,7 @@ def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> Async[Upgra
         uploaded_hashes[canister_key].append(bytes(chunk_hash))
         chunk_index = len(uploaded_hashes[canister_key]) - 1
         ic.print(f"Chunk {chunk_index} uploaded, hash: {bytes(chunk_hash).hex()[:16]}...")
-        return {"Ok": f"Chunk {chunk_index} uploaded ({chunk_size} bytes)"}
+        return {"Ok": f"Chunk {chunk_index} uploaded ({len(chunk)} bytes)"}
     
     return match(call_result, {
         "Ok": handle_ok,
