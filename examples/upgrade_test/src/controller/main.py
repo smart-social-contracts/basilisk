@@ -2,7 +2,7 @@
 Controller Canister - upgrade other canisters using IC's chunked code upload API
 """
 
-from basilisk import Async, blob, CallResult, ic, nat32, Principal, query, update, Variant, Vec, void
+from basilisk import Async, blob, CallResult, ic, match, nat32, Principal, query, update, Variant, Vec, void
 from basilisk.canisters.management import (
     management_canister,
     ChunkHash,
@@ -33,17 +33,20 @@ def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> Async[Upgra
         "chunk": chunk,
     })
     
-    if "Err" in call_result:
-        return {"Err": f"Failed to upload chunk: {call_result['Err']}"}
+    def handle_ok(result: UploadChunkResult) -> UpgradeResult:
+        nonlocal canister_key, chunk_size
+        chunk_hash = result["hash"]
+        if canister_key not in uploaded_hashes:
+            uploaded_hashes[canister_key] = []
+        uploaded_hashes[canister_key].append(bytes(chunk_hash))
+        chunk_index = len(uploaded_hashes[canister_key]) - 1
+        ic.print(f"Chunk {chunk_index} uploaded, hash: {bytes(chunk_hash).hex()[:16]}...")
+        return {"Ok": f"Chunk {chunk_index} uploaded ({chunk_size} bytes)"}
     
-    result = call_result["Ok"]
-    chunk_hash = result["hash"]
-    if canister_key not in uploaded_hashes:
-        uploaded_hashes[canister_key] = []
-    uploaded_hashes[canister_key].append(bytes(chunk_hash))
-    chunk_index = len(uploaded_hashes[canister_key]) - 1
-    ic.print(f"Chunk {chunk_index} uploaded, hash: {bytes(chunk_hash).hex()[:16]}...")
-    return {"Ok": f"Chunk {chunk_index} uploaded ({chunk_size} bytes)"}
+    return match(call_result, {
+        "Ok": handle_ok,
+        "Err": lambda err: {"Err": f"Failed to upload chunk: {err}"}
+    })
 
 
 @update
@@ -71,11 +74,15 @@ def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blo
         "arg": bytes(),
     })
     
-    if "Err" in call_result:
-        return {"Err": f"Failed to install chunked code: {call_result['Err']}"}
+    def handle_ok(_: void) -> UpgradeResult:
+        nonlocal canister_key, target_canister_id
+        del uploaded_hashes[canister_key]
+        return {"Ok": f"Canister {target_canister_id} upgraded successfully with chunked code"}
     
-    del uploaded_hashes[canister_key]
-    return {"Ok": f"Canister {target_canister_id} upgraded successfully with chunked code"}
+    return match(call_result, {
+        "Ok": handle_ok,
+        "Err": lambda err: {"Err": f"Failed to install chunked code: {err}"}
+    })
 
 
 @update
@@ -88,14 +95,18 @@ def clear_chunks(target_canister_id: Principal) -> Async[UpgradeResult]:
         "canister_id": target_canister_id,
     })
     
-    if "Err" in call_result:
-        return {"Err": f"Failed to clear chunk store: {call_result['Err']}"}
+    def handle_ok(_: void) -> UpgradeResult:
+        nonlocal canister_key
+        count = 0
+        if canister_key in uploaded_hashes:
+            count = len(uploaded_hashes[canister_key])
+            del uploaded_hashes[canister_key]
+        return {"Ok": f"Cleared {count} chunks"}
     
-    count = 0
-    if canister_key in uploaded_hashes:
-        count = len(uploaded_hashes[canister_key])
-        del uploaded_hashes[canister_key]
-    return {"Ok": f"Cleared {count} chunks"}
+    return match(call_result, {
+        "Ok": handle_ok,
+        "Err": lambda err: {"Err": f"Failed to clear chunk store: {err}"}
+    })
 
 
 @query
