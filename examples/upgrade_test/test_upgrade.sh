@@ -42,7 +42,7 @@ echo "=== Building target_v2 WASM ==="
 dfx build target_v2
 
 # 7. Get the WASM file path and convert to hex for candid
-WASM_PATH=".kybra/target_v2/target_v2.wasm"
+WASM_PATH=".basilisk/target_v2/target_v2.wasm"
 echo "WASM path: $WASM_PATH"
 echo "WASM size: $(wc -c < "$WASM_PATH") bytes"
 
