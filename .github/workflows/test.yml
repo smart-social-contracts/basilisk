@@ -6,14 +6,14 @@
 # Each directory in the examples directory represents an example project and is intended to have tests that ensure the canisters contained in that example function properly.
 # These tests are currently written in TypeScript and are intended to be run in a Node.js environment.
 # This GitHub Action takes care of deploying to PyPI and GitHub.
-# Tests can either run against the current code of Kybra found in the repository, or the code deployed by the GitHub Action to PyPI.
+# Tests can either run against the current code of Basilisk found in the repository, or the code deployed by the GitHub Action to PyPI.
 # Feature branch pull requests (pull requests without release-- in the base branch name) will run all tests against the code found in the repository.
 # Release branch pull requests (pull requests with release-- in the base branch name) will run all tests against the code found in the repository and the code deployed by the GitHub Action to PyPI.
 # Pushes to main will run all tests against the code in the repository if the latest commit was not a merge of a release branch, and will run tests against the code in the repository and the code deployed by the GitHub Action to PyPI otherwise.
 # The basic-integration-tests matrix spins up one job per combination of example directory and code source (repo or pypi).
 # The check-basic-integration-tests-success job is designed to ensure that all jobs spun up from the matrix in the basic-integration-tests have succeeded
 
-name: Kybra Tests
+name: Basilisk Tests
 on:
     push:
         branches:
@@ -148,7 +148,7 @@ jobs:
         runs-on: ubuntu-latest
         env:
             ETHEREUM_URL: ${{ secrets.ETHEREUM_URL }}
-            KYBRA_COMPILE_RUST_PYTHON_STDLIB: ${{ matrix.basilisk_source == 'repo' }}
+            BASILISK_COMPILE_RUST_PYTHON_STDLIB: ${{ matrix.basilisk_source == 'repo' }}
         strategy:
             fail-fast: false # We want to see which example tests succeed and which ones fail, we don't want one example test to cancel the rest
             matrix:
