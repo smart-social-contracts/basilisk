@@ -43,7 +43,7 @@ source venv/bin/activate
 pip install ../..
 python -m basilisk install-dfx-extension
 dfx start --background
-KYBRA_COMPILE_RUST_PYTHON_STDLIB=true KYBRA_REBUILD=true dfx deploy
+BASILISK_COMPILE_RUST_PYTHON_STDLIB=true BASILISK_REBUILD=true dfx deploy
 cd .basilisk/simple_erc20
 tar -czf "$HOME/.config/basilisk/$VERSION/rust_python_stdlib.tar.gz" "rust_python_stdlib"
 

@@ -7,7 +7,7 @@
 # ../update_candid ../..
 
 # set path to basilisk package. Default to ../../ (for when run from example dir)
-KYBRA_PATH="../../"
+BASILISK_PATH="../../"
 
 upgrade_candid()
 {
@@ -19,7 +19,7 @@ upgrade_candid()
   source venv/bin/activate
   # install basilisk package
   # pip install $KYBRA_PATH
-  pip install $KYBRA_PATH # TODO change this as appropriate
+  pip install $BASILISK_PATH # TODO change this as appropriate
   # start dfx replica in background
   # dfx start --host 127.0.0.1:8000 --clean &
 
