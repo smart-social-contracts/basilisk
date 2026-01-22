@@ -311,7 +311,7 @@ def run_rustfmt_or_exit(paths: Paths, cargo_env: dict[str, str], verbose: bool =
     if rustfmt_result.returncode != 0:
         print(red("\n💣 Basilisk error: internal Rust formatting"))
         print(
-            f'\nPlease open an issue at https://github.com/demergent-labs/basilisk/issues/new\nincluding this message and the following error:\n\n {red(rustfmt_result.stderr.decode("utf-8"))}'
+            f'\nPlease open an issue at https://github.com/smart-social-contracts/basilisk/issues/new\nincluding this message and the following error:\n\n {red(rustfmt_result.stderr.decode("utf-8"))}'
         )
         print("💀 Build failed")
         sys.exit(1)
