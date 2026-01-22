@@ -3,7 +3,7 @@ from pathlib import Path
 from setuptools import setup  # type: ignore
 
 setup(
-    name="basilisk",
+    name="ic-basilisk",
     version=__version__,
     package_data={"basilisk": ["compiler/**", "canisters/**", "py.typed"]},
     include_package_data=True,
