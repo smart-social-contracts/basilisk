@@ -1,3 +1,9 @@
+<div align="center">
+    <a href="https://github.com/smart-social-contracts/basilisk" target="_blank" rel="noopener noreferrer">
+        <img height="150" src="https://raw.githubusercontent.com/smart-social-contracts/basilisk/main/logo/logo.png" alt="Basilisk logo">
+    </a>
+</div>
+
 # Basilisk
 
 [![Test](https://github.com/smart-social-contracts/basilisk/actions/workflows/test.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test.yml)
