@@ -1,46 +1,37 @@
-<div align="center">
-    <a href="https://github.com/demergent-labs/basilisk" target="_blank" rel="noopener noreferrer">
-        <img height="150" src="https://raw.githubusercontent.com/demergent-labs/basilisk/main/logo/logo.svg" alt="basilisk logo">
-    </a>
-</div>
-</br>
-<div align="center">
-    <a href="https://github.com/demergent-labs/basilisk/actions/workflows/test.yml?query=branch%3Amain">
-        <img src="https://github.com/demergent-labs/basilisk/actions/workflows/test.yml/badge.svg" alt="Coverage Status">
-    </a>
-    <a href="https://badge.fury.io/py/basilisk"><img src="https://badge.fury.io/py/basilisk.svg" alt="PyPI version"></a>
-</div>
+# Basilisk
 
-# Basilisk (Beta)
+[![Test](https://github.com/smart-social-contracts/basilisk/actions/workflows/test.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test.yml)
 
-Python CDK for the [Internet Computer](https://internetcomputer.org/).
+A Python CDK for the [Internet Computer](https://internetcomputer.org/), forked from [Kybra](https://github.com/demergent-labs/kybra).
+
+## Features
+
+- Full Python support for IC canister development
+- **Chunked code upload API** for canisters larger than 10MB (see `RENAME_STATUS.md`)
 
 ## Disclaimer
 
 Basilisk may have unknown security vulnerabilities due to the following:
 
--   Basilisk does not yet have many live, successful, continuously operating applications deployed to the IC
--   Basilisk does not yet have extensive automated property tests
--   Basilisk does not yet have multiple independent security reviews/audits
--   Basilisk uses a new Python interpreter that is less mature than CPython
-
-## Roadmap
-
-We hope to get to a production-ready 1.0 in 2024. The following are the major blockers to 1.0:
-
--   CPython integration for performance, security, and stability
--   Broad PyPI package support (C API/extensions)
--   Extensive automated property testing
--   Multiple independent security reviews/audits
+- Limited production deployments on the IC
+- No extensive automated property tests
+- No independent security reviews/audits
+- Uses a Python interpreter less mature than CPython
 
 ## Documentation
 
-See [The Basilisk Book](https://demergent-labs.github.io/basilisk/).
+Documentation is available in the `docs/` directory. For the original Kybra documentation, see [The Kybra Book](https://demergent-labs.github.io/kybra/).
+
+## Installation
+
+```bash
+pip install basilisk
+```
 
 ## Discussion
 
-Feel free to open issues or join us in the [Discord channel](https://discord.gg/ux2Jc7psjd).
+Feel free to open [issues](https://github.com/smart-social-contracts/basilisk/issues).
 
-## Contributing
+## License
 
-Not currently taking contributions, but definitely taking issues and questions. Please allow time for initial code architecture and governance/legal/token work to be put in place. Basilisk will most likely have a license extension [similar to Azle's](https://github.com/demergent-labs/azle/blob/main/LICENSE_EXTENSION.md).
+See [LICENSE](LICENSE) and [NOTICE](NOTICE).
