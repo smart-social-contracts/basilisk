@@ -6,7 +6,7 @@
     },
     "target": {
       "type": "basilisk",
-      "main": "src/target/main.py"
+      "main": "src/target_v1/main.py"
     },
     "target_v2": {
       "type": "basilisk",
