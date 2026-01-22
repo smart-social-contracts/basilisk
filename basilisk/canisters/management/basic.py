@@ -111,7 +111,7 @@ class UploadChunkArgs(Record):
 
 
 class UploadChunkResult(Record):
-    hash: ChunkHash
+    hash: blob
 
 
 class ClearChunkStoreArgs(Record):
