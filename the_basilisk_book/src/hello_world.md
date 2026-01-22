@@ -37,7 +37,7 @@ source venv/bin/activate
 Now install Basilisk and the Basilisk dfx extension:
 
 ```bash
-pip install basilisk
+pip install ic-basilisk
 python -m basilisk install-dfx-extension
 ```
 

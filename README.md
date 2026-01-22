@@ -31,7 +31,7 @@ Documentation is available in the `docs/` directory. For the original Kybra docu
 ## Installation
 
 ```bash
-pip install basilisk
+pip install ic-basilisk
 ```
 
 ## Discussion

@@ -165,7 +165,7 @@ If you run into an error during deployment, try the following:
     ```bash
     ~/.pyenv/versions/3.10.7/bin/python -m venv venv
     source venv/bin/activate
-    pip install basilisk
+    pip install ic-basilisk
     python -m basilisk install-dfx-extension
     dfx deploy
     ```
