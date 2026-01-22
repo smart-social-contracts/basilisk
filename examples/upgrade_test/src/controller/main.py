@@ -34,7 +34,6 @@ def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> Async[Upgra
     })
     
     def handle_ok(result: UploadChunkResult) -> UpgradeResult:
-        nonlocal canister_key, chunk_size
         chunk_hash = result["hash"]
         if canister_key not in uploaded_hashes:
             uploaded_hashes[canister_key] = []
@@ -75,7 +74,6 @@ def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blo
     })
     
     def handle_ok(_: void) -> UpgradeResult:
-        nonlocal canister_key, target_canister_id
         del uploaded_hashes[canister_key]
         return {"Ok": f"Canister {target_canister_id} upgraded successfully with chunked code"}
     
@@ -96,7 +94,6 @@ def clear_chunks(target_canister_id: Principal) -> Async[UpgradeResult]:
     })
     
     def handle_ok(_: void) -> UpgradeResult:
-        nonlocal canister_key
         count = 0
         if canister_key in uploaded_hashes:
             count = len(uploaded_hashes[canister_key])
