@@ -5,6 +5,7 @@
 dist
 target
 build
-kybra.egg-info
+*.egg-info
+.basilisk
 node_modules
 __pycache__
