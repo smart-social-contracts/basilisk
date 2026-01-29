@@ -111,7 +111,7 @@ class UploadChunkArgs(Record):
 
 
 class UploadChunkResult(Record):
-    hash: blob
+    hash: blob  # Note: IC returns blob directly, not ChunkHash record
 
 
 class ClearChunkStoreArgs(Record):

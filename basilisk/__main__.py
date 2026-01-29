@@ -195,6 +195,7 @@ def bundle_python_code(paths: Paths):
             os.path.dirname(paths["py_entry_file"]),
         ]
         + site.getsitepackages()
+        + [site.getusersitepackages()]
     )
 
     graph = modulegraph.modulegraph.ModuleGraph(path)  # type: ignore
