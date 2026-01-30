@@ -28,6 +28,8 @@ echo "Target: $TARGET_ID"
 echo ""
 echo "=== Initial state ==="
 dfx canister call target get_version '()'
+dfx canister call target get_lib_version '()'
+dfx canister call target greet '("World")'
 
 # 5. Add controller canister as a controller of target
 echo ""
@@ -53,6 +55,7 @@ python call_upgrade.py "$TARGET_ID" "$WASM_PATH"
 echo ""
 echo "=== After upgrade ==="
 dfx canister call target get_version '()'
+dfx canister call target get_lib_version '()'
 dfx canister call target greet '("World")'
 
 echo ""

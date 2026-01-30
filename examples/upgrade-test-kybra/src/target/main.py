@@ -1,5 +1,5 @@
 """
-Target Canister v2 - the upgraded version
+Target Canister v1 - will be upgraded
 """
 
 from kybra import query
@@ -8,7 +8,7 @@ from my_lib import VERSION, get_greeting_prefix
 
 @query
 def get_version() -> str:
-    return "v2"
+    return "v1"
 
 
 @query
@@ -18,4 +18,4 @@ def get_lib_version() -> str:
 
 @query
 def greet(name: str) -> str:
-    return f"{get_greeting_prefix()}, {name}! (upgraded)"
+    return f"{get_greeting_prefix()}, {name}!"
