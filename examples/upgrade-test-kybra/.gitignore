@@ -1,0 +1,6 @@
+.dfx/
+.kybra/
+venv/
+=0.15
+__pycache__/
+canister_ids.json

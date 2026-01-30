@@ -1,0 +1,16 @@
+{
+  "canisters": {
+    "controller": {
+      "type": "kybra",
+      "main": "src/controller/main.py"
+    },
+    "target": {
+      "type": "kybra",
+      "main": "src/target/main.py"
+    },
+    "target_v2": {
+      "type": "kybra",
+      "main": "src/target_v2/main.py"
+    }
+  }
+}

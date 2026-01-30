@@ -1,12 +1,9 @@
 """
 Controller Canister - upgrade other canisters using IC's chunked code upload API
-
-NOTE: This example requires basilisk code generator to support chunked API bindings.
-See issue #5: https://github.com/smart-social-contracts/basilisk/issues/5
 """
 
-from basilisk import Async, blob, CallResult, ic, match, nat32, Principal, query, update, Variant, Vec, void
-from basilisk.canisters.management import (
+from kybra import Async, blob, CallResult, ic, match, nat32, Principal, query, update, Variant, Vec, void
+from kybra.canisters.management import (
     management_canister,
     ChunkHash,
     UploadChunkResult,

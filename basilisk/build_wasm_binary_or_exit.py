@@ -127,7 +127,7 @@ def download_rust_python_stdlib_tar_gz(
         [
             "curl",
             "-Lf",
-            f"https://github.com/demergent-labs/kybra/releases/download/{basilisk.__version__}/rust_python_stdlib.tar.gz",  # Keep kybra URL - external dependency
+            "https://github.com/demergent-labs/kybra/releases/download/0.7.1/rust_python_stdlib.tar.gz",  # Use kybra 0.7.1 release for rust_python_stdlib
             "-o",
             "rust_python_stdlib.tar.gz",
         ],
