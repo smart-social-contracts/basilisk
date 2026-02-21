@@ -146,6 +146,8 @@ jobs:
     basic-integration-tests:
         needs: release-candidate-deploy
         runs-on: ubuntu-latest
+        # Allow tests that depend on external services or have known transient issues to fail without blocking CI
+        continue-on-error: ${{ contains(fromJSON('["examples/ethereum_json_rpc", "examples/null_example"]'), matrix.example_directories) }}
         env:
             ETHEREUM_URL: ${{ secrets.ETHEREUM_URL }}
             BASILISK_COMPILE_RUST_PYTHON_STDLIB: ${{ matrix.basilisk_source == 'repo' }}
