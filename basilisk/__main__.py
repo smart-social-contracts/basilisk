@@ -193,8 +193,10 @@ def bundle_python_code(paths: Paths):
         list(filter(lambda x: x.startswith(os.getcwd()), sys.path))
         + [
             os.path.dirname(paths["py_entry_file"]),
+            os.path.dirname(os.path.dirname(basilisk.__file__)),
         ]
         + site.getsitepackages()
+        + [site.getusersitepackages()]
     )
 
     graph = modulegraph.modulegraph.ModuleGraph(path)  # type: ignore
