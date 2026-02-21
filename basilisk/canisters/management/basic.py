@@ -123,7 +123,7 @@ class StoredChunksArgs(Record):
 
 
 class StoredChunksResult(Record):
-    chunks: Vec[ChunkHash]
+    hash: blob
 
 
 class InstallChunkedCodeArgs(Record):

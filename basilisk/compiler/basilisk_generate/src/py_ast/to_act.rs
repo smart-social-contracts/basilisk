@@ -27,7 +27,7 @@ impl PyAst {
         };
 
         Ok(AbstractCanisterTree {
-            cdk_name: "basilisk".to_string(),
+            cdk_name: "kybra".to_string(),
             header: header::generate(),
             body: body::generate(
                 &canister_methods.update_methods,
