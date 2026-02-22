@@ -301,3 +301,86 @@ extern "C" {
     pub fn PyMem_Malloc(size: usize) -> *mut c_void;
     pub fn PyMem_Free(ptr: *mut c_void);
 }
+
+// === Method/Module definition types (for C extension modules) ===
+
+/// Method calling convention flags
+pub const METH_VARARGS: c_int = 0x0001;
+pub const METH_NOARGS: c_int = 0x0004;
+pub const METH_O: c_int = 0x0008;
+
+/// PyCFunction type — the C function pointer type for Python callable methods.
+pub type PyCFunction =
+    unsafe extern "C" fn(slf: *mut PyObject, args: *mut PyObject) -> *mut PyObject;
+
+/// Method definition entry for PyMethodDef arrays.
+#[repr(C)]
+pub struct PyMethodDef {
+    pub ml_name: *const c_char,
+    pub ml_meth: Option<PyCFunction>,
+    pub ml_flags: c_int,
+    pub ml_doc: *const c_char,
+}
+
+// PyMethodDef needs to be Send+Sync for static storage on wasm32 (single-threaded)
+unsafe impl Send for PyMethodDef {}
+unsafe impl Sync for PyMethodDef {}
+
+/// Module definition for PyModule_Create.
+#[repr(C)]
+pub struct PyModuleDef {
+    pub m_base: PyModuleDef_Base,
+    pub m_name: *const c_char,
+    pub m_doc: *const c_char,
+    pub m_size: Py_ssize_t,
+    pub m_methods: *mut PyMethodDef,
+    pub m_slots: *mut c_void,
+    pub m_traverse: Option<unsafe extern "C" fn(*mut PyObject, *mut c_void, *mut c_void) -> c_int>,
+    pub m_clear: Option<unsafe extern "C" fn(*mut PyObject) -> c_int>,
+    pub m_free: Option<unsafe extern "C" fn(*mut c_void)>,
+}
+
+unsafe impl Send for PyModuleDef {}
+unsafe impl Sync for PyModuleDef {}
+
+/// Base struct for PyModuleDef (simplified for our use case).
+#[repr(C)]
+pub struct PyModuleDef_Base {
+    pub ob_base: PyObject_HEAD,
+    pub m_init: Option<unsafe extern "C" fn() -> *mut PyObject>,
+    pub m_index: Py_ssize_t,
+    pub m_copy: *mut PyObject,
+}
+
+unsafe impl Send for PyModuleDef_Base {}
+unsafe impl Sync for PyModuleDef_Base {}
+
+/// Simplified PyObject_HEAD for module def base.
+#[repr(C)]
+pub struct PyObject_HEAD {
+    pub ob_refcnt: Py_ssize_t,
+    pub ob_type: *mut PyObject,
+}
+
+unsafe impl Send for PyObject_HEAD {}
+unsafe impl Sync for PyObject_HEAD {}
+
+/// Zero-initialized module def base (equivalent to PyModuleDef_HEAD_INIT macro).
+pub const PyModuleDef_HEAD_INIT: PyModuleDef_Base = PyModuleDef_Base {
+    ob_base: PyObject_HEAD {
+        ob_refcnt: 1,
+        ob_type: core::ptr::null_mut(),
+    },
+    m_init: None,
+    m_index: 0,
+    m_copy: core::ptr::null_mut(),
+};
+
+extern "C" {
+    pub fn PyModule_Create(module: *mut PyModuleDef) -> *mut PyObject;
+    pub fn PyModule_AddObject(
+        module: *mut PyObject,
+        name: *const c_char,
+        value: *mut PyObject,
+    ) -> c_int;
+}

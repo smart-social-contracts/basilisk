@@ -9,6 +9,7 @@ pub mod constants;
 pub mod cpython_body;
 pub mod cpython_canister_method;
 pub mod cpython_header;
+pub mod cpython_ic_object;
 pub mod cpython_vm_value_conversion;
 pub mod debug;
 pub mod errors;

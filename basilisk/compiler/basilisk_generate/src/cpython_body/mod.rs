@@ -14,7 +14,7 @@ use cdk_framework::act::node::{
 };
 use proc_macro2::TokenStream;
 
-use crate::{ic_object, stable_b_tree_map_nodes::rust, StableBTreeMapNode};
+use crate::{cpython_ic_object, stable_b_tree_map_nodes::rust, StableBTreeMapNode};
 
 pub fn generate(
     update_methods: &Vec<UpdateMethod>,
@@ -25,8 +25,8 @@ pub fn generate(
     let async_result_handler = async_result_handler::generate(services);
     let call_global_python_function = call_global_python_function::generate();
     let guard_against_non_controllers = crate::body::guard_against_non_controllers::generate();
-    // IC object generation is shared between backends (it's Python-source-level, not interpreter-level)
-    let ic_object = ic_object::generate(
+    // CPython-specific IC object (C extension module instead of RustPython pyclass)
+    let ic_object = cpython_ic_object::generate(
         update_methods,
         query_methods,
         services,

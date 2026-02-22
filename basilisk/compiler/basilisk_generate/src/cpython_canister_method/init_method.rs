@@ -59,12 +59,15 @@ pub fn generate_interpreter_init() -> TokenStream {
 
 pub fn generate_ic_object_init() -> TokenStream {
     quote! {
-        // Register the IC object in the Python global namespace
-        // In CPython, we inject the _basilisk_ic module via Python code
-        // rather than native Rust module registration
-        interpreter.run_code_string(
-            "class _BasiliskIcPlaceholder: pass\n_basilisk_ic = _BasiliskIcPlaceholder()"
-        ).unwrap_or_else(|e| panic!("Failed to init IC object: {}", e.to_rust_err_string()));
+        // Create and register the _basilisk_ic CPython extension module.
+        // This replaces RustPython's Ic pyclass with a C extension module containing
+        // PyCFunction entries for each IC API method.
+        let _ic_module = basilisk_ic_create_module()
+            .unwrap_or_else(|e| panic!("Failed to create _basilisk_ic module: {}", e.to_rust_err_string()));
+
+        // Also make it accessible as a builtin so Python code can use `_basilisk_ic.method()`
+        interpreter.set_global("_basilisk_ic", _ic_module)
+            .unwrap_or_else(|e| panic!("Failed to register _basilisk_ic: {}", e.to_rust_err_string()));
     }
 }
 
