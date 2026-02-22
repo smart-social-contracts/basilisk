@@ -1,0 +1,17 @@
+--- a/Python/bootstrap_hash.c
++++ b/Python/bootstrap_hash.c
+@@ -1,5 +1,12 @@
+ /* Internet Computer determinism patch:
+  * Force hash seed to 0 for deterministic execution on the IC.
+  * The IC is a replicated state machine that requires all nodes to produce
+  * identical results. Python's hash randomization (PYTHONHASHSEED) would
+  * cause non-determinism across replicas.
++ *
++ * This patch is applied at compile time via -DPYTHONHASHSEED=0.
++ * Additionally, we disable any runtime sources of non-determinism:
++ * - Random hash seed generation
++ * - Use of /dev/urandom for hash seeding
++ * - getrandom() syscall for hash seeding
++ *
++ * The canister will seed its own RNG via ic_cdk::api::management_canister::main::raw_rand()
+  */

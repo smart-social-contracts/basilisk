@@ -13,11 +13,47 @@ from basilisk.types import Paths
 def build_wasm_binary_or_exit(
     paths: Paths, canister_name: str, cargo_env: dict[str, str], verbose: bool = False
 ):
-    compile_or_download_rust_python_stdlib(paths, cargo_env, verbose)
+    python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "rustpython")
+    if python_backend == "cpython":
+        install_cpython_wasm(paths, cargo_env, verbose)
+        copy_cpython_to_canister_staging(paths)
+    else:
+        compile_or_download_rust_python_stdlib(paths, cargo_env, verbose)
     compile_generated_rust_code(paths, canister_name, cargo_env, verbose)
     copy_wasm_to_dev_location(paths, canister_name)
     run_wasi2ic_on_wasm(paths, canister_name, cargo_env, verbose)
     generate_and_create_candid_file(paths, canister_name, cargo_env, verbose)
+
+
+def install_cpython_wasm(paths: Paths, cargo_env: dict[str, str], verbose: bool):
+    """Install CPython wasm32-wasip1 build if not already present."""
+    install_script = os.path.join(
+        os.path.dirname(basilisk.__file__),
+        "compiler", "cpython", "install_cpython_wasm.sh",
+    )
+    run_subprocess(
+        ["bash", install_script, paths["global_basilisk_version_dir"]],
+        cargo_env,
+        verbose,
+    )
+
+
+def copy_cpython_to_canister_staging(paths: Paths):
+    """Copy CPython wasm artifacts and basilisk_cpython crate to canister staging dir."""
+    cpython_wasm_dir = f"{paths['global_basilisk_version_dir']}/cpython_wasm"
+    canister_cpython_dir = f"{paths['canister']}/basilisk_cpython"
+
+    # Copy the basilisk_cpython crate source to the canister staging directory
+    basilisk_cpython_src = os.path.join(
+        os.path.dirname(basilisk.__file__),
+        "compiler", "basilisk_cpython",
+    )
+    if os.path.exists(canister_cpython_dir):
+        shutil.rmtree(canister_cpython_dir)
+    shutil.copytree(basilisk_cpython_src, canister_cpython_dir)
+
+    # Set CPYTHON_WASM_DIR so the build.rs in basilisk_cpython can find libpython
+    os.environ["CPYTHON_WASM_DIR"] = cpython_wasm_dir
 
 
 def compile_or_download_rust_python_stdlib(

@@ -55,7 +55,8 @@ def main():
     if os.path.exists(paths["canister"]):
         shutil.rmtree(paths["canister"])
     shutil.copytree(paths["compiler"], paths["canister"], dirs_exist_ok=True)
-    create_file(f"{paths['canister']}/Cargo.toml", generate_cargo_toml(canister_name))
+    python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "rustpython")
+    create_file(f"{paths['canister']}/Cargo.toml", generate_cargo_toml(canister_name, python_backend))
     create_file(f"{paths['canister']}/Cargo.lock", generate_cargo_lock())
 
     # Add CARGO_TARGET_DIR to env for all cargo commands

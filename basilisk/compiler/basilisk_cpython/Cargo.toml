@@ -1,0 +1,21 @@
+[package]
+name = "basilisk_cpython"
+version = "0.0.1"
+edition = "2021"
+description = "CPython FFI bridge for Basilisk IC canisters (wasm32-wasip1)"
+
+[lib]
+name = "basilisk_cpython"
+path = "src/lib.rs"
+
+[dependencies]
+# No external dependencies - we use raw CPython C API via FFI
+# This keeps the dependency chain minimal for wasm32-wasip1
+
+[build-dependencies]
+# Build script handles finding/linking libpython3.13.a
+
+[features]
+default = []
+# Enable deterministic mode patches (for IC canister use)
+ic-determinism = []
