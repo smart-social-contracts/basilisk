@@ -412,6 +412,9 @@ impl fmt::Debug for PyObjectRef {
 pub struct PyError {
     pub type_name: String,
     pub message: String,
+    /// For StopIteration exceptions, this holds the `.value` attribute
+    /// which carries the generator's return value.
+    pub value: Option<PyObjectRef>,
 }
 
 impl PyError {
@@ -450,7 +453,24 @@ impl PyError {
                 "UnknownError".to_string()
             };
 
-            let message = if !pvalue.is_null() {
+            let (message, value) = if !pvalue.is_null() {
+                // For StopIteration, extract .value (the generator return value)
+                let stop_iter_value = if type_name == "StopIteration" {
+                    let val_attr = ffi::PyObject_GetAttrString(
+                        pvalue,
+                        b"value\0".as_ptr() as *const c_char,
+                    );
+                    if !val_attr.is_null() {
+                        // val_attr is an owned ref from GetAttrString
+                        Some(PyObjectRef { ptr: val_attr })
+                    } else {
+                        ffi::PyErr_Clear();
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 let str_obj = ffi::PyObject_Str(pvalue);
                 let msg = if !str_obj.is_null() {
                     let c_str = ffi::PyUnicode_AsUTF8(str_obj);
@@ -467,16 +487,16 @@ impl PyError {
                     String::new()
                 };
                 ffi::Py_DecRef(pvalue);
-                msg
+                (msg, stop_iter_value)
             } else {
-                String::new()
+                (String::new(), None)
             };
 
             if !ptraceback.is_null() {
                 ffi::Py_DecRef(ptraceback);
             }
 
-            PyError { type_name, message }
+            PyError { type_name, message, value }
         }
     }
 
@@ -485,6 +505,7 @@ impl PyError {
         PyError {
             type_name: type_name.to_string(),
             message: message.to_string(),
+            value: None,
         }
     }
 

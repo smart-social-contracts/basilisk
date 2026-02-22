@@ -74,11 +74,8 @@ pub fn generate(services: &Vec<Service>) -> TokenStream {
                 Err(e) => {
                     // StopIteration means the generator finished
                     if e.type_name == "StopIteration" {
-                        // Try to extract the return value from the StopIteration
-                        // In CPython, StopIteration.value holds the return value
-                        // For now, return None as a safe default
-                        // TODO: Extract StopIteration.value via CPython C API
-                        Ok(basilisk_cpython::PyObjectRef::none())
+                        // Extract the return value from StopIteration.value
+                        Ok(e.value.unwrap_or_else(|| basilisk_cpython::PyObjectRef::none()))
                     } else {
                         Err(e)
                     }
