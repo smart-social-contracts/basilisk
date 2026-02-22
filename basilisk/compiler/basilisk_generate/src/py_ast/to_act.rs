@@ -6,7 +6,7 @@ use cdk_framework::{
 
 use super::PyAst;
 use crate::{
-    body, header, keywords,
+    backend, body, cpython_body, cpython_header, cpython_vm_value_conversion, header, keywords,
     vm_value_conversion::{try_from_vm_value_impls, try_into_vm_value_impls},
     Error,
 };
@@ -21,20 +21,44 @@ impl PyAst {
         )
             .collect_results()?;
 
-        let vm_value_conversion = VmValueConversion {
-            try_from_vm_value_impls: try_into_vm_value_impls::generate(),
-            try_into_vm_value_impls: try_from_vm_value_impls::generate(),
+        let vm_value_conversion = if backend::use_cpython() {
+            VmValueConversion {
+                try_from_vm_value_impls: cpython_vm_value_conversion::try_into_vm_value_impls::generate(),
+                try_into_vm_value_impls: cpython_vm_value_conversion::try_from_vm_value_impls::generate(),
+            }
+        } else {
+            VmValueConversion {
+                try_from_vm_value_impls: try_into_vm_value_impls::generate(),
+                try_into_vm_value_impls: try_from_vm_value_impls::generate(),
+            }
         };
 
-        Ok(AbstractCanisterTree {
-            cdk_name: "kybra".to_string(),
-            header: header::generate(),
-            body: body::generate(
+        let generated_header = if backend::use_cpython() {
+            cpython_header::generate()
+        } else {
+            header::generate()
+        };
+
+        let generated_body = if backend::use_cpython() {
+            cpython_body::generate(
                 &canister_methods.update_methods,
                 &canister_methods.query_methods,
                 &candid_types.services,
                 &stable_b_tree_map_nodes,
-            ),
+            )
+        } else {
+            body::generate(
+                &canister_methods.update_methods,
+                &canister_methods.query_methods,
+                &candid_types.services,
+                &stable_b_tree_map_nodes,
+            )
+        };
+
+        Ok(AbstractCanisterTree {
+            cdk_name: "kybra".to_string(),
+            header: generated_header,
+            body: generated_body,
             candid_types,
             canister_methods,
             guard_functions,

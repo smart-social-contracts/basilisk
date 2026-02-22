@@ -8,7 +8,7 @@ use crate::{ic_object, stable_b_tree_map_nodes::rust, StableBTreeMapNode};
 
 mod async_result_handler;
 mod call_global_python_function;
-mod guard_against_non_controllers;
+pub mod guard_against_non_controllers;
 mod unwrap_rust_python_result;
 mod utils;
 

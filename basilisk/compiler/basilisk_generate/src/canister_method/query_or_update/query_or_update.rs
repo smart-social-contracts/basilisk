@@ -9,7 +9,9 @@ use rustpython_parser::ast::{ExprKind, Located, StmtKind};
 
 use super::rust;
 use crate::{
+    backend,
     constants::{ASYNC, MANUAL},
+    cpython_canister_method::query_or_update as cpython_rust,
     get_name::HasName,
     method_utils::params::InternalOrExternal,
     source_map::SourceMapped,
@@ -65,7 +67,11 @@ impl SourceMapped<&Located<StmtKind>> {
             return Ok(None);
         }
         let (body, params, return_type, guard_function_name) = (
-            rust::generate_body(self),
+            if backend::use_cpython() {
+                cpython_rust::generate_body(self)
+            } else {
+                rust::generate_body(self)
+            },
             self.build_params(InternalOrExternal::Internal),
             self.build_return_type(),
             self.get_guard_function_name().map_err(Error::into),

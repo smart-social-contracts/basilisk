@@ -1,10 +1,15 @@
 use proc_macro2::TokenStream;
 use py_ast::PyAst;
 
+pub mod backend;
 pub mod body;
 pub mod candid_type;
 pub mod canister_method;
 pub mod constants;
+pub mod cpython_body;
+pub mod cpython_canister_method;
+pub mod cpython_header;
+pub mod cpython_vm_value_conversion;
 pub mod debug;
 pub mod errors;
 pub mod get_child_class_of;

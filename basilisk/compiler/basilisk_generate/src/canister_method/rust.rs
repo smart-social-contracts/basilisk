@@ -5,8 +5,8 @@ use rustpython_parser::ast::Located;
 use rustpython_parser::ast::StmtKind;
 
 use crate::{
-    basilisk_unreachable, method_utils::params::InternalOrExternal, source_map::SourceMapped, tuple,
-    Error,
+    backend, basilisk_unreachable, method_utils::params::InternalOrExternal, source_map::SourceMapped,
+    tuple, Error,
 };
 
 impl SourceMapped<&Located<StmtKind>> {
@@ -19,23 +19,41 @@ impl SourceMapped<&Located<StmtKind>> {
                 )
                     .collect_results()?;
 
-                let param_conversions = params
-                    .iter()
-                    .map(|param| {
-                        let name = format_ident!("{}", param.get_prefixed_name());
-                        quote! {
-                            #name.try_into_vm_value(vm).unwrap_or_trap()
-                        }
+                if backend::use_cpython() {
+                    let param_conversions: Vec<TokenStream> = params
+                        .iter()
+                        .map(|param| {
+                            let name = format_ident!("{}", param.get_prefixed_name());
+                            quote! {
+                                #name.try_into_py_object().unwrap_or_trap()
+                            }
+                        })
+                        .collect();
+
+                    Ok(quote! {
+                        let args: Vec<basilisk_cpython::PyObjectRef> = vec![#(#param_conversions),*];
+                        call_global_python_function_sync(#function_name, args)
+                            .unwrap_or_trap()
                     })
-                    .collect();
-                let params = tuple::generate_tuple(&param_conversions);
+                } else {
+                    let param_conversions = params
+                        .iter()
+                        .map(|param| {
+                            let name = format_ident!("{}", param.get_prefixed_name());
+                            quote! {
+                                #name.try_into_vm_value(vm).unwrap_or_trap()
+                            }
+                        })
+                        .collect();
+                    let params = tuple::generate_tuple(&param_conversions);
 
-                Ok(quote! {
-                    let params = #params;
+                    Ok(quote! {
+                        let params = #params;
 
-                    call_global_python_function_sync(#function_name, params)
-                        .unwrap_or_trap()
-                })
+                        call_global_python_function_sync(#function_name, params)
+                            .unwrap_or_trap()
+                    })
+                }
             }
             _ => basilisk_unreachable!(),
         }

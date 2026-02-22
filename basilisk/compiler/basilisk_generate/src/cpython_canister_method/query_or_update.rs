@@ -7,7 +7,7 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use rustpython_parser::ast::{Located, StmtKind};
 
-use crate::{method_utils::params::InternalOrExternal, source_map::SourceMapped, tuple, Error};
+use crate::{method_utils::params::InternalOrExternal, source_map::SourceMapped, Error};
 
 pub fn generate_body(
     source_mapped_located_stmtkind: &SourceMapped<&Located<StmtKind>>,
@@ -16,7 +16,7 @@ pub fn generate_body(
 
     let name = source_mapped_located_stmtkind.get_name_or_err()?;
 
-    let param_conversions = params
+    let param_conversions: Vec<TokenStream> = params
         .iter()
         .map(|param| {
             let name = format_ident!("{}", param.get_prefixed_name());
@@ -26,14 +26,10 @@ pub fn generate_body(
         })
         .collect();
 
-    let params = tuple::generate_tuple(&param_conversions);
-
     Ok(quote! {
-        let interpreter = unsafe { INTERPRETER_OPTION.as_mut() }
-            .unwrap_or_else(|| panic!("SystemError: missing python interpreter"));
-        let params = #params;
+        let args: Vec<basilisk_cpython::PyObjectRef> = vec![#(#param_conversions),*];
 
-        call_global_python_function(#name, params)
+        call_global_python_function(#name, args)
             .await
             .unwrap_or_trap()
     })

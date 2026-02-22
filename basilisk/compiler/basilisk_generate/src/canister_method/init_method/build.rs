@@ -8,12 +8,14 @@ use cdk_framework::{
 use rustpython_parser::ast::{Located, StmtKind};
 
 use crate::{
+    backend,
     canister_method::{
         self,
         errors::{MultipleSystemMethods, ReturnTypeMustBeVoid},
         init_method::rust as InitMethodRust,
         post_upgrade_method::rust as PostUpgradeMethodRust,
     },
+    cpython_canister_method::init_method as CpythonInitMethod,
     errors::{CollectResults as OtherCollectResults, Unreachable},
     method_utils::params::InternalOrExternal,
     py_ast::PyAst,
@@ -87,14 +89,25 @@ fn build_init_or_post_upgrade_method(
 ) -> Result<CanisterMethod, Vec<Error>> {
     let params = get_params_and_check_return_type(function_def_option)?;
 
+    let use_cpython = backend::use_cpython();
+
     match canister_method_type {
         CanisterMethodType::Init => Ok(CanisterMethod::Init(InitMethod {
             params,
-            body: InitMethodRust::generate(function_def_option, entry_module_name)?,
+            body: if use_cpython {
+                CpythonInitMethod::generate(function_def_option, entry_module_name)?
+            } else {
+                InitMethodRust::generate(function_def_option, entry_module_name)?
+            },
         })),
         CanisterMethodType::PostUpgrade => Ok(CanisterMethod::PostUpgrade(PostUpgradeMethod {
             params,
-            body: PostUpgradeMethodRust::generate(function_def_option, entry_module_name)?,
+            body: if use_cpython {
+                // Post-upgrade uses same init logic for CPython
+                CpythonInitMethod::generate(function_def_option, entry_module_name)?
+            } else {
+                PostUpgradeMethodRust::generate(function_def_option, entry_module_name)?
+            },
         })),
         _ => Err(vec![Unreachable::error()]),
     }
