@@ -68,14 +68,21 @@ impl Interpreter {
     /// ```
     pub fn initialize() -> Result<Self, PyError> {
         unsafe {
-            if ffi::Py_IsInitialized() == 0 {
-                // Initialize without installing signal handlers (not available on IC/WASI)
-                ffi::Py_InitializeEx(0);
-
-                if ffi::Py_IsInitialized() == 0 {
+            // Use our own init check since Py_IsInitialized() returns 0
+            // for core-only init (_init_main=0).
+            extern "C" {
+                fn basilisk_cpython_init() -> i32;
+                fn basilisk_cpython_is_initialized() -> i32;
+            }
+            if basilisk_cpython_is_initialized() == 0 && ffi::Py_IsInitialized() == 0 {
+                // Initialize CPython via C helper which uses PyConfig with
+                // _init_main=0 to skip sys.streams setup (needs encodings).
+                // Core init is sufficient for running Python code on the IC.
+                let rc = basilisk_cpython_init();
+                if rc != 0 {
                     return Err(PyError::new(
                         "SystemError",
-                        "Failed to initialize CPython interpreter",
+                        "Failed to initialize CPython interpreter via C helper",
                     ));
                 }
             }
@@ -108,6 +115,12 @@ impl Interpreter {
                 owned: true,
             })
         }
+    }
+
+    /// Convert a null-terminated ASCII/UTF-8 string to a Vec of wchar_t (UTF-32).
+    /// The input must end with '\0'. Each char is widened to i32.
+    fn str_to_wchar(s: &str) -> Vec<ffi::wchar_t> {
+        s.chars().map(|c| c as ffi::wchar_t).collect()
     }
 
     /// Create a new scope with builtins available.

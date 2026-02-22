@@ -59,9 +59,20 @@ fn main() {
         return;
     }
 
-    // Link against the static CPython library
+    // Compile C init helper using WASI SDK (correct struct layout for PyConfig)
+    let init_helper_src = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+        .join("src/cpython_init_helper.c");
+    if init_helper_src.exists() {
+        compile_c_init_helper(&init_helper_src, &include_dir);
+        println!("cargo:rerun-if-changed={}", init_helper_src.display());
+    }
+
+    // Link against the static CPython library with whole-archive to ensure
+    // ALL object files are included (especially frozen.o with frozen encodings).
+    // Without this, lld only pulls in objects that resolve undefined symbols,
+    // which may miss frozen module data that's referenced via global tables.
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
-    println!("cargo:rustc-link-lib=static=python3.13");
+    println!("cargo:rustc-link-lib=static:+whole-archive=python3.13");
 
     // WASI sysroot library path for emulated libraries
     let wasi_sysroot_lib = find_wasi_sysroot_lib();
@@ -82,6 +93,54 @@ fn main() {
     println!("cargo:rerun-if-changed={}", lib_dir.join("libpython3.13.a").display());
     println!("cargo:rerun-if-env-changed=CPYTHON_WASM_DIR");
     println!("cargo:rerun-if-env-changed=WASI_SDK_PATH");
+}
+
+fn compile_c_init_helper(src: &std::path::Path, include_dir: &std::path::Path) {
+    let home = env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+    // Find WASI SDK clang
+    let clang_candidates = if let Ok(sdk) = env::var("WASI_SDK_PATH") {
+        vec![PathBuf::from(&sdk).join("bin/clang")]
+    } else {
+        vec![
+            PathBuf::from(format!("{home}/.local/share/wasi-sdk/bin/clang")),
+            PathBuf::from("/opt/wasi-sdk/bin/clang"),
+        ]
+    };
+    let clang = clang_candidates.iter().find(|p| p.exists())
+        .expect("WASI SDK clang not found. Set WASI_SDK_PATH.");
+
+    let obj_path = out_dir.join("cpython_init_helper.o");
+    let lib_path = out_dir.join("libcpython_init_helper.a");
+
+    // Compile .c → .o
+    let status = std::process::Command::new(clang)
+        .args([
+            "-c", &src.to_string_lossy(),
+            "-o", &obj_path.to_string_lossy(),
+            "-I", &include_dir.to_string_lossy(),
+            "-O2",
+            "--target=wasm32-wasip1",
+            "-D_WASI_EMULATED_SIGNAL",
+            "-D_WASI_EMULATED_PROCESS_CLOCKS",
+            "-D_WASI_EMULATED_MMAN",
+            "-D_WASI_EMULATED_GETPID",
+        ])
+        .status()
+        .expect("Failed to run WASI SDK clang");
+    assert!(status.success(), "Failed to compile cpython_init_helper.c");
+
+    // Find llvm-ar
+    let ar = clang.with_file_name("llvm-ar");
+    let status = std::process::Command::new(&ar)
+        .args(["rcs", &lib_path.to_string_lossy(), &obj_path.to_string_lossy()])
+        .status()
+        .expect("Failed to run llvm-ar");
+    assert!(status.success(), "Failed to create libcpython_init_helper.a");
+
+    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    println!("cargo:rustc-link-lib=static=cpython_init_helper");
 }
 
 fn find_wasi_sysroot_lib() -> Option<PathBuf> {

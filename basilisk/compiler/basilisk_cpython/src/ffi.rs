@@ -33,9 +33,62 @@ extern "C" {
     pub fn Py_FinalizeEx() -> c_int;
     pub fn Py_IsInitialized() -> c_int;
 
-    // Pre-initialization configuration (CPython 3.12+)
-    pub fn Py_SetProgramName(name: *const c_char);
-    pub fn Py_SetPythonHome(home: *const c_char);
+    // Pre-initialization configuration
+    // Note: these take wchar_t* which is i32 (UTF-32) on wasm32-wasip1
+    pub fn Py_SetProgramName(name: *const wchar_t);
+    pub fn Py_SetPythonHome(home: *const wchar_t);
+    pub fn Py_SetPath(path: *const wchar_t);
+}
+
+/// wchar_t on wasm32-wasip1 is 4 bytes (UTF-32)
+pub type wchar_t = i32;
+
+// === PyConfig / PyStatus (initialization configuration) ===
+
+/// PyStatus — returned by initialization functions.
+#[repr(C)]
+pub struct PyStatus {
+    pub _type: c_int,
+    pub func: *const c_char,
+    pub err_msg: *const c_char,
+    pub exitcode: c_int,
+}
+
+/// Opaque PyConfig — we treat it as a large byte buffer since the struct layout
+/// is version-specific and complex (~200+ fields). We initialize it via
+/// PyConfig_InitIsolatedConfig which fills in all fields properly.
+/// 2048 bytes is generous for wasm32 (pointers are 4 bytes).
+#[repr(C, align(8))]
+pub struct PyConfig {
+    pub _data: [u8; 2048],
+}
+
+extern "C" {
+    pub fn PyConfig_InitIsolatedConfig(config: *mut PyConfig);
+    pub fn Py_InitializeFromConfig(config: *const PyConfig) -> PyStatus;
+    pub fn PyConfig_Clear(config: *mut PyConfig);
+    pub fn PyStatus_Exception(status: PyStatus) -> c_int;
+}
+
+// === Frozen modules ===
+
+/// CPython's `struct _frozen` — describes a frozen (bytecode-embedded) module.
+/// Matches the layout in CPython 3.13's `Include/import.h`.
+#[repr(C)]
+pub struct _frozen {
+    pub name: *const c_char,
+    pub code: *const u8,
+    pub size: c_int,
+    pub is_package: c_int,  // bool in CPython but represented as int in C ABI
+}
+
+unsafe impl Send for _frozen {}
+unsafe impl Sync for _frozen {}
+
+extern "C" {
+    /// Global pointer to the array of frozen modules.
+    /// We can replace this before Py_Initialize to add our own frozen modules.
+    pub static mut PyImport_FrozenModules: *const _frozen;
 }
 
 // === Reference counting ===

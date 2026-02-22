@@ -13,7 +13,7 @@ path = "src/lib.rs"
 # This keeps the dependency chain minimal for wasm32-wasip1
 
 [build-dependencies]
-# Build script handles finding/linking libpython3.13.a
+cc = "1"
 
 [features]
 default = []
