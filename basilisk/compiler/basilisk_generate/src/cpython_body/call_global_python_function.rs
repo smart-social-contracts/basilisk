@@ -17,7 +17,7 @@ pub fn generate() -> TokenStream {
             args: Vec<basilisk_cpython::PyObjectRef>,
         ) -> Result<T, String>
         where
-            T: basilisk_cpython::TryFromPyObject,
+            basilisk_cpython::PyObjectRef: CdkActTryFromVmValue<T, basilisk_cpython::PyError, ()>,
         {
             let interpreter = unsafe { INTERPRETER_OPTION.as_mut() }
                 .ok_or_else(|| "SystemError: missing python interpreter".to_string())?;
@@ -39,7 +39,7 @@ pub fn generate() -> TokenStream {
             ).await
                 .map_err(|e| e.to_rust_err_string())?;
 
-            basilisk_cpython::TryFromPyObject::try_from_py_object(final_result)
+            final_result.try_from_vm_value(())
                 .map_err(|e| e.to_rust_err_string())
         }
 
@@ -50,7 +50,7 @@ pub fn generate() -> TokenStream {
             args: Vec<basilisk_cpython::PyObjectRef>,
         ) -> Result<T, String>
         where
-            T: basilisk_cpython::TryFromPyObject,
+            basilisk_cpython::PyObjectRef: CdkActTryFromVmValue<T, basilisk_cpython::PyError, ()>,
         {
             let interpreter = unsafe { INTERPRETER_OPTION.as_mut() }
                 .ok_or_else(|| "SystemError: missing python interpreter".to_string())?;
@@ -64,7 +64,7 @@ pub fn generate() -> TokenStream {
             let py_result = py_func.call(&args_tuple.into_object(), None)
                 .map_err(|e| e.to_rust_err_string())?;
 
-            basilisk_cpython::TryFromPyObject::try_from_py_object(py_result)
+            py_result.try_from_vm_value(())
                 .map_err(|e| e.to_rust_err_string())
         }
     }

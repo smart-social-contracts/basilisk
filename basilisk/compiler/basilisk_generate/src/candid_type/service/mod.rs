@@ -1,4 +1,5 @@
 pub mod errors;
+mod cpython_rust;
 mod rust;
 
 use cdk_framework::{
@@ -89,10 +90,26 @@ impl SourceMapped<&Located<StmtKind>> {
                 Ok(Some(candid::Service {
                     name: service.name.clone(),
                     methods,
-                    to_vm_value: rust::to_vm_value,
-                    list_to_vm_value: rust::list_to_vm_value,
-                    from_vm_value: rust::from_vm_value,
-                    list_from_vm_value: rust::list_from_vm_value,
+                    to_vm_value: if crate::backend::use_cpython() {
+                        cpython_rust::to_vm_value
+                    } else {
+                        rust::to_vm_value
+                    },
+                    list_to_vm_value: if crate::backend::use_cpython() {
+                        cpython_rust::list_to_vm_value
+                    } else {
+                        rust::list_to_vm_value
+                    },
+                    from_vm_value: if crate::backend::use_cpython() {
+                        cpython_rust::from_vm_value
+                    } else {
+                        rust::from_vm_value
+                    },
+                    list_from_vm_value: if crate::backend::use_cpython() {
+                        cpython_rust::list_from_vm_value
+                    } else {
+                        rust::list_from_vm_value
+                    },
                 }))
             }
             None => Ok(None),

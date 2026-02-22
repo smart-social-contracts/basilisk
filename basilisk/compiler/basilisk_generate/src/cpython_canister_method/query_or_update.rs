@@ -21,7 +21,7 @@ pub fn generate_body(
         .map(|param| {
             let name = format_ident!("{}", param.get_prefixed_name());
             quote! {
-                #name.try_into_py_object().unwrap_or_trap()
+                #name.try_into_vm_value(()).unwrap_or_trap()
             }
         })
         .collect();

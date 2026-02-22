@@ -20,6 +20,7 @@ use crate::{
 use self::errors::{FuncCallTakesOneArg, FuncFormatting, ReturnTypeMode};
 
 pub mod errors;
+mod cpython_rust;
 mod rust;
 
 impl PyAst {
@@ -111,11 +112,33 @@ impl SourceMapped<&Located<ExprKind>> {
                 )
                     .collect_results()?;
                 Ok(Some(candid::Func {
-                    to_vm_value: |name: String| rust::generate_func_to_vm_value(&name),
-                    list_to_vm_value: |name: String| rust::generate_func_list_to_vm_value(&name),
-                    from_vm_value: |name: String| rust::generate_func_from_vm_value(&name),
+                    to_vm_value: |name: String| {
+                        if crate::backend::use_cpython() {
+                            cpython_rust::generate_func_to_vm_value(&name)
+                        } else {
+                            rust::generate_func_to_vm_value(&name)
+                        }
+                    },
+                    list_to_vm_value: |name: String| {
+                        if crate::backend::use_cpython() {
+                            cpython_rust::generate_func_list_to_vm_value(&name)
+                        } else {
+                            rust::generate_func_list_to_vm_value(&name)
+                        }
+                    },
+                    from_vm_value: |name: String| {
+                        if crate::backend::use_cpython() {
+                            cpython_rust::generate_func_from_vm_value(&name)
+                        } else {
+                            rust::generate_func_from_vm_value(&name)
+                        }
+                    },
                     list_from_vm_value: |name: String| {
-                        rust::generate_func_list_from_vm_value(&name)
+                        if crate::backend::use_cpython() {
+                            cpython_rust::generate_func_list_from_vm_value(&name)
+                        } else {
+                            rust::generate_func_list_from_vm_value(&name)
+                        }
                     },
                     name: name.map(|op| op.to_string()),
                     params,
