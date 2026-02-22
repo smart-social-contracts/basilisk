@@ -120,7 +120,7 @@ pub fn generate_randomness() -> TokenStream {
                         interpreter.run_code_string(&seed_code)
                             .unwrap_or_else(|e| panic!("Failed to seed random: {}", e.to_rust_err_string()));
                     },
-                    Err(err) => panic!(err)
+                    Err(err) => panic!("{:?}", err)
                 };
             });
         });

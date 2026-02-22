@@ -19,13 +19,21 @@ fn main() {
         return;
     }
 
-    let cpython_dir = env::var("CPYTHON_WASM_DIR").unwrap_or_else(|_| {
-        // Default to ~/.config/basilisk/cpython/wasm32-wasip1
+    let cpython_path = if let Ok(dir) = env::var("CPYTHON_WASM_DIR") {
+        PathBuf::from(dir)
+    } else {
         let home = env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-        format!("{home}/.config/basilisk/cpython/wasm32-wasip1")
-    });
-
-    let cpython_path = PathBuf::from(&cpython_dir);
+        // Check multiple candidate paths
+        let candidates = [
+            format!("{home}/.config/basilisk/cpython_wasm"),
+            format!("{home}/.config/basilisk/cpython/wasm32-wasip1"),
+        ];
+        candidates
+            .iter()
+            .map(PathBuf::from)
+            .find(|p| p.join("lib/libpython3.13.a").exists())
+            .unwrap_or_else(|| PathBuf::from(&candidates[0]))
+    };
 
     let lib_dir = cpython_path.join("lib");
     let include_dir = cpython_path.join("include");
@@ -55,6 +63,12 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
     println!("cargo:rustc-link-lib=static=python3.13");
 
+    // WASI sysroot library path for emulated libraries
+    let wasi_sysroot_lib = find_wasi_sysroot_lib();
+    if let Some(sysroot_lib) = wasi_sysroot_lib {
+        println!("cargo:rustc-link-search=native={}", sysroot_lib.display());
+    }
+
     // WASI emulated libraries that CPython needs
     println!("cargo:rustc-link-lib=wasi-emulated-signal");
     println!("cargo:rustc-link-lib=wasi-emulated-process-clocks");
@@ -67,4 +81,23 @@ fn main() {
     // Re-run if the library changes
     println!("cargo:rerun-if-changed={}", lib_dir.join("libpython3.13.a").display());
     println!("cargo:rerun-if-env-changed=CPYTHON_WASM_DIR");
+    println!("cargo:rerun-if-env-changed=WASI_SDK_PATH");
+}
+
+fn find_wasi_sysroot_lib() -> Option<PathBuf> {
+    let home = env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let candidates: Vec<PathBuf> = if let Ok(sdk) = env::var("WASI_SDK_PATH") {
+        vec![
+            PathBuf::from(&sdk).join("share/wasi-sysroot/lib/wasm32-wasip1"),
+            PathBuf::from(&sdk).join("share/wasi-sysroot/lib/wasm32-wasi"),
+        ]
+    } else {
+        vec![
+            PathBuf::from(format!("{home}/.local/share/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1")),
+            PathBuf::from(format!("{home}/.local/share/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasi")),
+            PathBuf::from("/opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1"),
+            PathBuf::from("/opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasi"),
+        ]
+    };
+    candidates.into_iter().find(|p| p.join("libwasi-emulated-signal.a").exists())
 }

@@ -274,7 +274,7 @@ fn generate_vec() -> TokenStream {
             basilisk_cpython::PyObjectRef: CdkActTryFromVmValue<T, basilisk_cpython::PyError, ()>,
         {
             fn try_from_vm_value(self, _: ()) -> Result<Vec<T>, basilisk_cpython::PyError> {
-                cpython_try_from_vm_value_generic_array(self)
+                try_from_vm_value_generic_array(self, ())
             }
         }
 
@@ -284,8 +284,9 @@ fn generate_vec() -> TokenStream {
             }
         }
 
-        fn cpython_try_from_vm_value_generic_array<T>(
+        fn try_from_vm_value_generic_array<T>(
             obj: basilisk_cpython::PyObjectRef,
+            _: (),
         ) -> Result<Vec<T>, basilisk_cpython::PyError>
         where
             basilisk_cpython::PyObjectRef: CdkActTryFromVmValue<T, basilisk_cpython::PyError, ()>,

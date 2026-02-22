@@ -74,6 +74,9 @@ def main():
         paths, cargo_env, verbose=is_verbose, label="[1/2] 🔨 Compiling Python..."
     )
 
+    # Fix panic!(err) patterns in generated code (cdk_framework uses deprecated syntax)
+    fixup_generated_code(paths)
+
     build_wasm_binary_or_exit(
         paths,
         canister_name,
@@ -318,6 +321,20 @@ def run_rustfmt_or_exit(paths: Paths, cargo_env: dict[str, str], verbose: bool =
         )
         print("💀 Build failed")
         sys.exit(1)
+
+
+def fixup_generated_code(paths: Paths):
+    """Fix known issues in generated Rust code before compilation."""
+    lib_path = paths["lib"]
+    if not os.path.exists(lib_path):
+        return
+    with open(lib_path, "r") as f:
+        content = f.read()
+    # cdk_framework generates panic!(err) which is invalid in newer Rust editions;
+    # the err type is (RejectionCode, String) which only implements Debug, not Display
+    content = re.sub(r'panic!\(err\)', 'panic!("{:?}", err)', content)
+    with open(lib_path, "w") as f:
+        f.write(content)
 
 
 def create_file(file_path: str, contents: str):

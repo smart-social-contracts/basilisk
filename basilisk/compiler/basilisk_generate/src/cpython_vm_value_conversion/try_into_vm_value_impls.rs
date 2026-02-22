@@ -351,6 +351,37 @@ fn generate_generic() -> TokenStream {
 
 fn generate_vec() -> TokenStream {
     quote::quote! {
+        trait BasiliskTryIntoVec {}
+
+        impl BasiliskTryIntoVec for () {}
+        impl BasiliskTryIntoVec for bool {}
+        impl BasiliskTryIntoVec for String {}
+        impl BasiliskTryIntoVec for candid::Empty {}
+        impl BasiliskTryIntoVec for candid::Reserved {}
+        impl BasiliskTryIntoVec for candid::Func {}
+        impl BasiliskTryIntoVec for candid::Principal {}
+        impl BasiliskTryIntoVec for ic_cdk_timers::TimerId {}
+        impl BasiliskTryIntoVec for ic_cdk::api::call::RejectionCode {}
+        impl BasiliskTryIntoVec for f64 {}
+        impl BasiliskTryIntoVec for f32 {}
+        impl BasiliskTryIntoVec for _CdkFloat64 {}
+        impl BasiliskTryIntoVec for _CdkFloat32 {}
+        impl BasiliskTryIntoVec for candid::Int {}
+        impl BasiliskTryIntoVec for i128 {}
+        impl BasiliskTryIntoVec for i64 {}
+        impl BasiliskTryIntoVec for i32 {}
+        impl BasiliskTryIntoVec for i16 {}
+        impl BasiliskTryIntoVec for i8 {}
+        impl BasiliskTryIntoVec for candid::Nat {}
+        impl BasiliskTryIntoVec for u128 {}
+        impl BasiliskTryIntoVec for u64 {}
+        impl BasiliskTryIntoVec for usize {}
+        impl BasiliskTryIntoVec for u32 {}
+        impl BasiliskTryIntoVec for u16 {}
+        impl<T> BasiliskTryIntoVec for Option<T> {}
+        impl<T> BasiliskTryIntoVec for Box<T> {}
+        impl<T> BasiliskTryIntoVec for Vec<T> {}
+
         impl<T> CdkActTryIntoVmValue<(), basilisk_cpython::PyObjectRef>
             for Vec<T>
         where
@@ -361,7 +392,7 @@ fn generate_vec() -> TokenStream {
                 self,
                 _: (),
             ) -> Result<basilisk_cpython::PyObjectRef, CdkActTryIntoVmValueError> {
-                cpython_try_into_vm_value_generic_array(self)
+                try_into_vm_value_generic_array(self, ())
             }
         }
 
@@ -377,8 +408,9 @@ fn generate_vec() -> TokenStream {
             }
         }
 
-        fn cpython_try_into_vm_value_generic_array<T>(
+        fn try_into_vm_value_generic_array<T>(
             generic_array: Vec<T>,
+            _: (),
         ) -> Result<basilisk_cpython::PyObjectRef, CdkActTryIntoVmValueError>
         where
             T: CdkActTryIntoVmValue<(), basilisk_cpython::PyObjectRef>,

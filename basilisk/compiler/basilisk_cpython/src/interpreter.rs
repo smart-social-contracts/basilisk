@@ -11,6 +11,26 @@ use crate::ffi;
 use crate::object::{PyError, PyObjectRef};
 use core::ffi::c_char;
 
+/// Produce a Python repr()-style string literal from a Rust &str.
+/// Wraps the string in single quotes and escapes backslashes, single quotes,
+/// newlines, carriage returns, and tabs.
+fn python_repr(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '\'' => out.push_str("\\'"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c => out.push(c),
+        }
+    }
+    out.push('\'');
+    out
+}
+
 /// Manages the CPython interpreter lifecycle.
 ///
 /// Equivalent to `rustpython_vm::Interpreter` in the current codebase.
@@ -217,19 +237,19 @@ impl Interpreter {
     pub fn add_frozen_source(&self, module_name: &str, source: &str) -> Result<(), PyError> {
         // Use importlib to add the source as a module
         let code = format!(
-            r#"
+            "
 import importlib
 import importlib.util
 import types
-_mod = types.ModuleType("{name}")
-_mod.__file__ = "<frozen {name}>"
-exec(compile({source!r}, "<frozen {name}>", "exec"), _mod.__dict__)
+_mod = types.ModuleType(\"{name}\")
+_mod.__file__ = \"<frozen {name}>\"
+exec(compile({source_repr}, \"<frozen {name}>\", \"exec\"), _mod.__dict__)
 import sys
-sys.modules["{name}"] = _mod
+sys.modules[\"{name}\"] = _mod
 del _mod
-"#,
+",
             name = module_name,
-            source = source,
+            source_repr = python_repr(source),
         );
         self.run_code_string(&code)?;
         Ok(())

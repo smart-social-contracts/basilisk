@@ -5,7 +5,7 @@
 //! `rustpython::vm::PyObjectRef` in the current codebase.
 
 use crate::ffi;
-use core::ffi::{c_char, c_int};
+use core::ffi::c_char;
 use core::fmt;
 use core::ptr;
 

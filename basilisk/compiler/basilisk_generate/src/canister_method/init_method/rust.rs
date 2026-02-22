@@ -120,7 +120,7 @@ pub fn generate_randomness() -> TokenStream {
                             seed_fn.call((vm.ctx.new_bytes(randomness),), vm).unwrap();
                         });
                     },
-                    Err(err) => panic!(err)
+                    Err(err) => panic!("{:?}", err)
                 };
             });
         });

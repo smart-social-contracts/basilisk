@@ -10,9 +10,7 @@
 //! Here we provide equivalent traits that work with CPython's C API through
 //! our `PyObjectRef` wrapper.
 
-use crate::dict::PyDict;
 use crate::object::{PyError, PyObjectRef};
-use crate::tuple::PyTuple;
 
 /// Error type for conversions into Python values.
 #[derive(Debug)]
@@ -151,19 +149,6 @@ impl TryIntoPyObject for f64 {
 impl TryFromPyObject for f64 {
     fn try_from_py_object(obj: PyObjectRef) -> Result<Self, PyError> {
         obj.extract_f64()
-    }
-}
-
-// Vec<u8> (bytes/blob)
-impl TryIntoPyObject for Vec<u8> {
-    fn try_into_py_object(self) -> Result<PyObjectRef, TryIntoVmValueError> {
-        PyObjectRef::from_bytes(&self).map_err(|e| TryIntoVmValueError(e.to_rust_err_string()))
-    }
-}
-
-impl TryFromPyObject for Vec<u8> {
-    fn try_from_py_object(obj: PyObjectRef) -> Result<Self, PyError> {
-        obj.extract_bytes()
     }
 }
 

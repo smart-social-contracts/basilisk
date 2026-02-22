@@ -18,7 +18,6 @@ pub fn generate() -> TokenStream {
             Scope,
             TryIntoPyObject as _BasiliskTraitTryIntoPyObject,
             TryFromPyObject as _BasiliskTraitTryFromPyObject,
-            UnwrapOrTrap as _BasiliskTraitUnwrapOrTrap,
         };
         use serde::{
             de::{

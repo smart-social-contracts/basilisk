@@ -22,7 +22,10 @@ def build_wasm_binary_or_exit(
     compile_generated_rust_code(paths, canister_name, cargo_env, verbose)
     copy_wasm_to_dev_location(paths, canister_name)
     run_wasi2ic_on_wasm(paths, canister_name, cargo_env, verbose)
-    generate_and_create_candid_file(paths, canister_name, cargo_env, verbose)
+    if python_backend == "cpython":
+        generate_candid_file_from_source(paths, verbose)
+    else:
+        generate_and_create_candid_file(paths, canister_name, cargo_env, verbose)
 
 
 def install_cpython_wasm(paths: Paths, cargo_env: dict[str, str], verbose: bool):
@@ -229,6 +232,91 @@ def run_wasi2ic_on_wasm(
         cargo_env,
         verbose,
     )
+
+
+def generate_candid_file_from_source(paths: Paths, verbose: bool):
+    """Generate .did file by parsing the generated Rust source for candid annotations.
+
+    This is used for CPython builds because candid-extractor cannot run the CPython
+    wasm binary — CPython's WASI initialization calls IC system APIs (e.g. ic_cdk::api::time)
+    that aren't available in wasmtime outside the IC runtime.
+
+    We parse #[candid::candid_method(query/update, rename = "name")] annotations and
+    the following function signature to reconstruct the Candid interface.
+    """
+    import re
+
+    lib_path = paths["lib"]
+    if not os.path.exists(lib_path):
+        print("Warning: lib.rs not found, skipping candid generation")
+        return
+
+    with open(lib_path, "r") as f:
+        content = f.read()
+
+    # Map Rust types to Candid types
+    type_map = {
+        "String": "text",
+        "bool": "bool",
+        "u8": "nat8", "u16": "nat16", "u32": "nat32", "u64": "nat64", "u128": "nat",
+        "i8": "int8", "i16": "int16", "i32": "int32", "i64": "int64", "i128": "int",
+        "f32": "float32", "f64": "float64",
+        "()": "",
+        "candid::Nat": "nat",
+        "candid::Int": "int",
+        "candid::Principal": "principal",
+        "candid::Empty": "empty",
+        "candid::Reserved": "reserved",
+    }
+
+    def rust_type_to_candid(rust_type: str) -> str:
+        rust_type = rust_type.strip().strip("()")
+        if rust_type in type_map:
+            return type_map[rust_type]
+        if rust_type.startswith("Vec<") and rust_type.endswith(">"):
+            inner = rust_type[4:-1]
+            if inner == "u8":
+                return "blob"
+            return f"vec {rust_type_to_candid(inner)}"
+        if rust_type.startswith("Option<") and rust_type.endswith(">"):
+            inner = rust_type[7:-1]
+            return f"opt {rust_type_to_candid(inner)}"
+        # Fallback: use text for unknown types
+        return "text"
+
+    # Find all candid_method annotations followed by async fn signatures
+    pattern = r'#\[candid::candid_method\((query|update),\s*rename\s*=\s*"([^"]+)"\)\]\s*async\s+fn\s+\w+\(([^)]*)\)\s*->\s*\(([^)]*)\)'
+    methods = []
+    for match in re.finditer(pattern, content):
+        method_type = match.group(1)
+        name = match.group(2)
+        params_str = match.group(3).strip()
+        return_type = match.group(4).strip()
+
+        # Parse parameters (skip self, skip the ones that are just internal args)
+        candid_params = []
+        if params_str:
+            for param in params_str.split(","):
+                param = param.strip()
+                if ":" in param:
+                    parts = param.split(":", 1)
+                    param_type = parts[1].strip()
+                    candid_type = rust_type_to_candid(param_type)
+                    if candid_type:
+                        candid_params.append(candid_type)
+
+        candid_return = rust_type_to_candid(return_type)
+        params_candid = ", ".join(candid_params)
+        returns_candid = candid_return if candid_return else ""
+
+        methods.append(f'  "{name}" : ({params_candid}) -> ({returns_candid}) {method_type};')
+
+    candid_string = "service : {\n" + "\n".join(methods) + "\n}\n"
+
+    if verbose:
+        print(candid_string)
+
+    create_file(paths["did"], candid_string)
 
 
 def generate_and_create_candid_file(

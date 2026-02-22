@@ -46,7 +46,7 @@ pub fn generate() -> TokenStream {
                 Ok(s) => s,
                 Err(_) => { ic_cdk::trap("candid_encode: expected string argument"); }
             };
-            match s.parse::<candid::IDLArgs>() {
+            match candid_parser::parse_idl_args(&s) {
                 Ok(args) => {
                     let bytes = args.to_bytes().unwrap_or_default();
                     match basilisk_cpython::PyObjectRef::from_bytes(&bytes) {

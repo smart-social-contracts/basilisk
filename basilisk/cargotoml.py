@@ -31,6 +31,7 @@ candid = {{ version = "0.10.6", features = ["value"] }}
 candid_parser = "0.1.4"
 basilisk-vm-value-derive = {{ path = "./basilisk_vm_value_derive" }}
 basilisk_cpython = {{ path = "./basilisk_cpython" }}
+num-bigint = "0.4"
 
 serde = {{ version = "1.0.137", default-features = false, features = [] }}
 async-recursion = "1.0.0"

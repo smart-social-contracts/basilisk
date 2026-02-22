@@ -44,6 +44,8 @@ pub mod interpreter;
 pub mod dict;
 pub mod tuple;
 pub mod convert;
+#[cfg(target_arch = "wasm32")]
+pub mod wasm_stubs;
 
 // Re-export main types at crate root
 pub use object::{PyObjectRef, PyError};
