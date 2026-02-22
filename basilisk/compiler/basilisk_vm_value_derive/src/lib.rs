@@ -6,6 +6,14 @@ mod derive_try_from_vm_value {
     pub mod derive_try_from_vm_value_enum;
     pub mod derive_try_from_vm_value_struct;
 }
+mod cpython_derive_try_into_vm_value {
+    pub mod derive_try_into_vm_value_enum;
+    pub mod derive_try_into_vm_value_struct;
+}
+mod cpython_derive_try_from_vm_value {
+    pub mod derive_try_from_vm_value_enum;
+    pub mod derive_try_from_vm_value_struct;
+}
 
 use derive_try_from_vm_value::{
     derive_try_from_vm_value_enum::derive_try_from_vm_value_enum,
@@ -15,8 +23,22 @@ use derive_try_into_vm_value::{
     derive_try_into_vm_value_enum::derive_try_into_vm_value_enum,
     derive_try_into_vm_value_struct::derive_try_into_vm_value_struct,
 };
+use cpython_derive_try_from_vm_value::{
+    derive_try_from_vm_value_enum::cpython_derive_try_from_vm_value_enum,
+    derive_try_from_vm_value_struct::cpython_derive_try_from_vm_value_struct,
+};
+use cpython_derive_try_into_vm_value::{
+    derive_try_into_vm_value_enum::cpython_derive_try_into_vm_value_enum,
+    derive_try_into_vm_value_struct::cpython_derive_try_into_vm_value_struct,
+};
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, Data, DeriveInput};
+
+fn is_cpython_backend() -> bool {
+    std::env::var("BASILISK_PYTHON_BACKEND")
+        .map(|v| v.eq_ignore_ascii_case("cpython"))
+        .unwrap_or(false)
+}
 
 #[proc_macro_derive(CdkActTryIntoVmValue)]
 pub fn derive_basilisk_try_into_vm_value(tokens: TokenStream) -> TokenStream {
@@ -24,10 +46,18 @@ pub fn derive_basilisk_try_into_vm_value(tokens: TokenStream) -> TokenStream {
 
     let name = input.ident;
 
-    let generated_code = match input.data {
-        Data::Enum(data_enum) => derive_try_into_vm_value_enum(&name, &data_enum),
-        Data::Struct(data_struct) => derive_try_into_vm_value_struct(&name, &data_struct),
-        _ => panic!("Can only derive from Structs or Enums"),
+    let generated_code = if is_cpython_backend() {
+        match input.data {
+            Data::Enum(data_enum) => cpython_derive_try_into_vm_value_enum(&name, &data_enum),
+            Data::Struct(data_struct) => cpython_derive_try_into_vm_value_struct(&name, &data_struct),
+            _ => panic!("Can only derive from Structs or Enums"),
+        }
+    } else {
+        match input.data {
+            Data::Enum(data_enum) => derive_try_into_vm_value_enum(&name, &data_enum),
+            Data::Struct(data_struct) => derive_try_into_vm_value_struct(&name, &data_struct),
+            _ => panic!("Can only derive from Structs or Enums"),
+        }
     };
 
     TokenStream::from(generated_code)
@@ -39,10 +69,18 @@ pub fn derive_basilisk_try_from_vm_value(tokens: TokenStream) -> TokenStream {
 
     let name = input.ident;
 
-    let generated_code = match input.data {
-        Data::Enum(data_enum) => derive_try_from_vm_value_enum(&name, &data_enum),
-        Data::Struct(data_struct) => derive_try_from_vm_value_struct(&name, &data_struct),
-        _ => panic!("Can only derive from Structs or Enums"),
+    let generated_code = if is_cpython_backend() {
+        match input.data {
+            Data::Enum(data_enum) => cpython_derive_try_from_vm_value_enum(&name, &data_enum),
+            Data::Struct(data_struct) => cpython_derive_try_from_vm_value_struct(&name, &data_struct),
+            _ => panic!("Can only derive from Structs or Enums"),
+        }
+    } else {
+        match input.data {
+            Data::Enum(data_enum) => derive_try_from_vm_value_enum(&name, &data_enum),
+            Data::Struct(data_struct) => derive_try_from_vm_value_struct(&name, &data_struct),
+            _ => panic!("Can only derive from Structs or Enums"),
+        }
     };
 
     TokenStream::from(generated_code)
