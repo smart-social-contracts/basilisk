@@ -251,14 +251,14 @@ pub fn generate(services: &Vec<Service>) -> TokenStream {
             call_result: ic_cdk::api::call::CallResult<T>
         ) -> Result<basilisk_cpython::PyObjectRef, basilisk_cpython::PyError>
         where
-            T: basilisk_cpython::TryIntoPyObject,
+            T: CdkActTryIntoVmValue<(), basilisk_cpython::PyObjectRef>,
         {
             let interpreter = unsafe { INTERPRETER_OPTION.as_mut() }
                 .ok_or_else(|| basilisk_cpython::PyError::new("SystemError", "missing python interpreter"))?;
 
             match call_result {
                 Ok(ok) => {
-                    let ok_value = ok.try_into_py_object()
+                    let ok_value = ok.try_into_vm_value(())
                         .map_err(|e| basilisk_cpython::PyError::new("TypeError", &e.0))?;
 
                     // Create CallResult(ok_value, None)
@@ -321,7 +321,7 @@ fn generate_call_match_arms(services: &Vec<Service>) -> Vec<TokenStream> {
                             quote! {
                                 let #variable_name: (#variable_type) = {
                                     let arg = cpython_get_arg(args, #actual_index)?;
-                                    basilisk_cpython::TryFromPyObject::try_from_py_object(arg)?
+                                    arg.try_from_vm_value(())?
                                 };
                             }
                         })
@@ -397,7 +397,7 @@ fn generate_call_with_payment_match_arms(services: &Vec<Service>) -> Vec<TokenSt
                             quote! {
                                 let #var: (#ty) = {
                                     let arg = cpython_get_arg(args, #idx)?;
-                                    basilisk_cpython::TryFromPyObject::try_from_py_object(arg)?
+                                    arg.try_from_vm_value(())?
                                 };
                             }
                         })
@@ -468,7 +468,7 @@ fn generate_call_with_payment128_match_arms(services: &Vec<Service>) -> Vec<Toke
                             quote! {
                                 let #var: (#ty) = {
                                     let arg = cpython_get_arg(args, #idx)?;
-                                    basilisk_cpython::TryFromPyObject::try_from_py_object(arg)?
+                                    arg.try_from_vm_value(())?
                                 };
                             }
                         })
