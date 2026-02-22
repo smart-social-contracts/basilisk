@@ -1,8 +1,9 @@
 use cdk_framework::act::node::canister_method::{CanisterMethodType, HeartbeatMethod};
 use cdk_framework::traits::CollectResults;
 
-use super::rust;
+use super::{cpython_rust, rust};
 use crate::{
+    backend,
     canister_method::{
         self,
         errors::{MultipleSystemMethods, ReturnTypeMustBeVoid},
@@ -28,7 +29,11 @@ impl PyAst {
         Ok(
             if let Some(heartbeat_function_def) = heartbeat_function_def_option {
                 let (body, return_type) = (
-                    rust::generate(heartbeat_function_def).map_err(Error::into),
+                    if backend::use_cpython() {
+                        cpython_rust::generate(heartbeat_function_def).map_err(Error::into)
+                    } else {
+                        rust::generate(heartbeat_function_def).map_err(Error::into)
+                    },
                     heartbeat_function_def.build_return_type(),
                 )
                     .collect_results()?;

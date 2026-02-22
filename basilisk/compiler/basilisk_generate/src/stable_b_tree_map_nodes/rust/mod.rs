@@ -6,6 +6,7 @@ use crate::StableBTreeMapNode;
 pub mod bounded_storable_impl;
 pub mod ref_cell_ident;
 pub mod storable_impl;
+pub mod cpython_try_into_vm_value_impl;
 pub mod try_into_vm_value_impl;
 pub mod wrapper_type;
 
@@ -57,16 +58,22 @@ fn generate_global_stable_b_tree_maps_and_impls(
             let (value_wrapper_type_name, value_wrapper_type) =
                 wrapper_type::generate(&stable_b_tree_map_node.value_type, memory_id, "Value");
 
-            let key_try_into_vm_value_impl =
-                try_into_vm_value_impl::generate(&key_wrapper_type_name);
+            let key_try_into_vm_value_impl = if crate::backend::use_cpython() {
+                cpython_try_into_vm_value_impl::generate(&key_wrapper_type_name)
+            } else {
+                try_into_vm_value_impl::generate(&key_wrapper_type_name)
+            };
             let key_storable_impl = storable_impl::generate(&key_wrapper_type_name);
             let key_bounded_storable_impl = bounded_storable_impl::generate(
                 &key_wrapper_type_name,
                 stable_b_tree_map_node.max_key_size
             );
 
-            let value_try_into_vm_value_impl =
-                try_into_vm_value_impl::generate(&value_wrapper_type_name);
+            let value_try_into_vm_value_impl = if crate::backend::use_cpython() {
+                cpython_try_into_vm_value_impl::generate(&value_wrapper_type_name)
+            } else {
+                try_into_vm_value_impl::generate(&value_wrapper_type_name)
+            };
             let value_storable_impl = storable_impl::generate(&value_wrapper_type_name);
             let value_bounded_storable_impl = bounded_storable_impl::generate(
                 &value_wrapper_type_name,
