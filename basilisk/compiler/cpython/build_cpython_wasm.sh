@@ -126,7 +126,7 @@ build_zlib_wasi() {
     local zlib_src="${cache_dir}/zlib-${ZLIB_VERSION}"
     if [ ! -d "${zlib_src}" ]; then
         mkdir -p "${cache_dir}"
-        curl -fL "https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz" -o "${cache_dir}/zlib.tar.gz"
+        curl -fL "https://github.com/madler/zlib/releases/download/v${ZLIB_VERSION}/zlib-${ZLIB_VERSION}.tar.gz" -o "${cache_dir}/zlib.tar.gz"
         tar xzf "${cache_dir}/zlib.tar.gz" -C "${cache_dir}"
         rm -f "${cache_dir}/zlib.tar.gz"
     fi
