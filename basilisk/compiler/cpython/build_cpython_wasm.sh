@@ -214,45 +214,41 @@ configure_wasm_build() {
     (
         cd "${build_dir}"
 
+        # CPython 3.13.0 configure expects wasm32-wasi, not wasm32-wasip1
+        local configure_env=(
+            CC="${CC}"
+            AR="${AR}"
+            RANLIB="${RANLIB}"
+            CFLAGS="${CFLAGS}"
+            LDFLAGS="${LDFLAGS}"
+        )
+
         if [ -f "${CONFIG_SITE}" ]; then
-            CONFIG_SITE="${CONFIG_SITE}" \
-            CC="${CC}" \
-            AR="${AR}" \
-            RANLIB="${RANLIB}" \
-            CFLAGS="${CFLAGS}" \
-            LDFLAGS="${LDFLAGS}" \
-            ../configure \
-                --host=wasm32-wasip1 \
-                --build="$(../config.guess)" \
-                --with-build-python="${host_build_dir}/python" \
-                --prefix="${build_dir}/install" \
-                --disable-shared \
-                --disable-test-modules \
-                --without-ensurepip \
-                --without-pymalloc \
-                --disable-ipv6 \
-                2>&1 | tail -10
+            log_info "Using config.site: ${CONFIG_SITE}"
+            configure_env+=(CONFIG_SITE="${CONFIG_SITE}")
         else
-            # Fallback for CPython versions without wasi config.site
-            CC="${CC}" \
-            AR="${AR}" \
-            RANLIB="${RANLIB}" \
-            CFLAGS="${CFLAGS}" \
-            LDFLAGS="${LDFLAGS}" \
-            ../configure \
-                --host=wasm32-wasi \
-                --build="$(../config.guess)" \
-                --with-build-python="${host_build_dir}/python" \
-                --prefix="${build_dir}/install" \
-                --disable-shared \
-                --disable-test-modules \
-                --without-ensurepip \
-                --without-pymalloc \
-                --disable-ipv6 \
-                ac_cv_file__dev_ptmx=no \
-                ac_cv_file__dev_ptc=no \
-                2>&1 | tail -10
+            log_warn "config.site not found, using manual overrides"
+            configure_env+=(
+                ac_cv_file__dev_ptmx=no
+                ac_cv_file__dev_ptc=no
+                ac_cv_header_sys_resource_h=no
+                ac_cv_header_sys_un_h=no
+                ac_cv_header_netpacket_packet_h=no
+            )
         fi
+
+        env "${configure_env[@]}" \
+        ../configure \
+            --host=wasm32-wasi \
+            --build="$(../config.guess)" \
+            --with-build-python="${host_build_dir}/python" \
+            --prefix="${build_dir}/install" \
+            --disable-shared \
+            --disable-test-modules \
+            --without-ensurepip \
+            --without-pymalloc \
+            --disable-ipv6 \
+            2>&1 | tail -10
     )
 
     log_info "Configuration complete"
