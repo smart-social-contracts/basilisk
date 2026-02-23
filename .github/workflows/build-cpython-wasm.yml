@@ -26,11 +26,11 @@ jobs:
         steps:
             - uses: actions/checkout@v3
 
-            - name: Cache CPython source
+            - name: Cache CPython and zlib sources
               uses: actions/cache@v3
               with:
                   path: ~/.cache/basilisk/cpython
-                  key: cpython-source-${{ env.CPYTHON_VERSION }}
+                  key: cpython-zlib-source-${{ env.CPYTHON_VERSION }}
 
             - name: Cache CPython wasm build
               uses: actions/cache@v3

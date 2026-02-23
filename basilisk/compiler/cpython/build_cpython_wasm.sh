@@ -19,8 +19,10 @@ set -euo pipefail
 
 CPYTHON_VERSION="3.13.0"
 CPYTHON_TAG="v${CPYTHON_VERSION}"
+ZLIB_VERSION="1.3.1"
 CPYTHON_DIR=""
 OUTPUT_DIR=""
+ZLIB_PREFIX=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -110,6 +112,49 @@ apply_ic_patches() {
     done
 }
 
+build_zlib_wasi() {
+    local cache_dir="${CPYTHON_CACHE_DIR:-${HOME}/.cache/basilisk/cpython}"
+    ZLIB_PREFIX="${cache_dir}/zlib-wasi-install"
+
+    if [ -f "${ZLIB_PREFIX}/lib/libz.a" ]; then
+        log_info "Using cached zlib for wasm32-wasip1 at ${ZLIB_PREFIX}"
+        return
+    fi
+
+    log_info "Building zlib ${ZLIB_VERSION} for wasm32-wasip1..."
+
+    local zlib_src="${cache_dir}/zlib-${ZLIB_VERSION}"
+    if [ ! -d "${zlib_src}" ]; then
+        mkdir -p "${cache_dir}"
+        curl -fL "https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz" -o "${cache_dir}/zlib.tar.gz"
+        tar xzf "${cache_dir}/zlib.tar.gz" -C "${cache_dir}"
+        rm -f "${cache_dir}/zlib.tar.gz"
+    fi
+
+    local CC="${WASI_SDK_PATH}/bin/clang"
+    local AR="${WASI_SDK_PATH}/bin/llvm-ar"
+    local RANLIB="${WASI_SDK_PATH}/bin/llvm-ranlib"
+
+    mkdir -p "${ZLIB_PREFIX}"
+
+    (
+        cd "${zlib_src}"
+        CC="${CC}" \
+        AR="${AR}" \
+        RANLIB="${RANLIB}" \
+        CFLAGS="--target=wasm32-wasip1 -O2 -D_WASI_EMULATED_SIGNAL" \
+        LDFLAGS="--target=wasm32-wasip1" \
+        ./configure \
+            --static \
+            --prefix="${ZLIB_PREFIX}" \
+            2>&1 | tail -5
+        make -j"$(nproc)" 2>&1 | tail -5
+        make install 2>&1 | tail -5
+    )
+
+    log_info "zlib built and installed to ${ZLIB_PREFIX}"
+}
+
 build_host_python() {
     # CPython cross-compilation requires a host build first
     local host_build_dir="${CPYTHON_DIR}/build-host"
@@ -156,8 +201,14 @@ configure_wasm_build() {
     local CFLAGS="-D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID"
     CFLAGS="${CFLAGS} -DPYTHONHASHSEED=0"  # Deterministic hash seed for IC
     CFLAGS="${CFLAGS} -fPIC -O2"
+    if [ -n "${ZLIB_PREFIX}" ] && [ -d "${ZLIB_PREFIX}/include" ]; then
+        CFLAGS="${CFLAGS} -I${ZLIB_PREFIX}/include"
+    fi
 
     local LDFLAGS="-lwasi-emulated-signal -lwasi-emulated-process-clocks -lwasi-emulated-mman -lwasi-emulated-getpid"
+    if [ -n "${ZLIB_PREFIX}" ] && [ -d "${ZLIB_PREFIX}/lib" ]; then
+        LDFLAGS="${LDFLAGS} -L${ZLIB_PREFIX}/lib"
+    fi
 
     (
         cd "${build_dir}"
@@ -281,6 +332,7 @@ main() {
     check_prerequisites
     clone_cpython
     apply_ic_patches
+    build_zlib_wasi
     build_host_python
     configure_wasm_build
     build_wasm
