@@ -299,7 +299,10 @@ build_wasm() {
 
     (
         cd "${build_dir}"
-        make -j"$(nproc)" 2>&1 | tail -20
+        # Build only the static library — we don't need the python.wasm executable.
+        # Building the full executable fails on missing WASI symbols (memfd_create, etc.)
+        # that are only needed by the standalone interpreter, not when embedding.
+        make -j"$(nproc)" libpython3.13.a 2>&1 | tail -20
     )
 
     log_info "Build complete"
