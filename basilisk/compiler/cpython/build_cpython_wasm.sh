@@ -257,6 +257,44 @@ configure_wasm_build() {
     log_info "Configuration complete"
 }
 
+disable_unsupported_modules() {
+    local build_dir="${CPYTHON_DIR}/build-wasi"
+    local setup_local="${build_dir}/Modules/Setup.local"
+
+    log_info "Disabling modules unsupported on wasm32-wasip1..."
+
+    # These modules require libraries/features not available in WASI:
+    # _socket: no AF_PACKET, no unix domain socket sun_path
+    # _ctypes: requires libffi
+    # _curses, _curses_panel: requires ncurses
+    # _tkinter: requires Tk/Tcl
+    # _ssl, _hashlib: require OpenSSL
+    # _multiprocessing, _posixshmem: no shared memory/processes in WASI
+    # readline: requires GNU readline
+    # nis: NIS/YP client (obsolete, not on WASI)
+    # ossaudiodev, _crypt: not on WASI
+    cat >> "${setup_local}" <<'EOF'
+
+# Disabled for wasm32-wasip1 (no underlying libraries available)
+*disabled*
+_socket
+_ctypes
+_curses
+_curses_panel
+_tkinter
+_ssl
+_hashlib
+_multiprocessing
+_posixshmem
+readline
+nis
+ossaudiodev
+_crypt
+EOF
+
+    log_info "Disabled unsupported modules in Setup.local"
+}
+
 build_wasm() {
     local build_dir="${CPYTHON_DIR}/build-wasi"
 
@@ -335,6 +373,7 @@ main() {
     build_zlib_wasi
     build_host_python
     configure_wasm_build
+    disable_unsupported_modules
     build_wasm
     install_artifacts
 
