@@ -107,37 +107,265 @@ pub fn generate_code_init(entry_module_name: &str) -> TokenStream {
     // then execute the user's entry module source directly.
     let source_path = format!("../python_source/{}.py", entry_module_name);
     quote! {
-        // Register minimal basilisk runtime shim — only imports sys (builtin).
-        // Avoids 'import types' which triggers frozen module loading and hangs on IC.
+        // Register basilisk runtime shim with full ic class, Principal, StableBTreeMap.
+        // Only imports sys (builtin) — avoids 'import types' which hangs on IC.
         interpreter.run_code_string(r#"
-import sys
-_m = type(sys)("basilisk")
-_m.__file__ = "<frozen basilisk>"
-_m.int64 = _m.int32 = _m.int16 = _m.int8 = int
-_m.nat = _m.nat64 = _m.nat32 = _m.nat16 = _m.nat8 = int
-_m.float64 = _m.float32 = float
-_m.text = str
-_m.blob = bytes
-_m.null = None
-_m.void = None
-_m.Opt = None
-_m.Vec = list
-_m.Record = dict
-_m.Variant = dict
-_m.Tuple = tuple
+import sys as _sys
+import _basilisk_ic
+
+_mod = type(_sys)("basilisk")
+_mod.__file__ = "<frozen basilisk>"
+
+# === Type aliases ===
+_mod.int64 = _mod.int32 = _mod.int16 = _mod.int8 = int
+_mod.nat = _mod.nat64 = _mod.nat32 = _mod.nat16 = _mod.nat8 = int
+_mod.float64 = _mod.float32 = float
+_mod.text = str
+_mod.blob = bytes
+_mod.null = None
+_mod.void = None
+_mod.Opt = None
+_mod.Vec = list
+_mod.Record = dict
+_mod.Variant = dict
+_mod.Tuple = tuple
+_mod.reserved = object
+_mod.empty = object
+_mod.Async = object
+_mod.TimerId = int
+_mod.Duration = int
+_mod.Alias = None
+_mod.Manual = None
+_mod.CallResult = None
+_mod.NotifyResult = None
+_mod.GuardResult = dict
+_mod.GuardType = None
+
+# === Decorators ===
 def _dec(_func=None, **kw):
     def _w(f): return f
     return _w(_func) if _func else _w
-_m.query = _dec
-_m.update = _dec
-_m.init = lambda f: f
-_m.heartbeat = _dec
-_m.pre_upgrade = _dec
-_m.post_upgrade = lambda f: f
-_m.inspect_message = _dec
-_m.canister = lambda c: c
-sys.modules["basilisk"] = _m
-del _m, _dec
+_mod.query = _dec
+_mod.update = _dec
+_mod.init = lambda f: f
+_mod.heartbeat = _dec
+_mod.pre_upgrade = _dec
+_mod.post_upgrade = lambda f: f
+_mod.inspect_message = _dec
+_mod.canister = lambda c: c
+_mod.service_method = lambda f: f
+_mod.service_query = lambda f: f
+_mod.service_update = lambda f: f
+
+# === Principal class ===
+class Principal:
+    def __init__(self, text="aaaaa-aa"):
+        self._text = text
+        self._isPrincipal = True
+    @staticmethod
+    def management_canister():
+        return Principal("aaaaa-aa")
+    @staticmethod
+    def anonymous():
+        return Principal("2vxsx-fae")
+    @staticmethod
+    def from_str(s):
+        return Principal(s)
+    @staticmethod
+    def from_hex(s):
+        p = Principal.__new__(Principal)
+        p._text = s
+        p._isPrincipal = True
+        return p
+    def to_str(self):
+        return self._text
+    @property
+    def isPrincipal(self):
+        return self._isPrincipal
+    def __repr__(self):
+        return "Principal(" + self._text + ")"
+    def __str__(self):
+        return self._text
+    def __eq__(self, other):
+        if isinstance(other, Principal):
+            return self._text == other._text
+        return NotImplemented
+    def __hash__(self):
+        return hash(self._text)
+_mod.Principal = Principal
+
+# === ic class ===
+class ic:
+    @staticmethod
+    def accept_message():
+        _basilisk_ic.accept_message()
+    @staticmethod
+    def arg_data_raw():
+        return _basilisk_ic.arg_data_raw()
+    @staticmethod
+    def arg_data_raw_size():
+        return _basilisk_ic.arg_data_raw_size()
+    @staticmethod
+    def caller():
+        return _basilisk_ic.caller()
+    @staticmethod
+    def candid_encode(s):
+        return _basilisk_ic.candid_encode(s)
+    @staticmethod
+    def candid_decode(b):
+        return _basilisk_ic.candid_decode(b)
+    @staticmethod
+    def canister_balance():
+        return _basilisk_ic.canister_balance()
+    @staticmethod
+    def canister_balance128():
+        return _basilisk_ic.canister_balance128()
+    @staticmethod
+    def clear_timer(id):
+        return _basilisk_ic.clear_timer(id)
+    @staticmethod
+    def data_certificate():
+        return _basilisk_ic.data_certificate()
+    @staticmethod
+    def id():
+        return _basilisk_ic.id()
+    @staticmethod
+    def method_name():
+        return _basilisk_ic.method_name()
+    @staticmethod
+    def msg_cycles_accept(max_amount):
+        return _basilisk_ic.msg_cycles_accept(max_amount)
+    @staticmethod
+    def msg_cycles_accept128(max_amount):
+        return _basilisk_ic.msg_cycles_accept128(max_amount)
+    @staticmethod
+    def msg_cycles_available():
+        return _basilisk_ic.msg_cycles_available()
+    @staticmethod
+    def msg_cycles_available128():
+        return _basilisk_ic.msg_cycles_available128()
+    @staticmethod
+    def msg_cycles_refunded():
+        return _basilisk_ic.msg_cycles_refunded()
+    @staticmethod
+    def msg_cycles_refunded128():
+        return _basilisk_ic.msg_cycles_refunded128()
+    @staticmethod
+    def performance_counter(counter_type):
+        return _basilisk_ic.performance_counter(counter_type)
+    @staticmethod
+    def print(*args):
+        _basilisk_ic.print(" ".join(str(a) for a in args))
+    @staticmethod
+    def reject(x):
+        _basilisk_ic.reject(x)
+    @staticmethod
+    def reject_code():
+        return _basilisk_ic.reject_code()
+    @staticmethod
+    def reject_message():
+        return _basilisk_ic.reject_message()
+    @staticmethod
+    def reply(value):
+        _basilisk_ic.reply(value)
+    @staticmethod
+    def reply_raw(x):
+        _basilisk_ic.reply_raw(x)
+    @staticmethod
+    def set_certified_data(data):
+        _basilisk_ic.set_certified_data(data)
+    @staticmethod
+    def set_timer(delay, func):
+        return _basilisk_ic.set_timer(delay, func)
+    @staticmethod
+    def set_timer_interval(interval, func):
+        return _basilisk_ic.set_timer_interval(interval, func)
+    @staticmethod
+    def stable_bytes():
+        return _basilisk_ic.stable_bytes()
+    @staticmethod
+    def stable_grow(new_pages):
+        return _basilisk_ic.stable_grow(new_pages)
+    @staticmethod
+    def stable_read(offset, length):
+        return _basilisk_ic.stable_read(offset, length)
+    @staticmethod
+    def stable_size():
+        return _basilisk_ic.stable_size()
+    @staticmethod
+    def stable_write(offset, buf):
+        _basilisk_ic.stable_write(offset, buf)
+    @staticmethod
+    def stable64_grow(new_pages):
+        return _basilisk_ic.stable64_grow(new_pages)
+    @staticmethod
+    def stable64_read(offset, length):
+        return _basilisk_ic.stable64_read(offset, length)
+    @staticmethod
+    def stable64_size():
+        return _basilisk_ic.stable64_size()
+    @staticmethod
+    def stable64_write(offset, buf):
+        _basilisk_ic.stable64_write(offset, buf)
+    @staticmethod
+    def time():
+        return _basilisk_ic.time()
+    @staticmethod
+    def trap(message):
+        _basilisk_ic.trap(message)
+_mod.ic = ic
+
+# === Service base class ===
+class Service:
+    def __init__(self, canister_id):
+        self.canister_id = canister_id
+_mod.Service = Service
+
+# === StableBTreeMap ===
+class StableBTreeMap:
+    def __init__(self, memory_id, max_key_size=0, max_value_size=0):
+        self.memory_id = memory_id
+    def _fn(self, op):
+        return getattr(_basilisk_ic, f"stable_b_tree_map_{self.memory_id}_{op}")
+    def contains_key(self, key):
+        return self._fn("contains_key")(key)
+    def get(self, key):
+        return self._fn("get")(key)
+    def insert(self, key, value):
+        return self._fn("insert")(key, value)
+    def is_empty(self):
+        return self._fn("is_empty")()
+    def items(self):
+        return self._fn("items")()
+    def keys(self):
+        return self._fn("keys")()
+    def len(self):
+        return self._fn("len")()
+    def remove(self, key):
+        return self._fn("remove")(key)
+    def values(self):
+        return self._fn("values")()
+_mod.StableBTreeMap = StableBTreeMap
+
+# === match function ===
+def _match(variant, matcher):
+    if isinstance(variant, dict):
+        for key, value in matcher.items():
+            if key in variant:
+                return value(variant[key])
+            if key == "_":
+                return value(None)
+    else:
+        err_value = getattr(variant, "Err", None)
+        if err_value is not None:
+            return matcher["Err"](err_value)
+        return matcher["Ok"](getattr(variant, "Ok"))
+    raise Exception("No matching case found")
+_mod.match = _match
+
+# Register module
+_sys.modules["basilisk"] = _mod
+del _mod, _dec, _match
 "#)
             .unwrap_or_else(|e| panic!("Failed to register basilisk shim: {}", e.to_rust_err_string()));
 
