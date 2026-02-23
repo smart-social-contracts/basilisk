@@ -194,7 +194,8 @@ configure_wasm_build() {
     local SYSROOT="${WASI_SDK_PATH}/share/wasi-sysroot"
 
     # CPython 3.13 has a configure flag for WASI
-    local CONFIG_SITE="${CPYTHON_DIR}/Tools/wasm/wasi/config.site-wasm32-wasi"
+    # CPython 3.13 config.site for WASI (disables unsupported POSIX features)
+    local CONFIG_SITE="${CPYTHON_DIR}/Tools/wasm/config.site-wasm32-wasi"
 
     log_info "Configuring CPython for wasm32-wasip1..."
 
