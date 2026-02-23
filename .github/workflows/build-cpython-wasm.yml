@@ -9,14 +9,17 @@ on:
     push:
         branches:
             - main
-            - feature/cpython-migration
         paths:
             - 'basilisk/compiler/cpython/**'
             - 'basilisk/compiler/basilisk_cpython/src/cpython_init_helper.c'
 
+permissions:
+    contents: write # Required for creating GitHub releases
+
 jobs:
     build-cpython-wasm:
         runs-on: ubuntu-latest
+        timeout-minutes: 60
         env:
             CPYTHON_VERSION: "3.13.0"
             WASI_SDK_VERSION: "24"
@@ -39,9 +42,12 @@ jobs:
             - name: Install WASI SDK
               if: steps.cpython-wasm-cache.outputs.cache-hit != 'true'
               run: |
-                  curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  echo "Downloading WASI SDK ${{ env.WASI_SDK_VERSION }}..."
+                  curl -fLO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   sudo mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux /opt/wasi-sdk
+                  echo "WASI SDK installed at /opt/wasi-sdk"
+                  /opt/wasi-sdk/bin/clang --version
 
             - name: Build CPython for wasm32-wasip1
               if: steps.cpython-wasm-cache.outputs.cache-hit != 'true'
@@ -49,13 +55,18 @@ jobs:
                   WASI_SDK_PATH=/opt/wasi-sdk \
                   bash basilisk/compiler/cpython/build_cpython_wasm.sh ~/cpython-wasm-output
 
+            - name: Verify build output
+              run: |
+                  echo "=== Build output ==="
+                  ls -la ~/cpython-wasm-output/lib/libpython3.13.a
+                  ls -la ~/cpython-wasm-output/include/Python.h
+                  du -sh ~/cpython-wasm-output/
+
             - name: Create release tarball
               run: |
                   cd ~/cpython-wasm-output
                   tar czf ~/cpython-wasm32-wasip1.tar.gz .
                   echo "Tarball size: $(du -sh ~/cpython-wasm32-wasip1.tar.gz | cut -f1)"
-                  echo "Contents:"
-                  ls -la lib/libpython3.13.a include/Python.h 2>/dev/null || ls -la
 
             - name: Upload artifact
               uses: actions/upload-artifact@v4
@@ -66,7 +77,7 @@ jobs:
 
             - name: Create/Update GitHub Release
               if: github.ref == 'refs/heads/main'
-              uses: softprops/action-gh-release@v1
+              uses: softprops/action-gh-release@v2
               with:
                   tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}
                   name: CPython ${{ env.CPYTHON_VERSION }} wasm32-wasip1
@@ -81,5 +92,3 @@ jobs:
                   files: ~/cpython-wasm32-wasip1.tar.gz
                   draft: false
                   prerelease: false
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
