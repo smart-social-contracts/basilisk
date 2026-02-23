@@ -429,11 +429,22 @@ pub const PyModuleDef_HEAD_INIT: PyModuleDef_Base = PyModuleDef_Base {
     m_copy: core::ptr::null_mut(),
 };
 
+/// CPython 3.13 API version (from modsupport.h)
+pub const PYTHON_API_VERSION: c_int = 1013;
+
 extern "C" {
-    pub fn PyModule_Create(module: *mut PyModuleDef) -> *mut PyObject;
+    /// The real symbol in libpython3.13.a. PyModule_Create is a C macro
+    /// that expands to PyModule_Create2(module, PYTHON_API_VERSION).
+    pub fn PyModule_Create2(module: *mut PyModuleDef, apiver: c_int) -> *mut PyObject;
     pub fn PyModule_AddObject(
         module: *mut PyObject,
         name: *const c_char,
         value: *mut PyObject,
     ) -> c_int;
+}
+
+/// Safe wrapper matching the C macro `PyModule_Create(module)`.
+#[inline]
+pub unsafe fn PyModule_Create(module: *mut PyModuleDef) -> *mut PyObject {
+    PyModule_Create2(module, PYTHON_API_VERSION)
 }

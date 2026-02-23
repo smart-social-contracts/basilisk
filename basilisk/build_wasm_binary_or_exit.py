@@ -270,7 +270,10 @@ def generate_candid_file_from_source(paths: Paths, verbose: bool):
     }
 
     def rust_type_to_candid(rust_type: str) -> str:
-        rust_type = rust_type.strip().strip("()")
+        rust_type = rust_type.strip()
+        if not rust_type or rust_type == "()":
+            return ""
+        rust_type = rust_type.strip("()")
         if rust_type in type_map:
             return type_map[rust_type]
         if rust_type.startswith("Vec<") and rust_type.endswith(">"):
@@ -309,7 +312,8 @@ def generate_candid_file_from_source(paths: Paths, verbose: bool):
         params_candid = ", ".join(candid_params)
         returns_candid = candid_return if candid_return else ""
 
-        methods.append(f'  "{name}" : ({params_candid}) -> ({returns_candid}) {method_type};')
+        mode_suffix = f" {method_type}" if method_type == "query" else ""
+        methods.append(f'  "{name}" : ({params_candid}) -> ({returns_candid}){mode_suffix};')
 
     candid_string = "service : {\n" + "\n".join(methods) + "\n}\n"
 

@@ -20,5 +20,7 @@ pub fn generate() -> TokenStream {
 
         static mut INTERPRETER_OPTION: Option<basilisk_cpython::Interpreter> = None;
         static mut SCOPE_OPTION: Option<basilisk_cpython::Scope> = None;
+        static mut CPYTHON_INIT_DONE: bool = false;
+        static mut ENTRY_MODULE_NAME: &str = "";
     }
 }

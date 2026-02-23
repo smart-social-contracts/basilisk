@@ -10,7 +10,6 @@
 //! - **_decimal** → mpdecimal arbitrary-precision decimal library (`mpd_*` symbols)
 //! - **_hashlib** → HACL* cryptographic hash library (`python_hashlib_Hacl_*` symbols)
 //! - **dlopen/dlsym/dlerror** → dynamic library loading (not available in WASI)
-//! - **PyModule_Create** → CPython module creation (resolved differently in embedded use)
 //!
 //! These external symbols become unresolved wasm `"env"` imports. The `wasi2ic` tool
 //! (which converts WASI wasm to IC-compatible wasm) rejects any remaining `"env"` imports
@@ -51,6 +50,18 @@ use core::ffi::c_char;
 const NULL: *mut u8 = core::ptr::null_mut();
 
 // ---------------------------------------------------------------------------
+// atexit / __cxa_atexit — prevent CPython from registering cleanup handlers
+// that crash during WASI __funcs_on_exit after each canister method call.
+// On IC canisters, the process lives for the canister lifetime; no cleanup needed.
+// ---------------------------------------------------------------------------
+
+#[no_mangle]
+pub unsafe extern "C" fn atexit(_func: *mut u8) -> i32 { 0 }
+
+#[no_mangle]
+pub unsafe extern "C" fn __cxa_atexit(_func: *mut u8, _arg: *mut u8, _dso_handle: *mut u8) -> i32 { 0 }
+
+// ---------------------------------------------------------------------------
 // dlopen / dlsym / dlerror  (dynamic loading — not available in WASI)
 // ---------------------------------------------------------------------------
 
@@ -64,12 +75,8 @@ pub unsafe extern "C" fn dlsym(handle: *mut u8, symbol: *const c_char) -> *mut u
 pub unsafe extern "C" fn dlerror() -> *const c_char { core::ptr::null() }
 
 // ---------------------------------------------------------------------------
-// PyModule_Create  (CPython C API — needed by extension modules)
-// ---------------------------------------------------------------------------
-
-#[no_mangle]
-pub unsafe extern "C" fn PyModule_Create(module_def: *mut u8) -> *mut u8 { NULL }
-
+// PyModule_Create — no longer stubbed; ffi.rs now calls PyModule_Create2
+// (the real symbol in libpython3.13.a) via a Rust wrapper.
 // ---------------------------------------------------------------------------
 // pyexpat — expat XML parser stubs
 // ---------------------------------------------------------------------------

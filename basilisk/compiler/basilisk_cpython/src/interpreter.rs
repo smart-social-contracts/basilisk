@@ -66,18 +66,21 @@ impl Interpreter {
     ///     vm.add_frozen(rustpython_compiler_core::frozen_lib::FrozenLib::from_ref(PYTHON_STDLIB));
     /// });
     /// ```
+    /// Get current init phase (-1=not started, 1=fully initialized).
+    pub fn get_init_phase() -> i32 {
+        unsafe {
+            extern "C" { fn basilisk_cpython_get_phase() -> i32; }
+            basilisk_cpython_get_phase()
+        }
+    }
+
     pub fn initialize() -> Result<Self, PyError> {
         unsafe {
-            // Use our own init check since Py_IsInitialized() returns 0
-            // for core-only init (_init_main=0).
             extern "C" {
                 fn basilisk_cpython_init() -> i32;
                 fn basilisk_cpython_is_initialized() -> i32;
             }
             if basilisk_cpython_is_initialized() == 0 && ffi::Py_IsInitialized() == 0 {
-                // Initialize CPython via C helper which uses PyConfig with
-                // _init_main=0 to skip sys.streams setup (needs encodings).
-                // Core init is sufficient for running Python code on the IC.
                 let rc = basilisk_cpython_init();
                 if rc != 0 {
                     return Err(PyError::new(
