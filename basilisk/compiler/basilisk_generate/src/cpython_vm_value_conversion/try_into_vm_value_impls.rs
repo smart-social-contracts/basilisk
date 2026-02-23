@@ -51,12 +51,8 @@ fn generate_basic() -> TokenStream {
 
         impl CdkActTryIntoVmValue<(), basilisk_cpython::PyObjectRef> for candid::Principal {
             fn try_into_vm_value(self, _: ()) -> Result<basilisk_cpython::PyObjectRef, CdkActTryIntoVmValueError> {
-                let interpreter = unsafe { INTERPRETER_OPTION.as_mut() }
-                    .ok_or_else(|| CdkActTryIntoVmValueError("missing interpreter".to_string()))?;
-
-                let principal_class = interpreter.eval_expression(
-                    "from basilisk import Principal; Principal"
-                ).map_err(|e| CdkActTryIntoVmValueError(e.to_rust_err_string()))?;
+                let principal_class = unsafe { PRINCIPAL_CLASS_OPTION.as_ref() }
+                    .ok_or_else(|| CdkActTryIntoVmValueError("Principal class not cached".to_string()))?;
 
                 let from_str = principal_class.get_attr("from_str")
                     .map_err(|e| CdkActTryIntoVmValueError(e.to_rust_err_string()))?;

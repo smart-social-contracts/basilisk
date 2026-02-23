@@ -27,7 +27,9 @@ fn generate_node_functions(node: &StableBTreeMapNode) -> Vec<TokenStream> {
     let values_fn = format_ident!("ic_stable_b_tree_map_{}_values", memory_id);
     let items_fn = format_ident!("ic_stable_b_tree_map_{}_items", memory_id);
 
-    let map_name = format_ident!("STABLE_B_TREE_MAP_{}", memory_id);
+    let map_name = format_ident!("STABLE_B_TREE_MAP_{}_REF_CELL", memory_id);
+    let key_wrapper_type = format_ident!("StableBTreeMap{}KeyType", memory_id);
+    let value_wrapper_type = format_ident!("StableBTreeMap{}ValueType", memory_id);
 
     vec![
         quote! {
@@ -39,7 +41,7 @@ fn generate_node_functions(node: &StableBTreeMapNode) -> Vec<TokenStream> {
                     Some(o) => o,
                     None => return core::ptr::null_mut(),
                 };
-                let key = match key_ref.try_from_vm_value(()) {
+                let key: #key_wrapper_type = match key_ref.try_from_vm_value(()) {
                     Ok(k) => k,
                     Err(e) => { ic_cdk::trap(&e.to_rust_err_string()); }
                 };
@@ -56,7 +58,7 @@ fn generate_node_functions(node: &StableBTreeMapNode) -> Vec<TokenStream> {
                     Some(o) => o,
                     None => return core::ptr::null_mut(),
                 };
-                let key = match key_ref.try_from_vm_value(()) {
+                let key: #key_wrapper_type = match key_ref.try_from_vm_value(()) {
                     Ok(k) => k,
                     Err(e) => { ic_cdk::trap(&e.to_rust_err_string()); }
                 };
@@ -83,27 +85,21 @@ fn generate_node_functions(node: &StableBTreeMapNode) -> Vec<TokenStream> {
                 }
                 let key_ref = basilisk_cpython::PyObjectRef::from_borrowed(key_obj).unwrap();
                 let value_ref = basilisk_cpython::PyObjectRef::from_borrowed(value_obj).unwrap();
-                let key = match key_ref.try_from_vm_value(()) {
+                let key: #key_wrapper_type = match key_ref.try_from_vm_value(()) {
                     Ok(k) => k,
                     Err(e) => { ic_cdk::trap(&e.to_rust_err_string()); }
                 };
-                let value = match value_ref.try_from_vm_value(()) {
+                let value: #value_wrapper_type = match value_ref.try_from_vm_value(()) {
                     Ok(v) => v,
                     Err(e) => { ic_cdk::trap(&e.to_rust_err_string()); }
                 };
                 let result = #map_name.with(|map| map.borrow_mut().insert(key, value));
                 match result {
-                    Ok(prev) => match prev {
-                        Some(prev_val) => match prev_val.try_into_vm_value(()) {
-                            Ok(obj) => obj.into_ptr(),
-                            Err(e) => { ic_cdk::trap(&e.0); }
-                        },
-                        None => basilisk_cpython::PyObjectRef::none().into_ptr(),
-                    },
-                    Err(e) => match e.try_into_vm_value(()) {
+                    Some(prev_val) => match prev_val.try_into_vm_value(()) {
                         Ok(obj) => obj.into_ptr(),
-                        Err(e2) => { ic_cdk::trap(&e2.0); }
-                    }
+                        Err(e) => { ic_cdk::trap(&e.0); }
+                    },
+                    None => basilisk_cpython::PyObjectRef::none().into_ptr(),
                 }
             }
         },
@@ -151,7 +147,7 @@ fn generate_node_functions(node: &StableBTreeMapNode) -> Vec<TokenStream> {
                     Some(o) => o,
                     None => return core::ptr::null_mut(),
                 };
-                let key = match key_ref.try_from_vm_value(()) {
+                let key: #key_wrapper_type = match key_ref.try_from_vm_value(()) {
                     Ok(k) => k,
                     Err(e) => { ic_cdk::trap(&e.to_rust_err_string()); }
                 };

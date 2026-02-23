@@ -369,6 +369,12 @@ del _mod, _dec, _match
 "#)
             .unwrap_or_else(|e| panic!("Failed to register basilisk shim: {}", e.to_rust_err_string()));
 
+        // Cache Principal class reference for fast conversion in try_into_vm_value
+        let _principal_class = interpreter.eval_expression(
+            "__import__('sys').modules['basilisk'].Principal"
+        ).unwrap_or_else(|e| panic!("Failed to cache Principal class: {}", e.to_rust_err_string()));
+        unsafe { PRINCIPAL_CLASS_OPTION = Some(_principal_class); }
+
         // Execute user's entry module source directly
         const _ENTRY_MODULE_SOURCE: &str = include_str!(#source_path);
         interpreter.run_code_string(_ENTRY_MODULE_SOURCE)

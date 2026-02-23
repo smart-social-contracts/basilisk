@@ -263,6 +263,15 @@ fn generate_generic() -> TokenStream {
                 }
             }
         }
+
+        impl<T> CdkActTryFromVmValue<ic_cdk::api::call::ManualReply<T>, basilisk_cpython::PyError, ()> for basilisk_cpython::PyObjectRef
+        where
+            basilisk_cpython::PyObjectRef: CdkActTryFromVmValue<T, basilisk_cpython::PyError, ()>,
+        {
+            fn try_from_vm_value(self, _: ()) -> Result<ic_cdk::api::call::ManualReply<T>, basilisk_cpython::PyError> {
+                Ok(ic_cdk::api::call::ManualReply::empty())
+            }
+        }
     }
 }
 
