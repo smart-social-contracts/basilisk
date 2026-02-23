@@ -1,0 +1,85 @@
+# Build CPython 3.13 for wasm32-wasip1 and publish as a GitHub release artifact.
+# This runs manually or when the CPython build scripts change.
+# The resulting tarball is downloaded by install_cpython_wasm.sh during canister builds.
+
+name: Build CPython Wasm
+
+on:
+    workflow_dispatch: # Manual trigger
+    push:
+        branches:
+            - main
+            - feature/cpython-migration
+        paths:
+            - 'basilisk/compiler/cpython/**'
+            - 'basilisk/compiler/basilisk_cpython/src/cpython_init_helper.c'
+
+jobs:
+    build-cpython-wasm:
+        runs-on: ubuntu-latest
+        env:
+            CPYTHON_VERSION: "3.13.0"
+            WASI_SDK_VERSION: "24"
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Cache CPython source
+              uses: actions/cache@v3
+              with:
+                  path: ~/.cache/basilisk/cpython
+                  key: cpython-source-${{ env.CPYTHON_VERSION }}
+
+            - name: Cache CPython wasm build
+              uses: actions/cache@v3
+              id: cpython-wasm-cache
+              with:
+                  path: ~/cpython-wasm-output
+                  key: cpython-wasm-${{ env.CPYTHON_VERSION }}-wasi-sdk-${{ env.WASI_SDK_VERSION }}-${{ hashFiles('basilisk/compiler/cpython/build_cpython_wasm.sh') }}
+
+            - name: Install WASI SDK
+              if: steps.cpython-wasm-cache.outputs.cache-hit != 'true'
+              run: |
+                  curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  sudo mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux /opt/wasi-sdk
+
+            - name: Build CPython for wasm32-wasip1
+              if: steps.cpython-wasm-cache.outputs.cache-hit != 'true'
+              run: |
+                  WASI_SDK_PATH=/opt/wasi-sdk \
+                  bash basilisk/compiler/cpython/build_cpython_wasm.sh ~/cpython-wasm-output
+
+            - name: Create release tarball
+              run: |
+                  cd ~/cpython-wasm-output
+                  tar czf ~/cpython-wasm32-wasip1.tar.gz .
+                  echo "Tarball size: $(du -sh ~/cpython-wasm32-wasip1.tar.gz | cut -f1)"
+                  echo "Contents:"
+                  ls -la lib/libpython3.13.a include/Python.h 2>/dev/null || ls -la
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: cpython-wasm32-wasip1
+                  path: ~/cpython-wasm32-wasip1.tar.gz
+                  retention-days: 90
+
+            - name: Create/Update GitHub Release
+              if: github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v1
+              with:
+                  tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}
+                  name: CPython ${{ env.CPYTHON_VERSION }} wasm32-wasip1
+                  body: |
+                      Pre-built CPython ${{ env.CPYTHON_VERSION }} static library for wasm32-wasip1.
+                      Used by `install_cpython_wasm.sh` during basilisk canister builds.
+                      
+                      Contents:
+                      - `lib/libpython3.13.a` — static library
+                      - `include/` — CPython headers
+                      - `lib/python3.13/` — frozen stdlib modules
+                  files: ~/cpython-wasm32-wasip1.tar.gz
+                  draft: false
+                  prerelease: false
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

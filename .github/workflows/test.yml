@@ -222,15 +222,92 @@ jobs:
               working-directory: ${{ matrix.example_directories }}/test
               run: source ../venv/bin/activate && npm test
 
+    cpython-integration-tests:
+        needs: release-candidate-deploy
+        runs-on: ubuntu-latest
+        if: ${{ needs.release-candidate-deploy.outputs.should_run_tests == 'true' }}
+        env:
+            BASILISK_PYTHON_BACKEND: cpython
+            BASILISK_COMPILE_RUST_PYTHON_STDLIB: false
+            WASI_SDK_VERSION: "24"
+        strategy:
+            fail-fast: false
+            matrix:
+                # Start with examples that use basic types (str, int, float, bool, None).
+                # Expand this list as the basilisk CPython shim supports more types.
+                example_directories:
+                    - "examples/update"
+                    - "examples/query"
+                    - "examples/counter"
+                    - "examples/motoko_examples/echo"
+                    - "examples/motoko_examples/hello"
+                    - "examples/motoko_examples/factorial"
+        steps:
+            - uses: actions/checkout@v3
+            - uses: actions/setup-node@v3
+              with:
+                  node-version: 20
+
+            - name: Cache basilisk cargo
+              uses: actions/cache@v3
+              with:
+                  path: ~/.config/basilisk
+                  key: basilisk-cargo-cpython-${{ hashFiles('basilisk/cargotoml.py') }}
+
+            - name: Cache dfx
+              uses: actions/cache@v3
+              with:
+                  path: ~/.cache/dfinity
+                  key: basilisk-dfx-0.23.0
+
+            - name: Install dfx
+              run: |
+                  DFXVM_INIT_YES=true DFX_VERSION=0.23.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Install WASI SDK
+              run: |
+                  curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
+
+            - working-directory: ${{ matrix.example_directories }}
+              run: curl https://pyenv.run | bash
+            - working-directory: ${{ matrix.example_directories }}
+              run: ~/.pyenv/bin/pyenv install 3.10.7
+            - working-directory: ${{ matrix.example_directories }}
+              run: ~/.pyenv/versions/3.10.7/bin/python -m venv venv
+
+            - name: Install basilisk from repo
+              shell: bash -l {0}
+              working-directory: ${{ matrix.example_directories }}
+              run: |
+                  if [[ "${{ matrix.example_directories }}" == examples/motoko_examples/* ]]; then
+                    source venv/bin/activate && pip install ../../..
+                  else
+                    source venv/bin/activate && pip install ../..
+                  fi
+
+            - working-directory: ${{ matrix.example_directories }}
+              run: source venv/bin/activate && python -m basilisk install-dfx-extension
+
+            - working-directory: ${{ matrix.example_directories }}
+              run: dfx start --clean --background --host 127.0.0.1:8000
+
+            - name: Deploy and test
+              shell: bash -l {0}
+              working-directory: ${{ matrix.example_directories }}/test
+              run: source ../venv/bin/activate && npm install && npm test
+
     check-basic-integration-tests-success:
-        needs: basic-integration-tests
+        needs: [basic-integration-tests, cpython-integration-tests]
         runs-on: ubuntu-latest
         if: success()
         steps:
             - run: exit 0
 
     check-basic-integration-tests-failure:
-        needs: basic-integration-tests
+        needs: [basic-integration-tests, cpython-integration-tests]
         runs-on: ubuntu-latest
         if: failure()
         steps:
