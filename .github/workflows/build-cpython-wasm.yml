@@ -65,14 +65,14 @@ jobs:
             - name: Create release tarball
               run: |
                   cd ~/cpython-wasm-output
-                  tar czf ~/cpython-wasm32-wasip1.tar.gz .
-                  echo "Tarball size: $(du -sh ~/cpython-wasm32-wasip1.tar.gz | cut -f1)"
+                  tar czf ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz .
+                  echo "Tarball size: $(du -sh ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz | cut -f1)"
 
             - name: Upload artifact
               uses: actions/upload-artifact@v4
               with:
                   name: cpython-wasm32-wasip1
-                  path: ~/cpython-wasm32-wasip1.tar.gz
+                  path: ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz
                   retention-days: 90
 
             - name: Create/Update GitHub Release
@@ -89,6 +89,7 @@ jobs:
                       - `lib/libpython3.13.a` — static library
                       - `include/` — CPython headers
                       - `lib/python3.13/` — frozen stdlib modules
-                  files: ~/cpython-wasm32-wasip1.tar.gz
+                  files: ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz
                   draft: false
                   prerelease: false
+                  make_latest: false
