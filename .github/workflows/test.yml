@@ -259,11 +259,11 @@ jobs:
               uses: actions/cache@v3
               with:
                   path: ~/.cache/dfinity
-                  key: basilisk-dfx-0.23.0
+                  key: basilisk-dfx-0.29.0
 
             - name: Install dfx
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.23.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
                   echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
 
             - name: Install WASI SDK
