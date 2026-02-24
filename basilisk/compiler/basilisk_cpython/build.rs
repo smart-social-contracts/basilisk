@@ -81,8 +81,12 @@ fn main() {
 
     // WASI sysroot library path for emulated libraries
     let wasi_sysroot_lib = find_wasi_sysroot_lib();
-    if let Some(sysroot_lib) = wasi_sysroot_lib {
+    if let Some(ref sysroot_lib) = wasi_sysroot_lib {
+        println!("cargo:warning=basilisk_cpython: WASI sysroot lib found at {}", sysroot_lib.display());
         println!("cargo:rustc-link-search=native={}", sysroot_lib.display());
+    } else {
+        println!("cargo:warning=basilisk_cpython: WASI sysroot lib NOT found! POSIX stubs may be missing.");
+        println!("cargo:warning=basilisk_cpython: Set WASI_SDK_PATH to fix this.");
     }
 
     // WASI emulated libraries that CPython needs

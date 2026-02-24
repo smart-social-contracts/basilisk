@@ -230,6 +230,7 @@ jobs:
             BASILISK_PYTHON_BACKEND: cpython
             BASILISK_COMPILE_RUST_PYTHON_STDLIB: false
             WASI_SDK_VERSION: "24"
+            WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
         strategy:
             fail-fast: false
             matrix:
