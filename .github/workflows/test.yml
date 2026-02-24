@@ -252,7 +252,7 @@ jobs:
               uses: actions/cache@v3
               with:
                   path: ~/.config/basilisk
-                  key: basilisk-cargo-cpython-v2-${{ hashFiles('basilisk/cargotoml.py') }}
+                  key: basilisk-cargo-cpython-v3-${{ hashFiles('basilisk/cargotoml.py') }}
 
             - name: Cache dfx
               uses: actions/cache@v3
@@ -275,7 +275,7 @@ jobs:
               run: |
                   VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
                   CPYTHON_DIR="$HOME/.config/basilisk/${VERSION}/cpython_wasm"
-                  if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ]; then
+                  if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ] || [ ! -f "${CPYTHON_DIR}/lib/libz.a" ]; then
                     mkdir -p "${CPYTHON_DIR}"
                     echo "Downloading CPython wasm artifacts..."
                     curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
