@@ -252,7 +252,7 @@ jobs:
               uses: actions/cache@v3
               with:
                   path: ~/.config/basilisk
-                  key: basilisk-cargo-cpython-${{ hashFiles('basilisk/cargotoml.py') }}
+                  key: basilisk-cargo-cpython-v2-${{ hashFiles('basilisk/cargotoml.py') }}
 
             - name: Cache dfx
               uses: actions/cache@v3
@@ -270,6 +270,21 @@ jobs:
                   curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
+
+            - name: Pre-download CPython wasm
+              run: |
+                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+                  CPYTHON_DIR="$HOME/.config/basilisk/${VERSION}/cpython_wasm"
+                  if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ]; then
+                    mkdir -p "${CPYTHON_DIR}"
+                    echo "Downloading CPython wasm artifacts..."
+                    curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
+                    tar -xzf /tmp/cpython-wasm.tar.gz -C "${CPYTHON_DIR}"
+                    echo "CPython wasm installed to ${CPYTHON_DIR}"
+                    ls -la "${CPYTHON_DIR}/lib/libpython3.13.a"
+                  else
+                    echo "CPython wasm already cached at ${CPYTHON_DIR}"
+                  fi
 
             - working-directory: ${{ matrix.example_directories }}
               run: curl https://pyenv.run | bash
