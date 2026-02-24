@@ -67,12 +67,13 @@ fn main() {
         println!("cargo:rerun-if-changed={}", init_helper_src.display());
     }
 
-    // Link against the static CPython library with whole-archive to ensure
-    // ALL object files are included (especially frozen.o with frozen encodings).
-    // Without this, lld only pulls in objects that resolve undefined symbols,
-    // which may miss frozen module data that's referenced via global tables.
+    // Link against the static CPython library. We use regular static linking
+    // (not +whole-archive) because whole-archive pulls in ALL object files,
+    // bloating the wasm beyond the IC's instruction limit for canister installation.
+    // Frozen module data (frozen.o) is still included via transitive symbol
+    // resolution since PyImport_FrozenModules is referenced by CPython's import system.
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
-    println!("cargo:rustc-link-lib=static:+whole-archive=python3.13");
+    println!("cargo:rustc-link-lib=static=python3.13");
 
     // Link zlib if available (CPython's zlibmodule.o depends on external zlib symbols)
     if lib_dir.join("libz.a").exists() {
