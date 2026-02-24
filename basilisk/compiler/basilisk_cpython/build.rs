@@ -74,6 +74,11 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
     println!("cargo:rustc-link-lib=static:+whole-archive=python3.13");
 
+    // Link zlib if available (CPython's zlibmodule.o depends on external zlib symbols)
+    if lib_dir.join("libz.a").exists() {
+        println!("cargo:rustc-link-lib=static=z");
+    }
+
     // WASI sysroot library path for emulated libraries
     let wasi_sysroot_lib = find_wasi_sysroot_lib();
     if let Some(sysroot_lib) = wasi_sysroot_lib {

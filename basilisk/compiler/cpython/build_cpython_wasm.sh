@@ -344,6 +344,12 @@ install_artifacts() {
         cp -r "${CPYTHON_DIR}/Lib/"* "${OUTPUT_DIR}/lib/python3.13/"
     fi
 
+    # Copy zlib static library if available (needed for CPython's zlib module)
+    if [ -n "${ZLIB_PREFIX:-}" ] && [ -f "${ZLIB_PREFIX}/lib/libz.a" ]; then
+        cp "${ZLIB_PREFIX}/lib/libz.a" "${OUTPUT_DIR}/lib/"
+        log_info "  Zlib:    ${OUTPUT_DIR}/lib/libz.a"
+    fi
+
     log_info "Artifacts installed:"
     log_info "  Library: ${OUTPUT_DIR}/lib/libpython3.13.a"
     log_info "  Headers: ${OUTPUT_DIR}/include/"
