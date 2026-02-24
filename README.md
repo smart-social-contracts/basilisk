@@ -74,8 +74,8 @@ BASILISK_PYTHON_BACKEND=rustpython dfx deploy
 | `StableBTreeMap.get` (query) | free | free |
 | `canister_init` | ~51M | ~20M (one-time) |
 
-At IC pricing (~$0.52 per 1T cycles):
-- **1M update calls cost ~$3.64** with CPython vs ~$25 with RustPython
+At IC pricing (~$1.30 per 1T cycles, pegged to 1 XDR):
+- **1M update calls cost ~$9** with CPython vs ~$45-90 with RustPython (estimated)
 - CPython is **~5-10x cheaper** per call due to its optimized C interpreter
 - Queries are free on the IC regardless of backend
 
