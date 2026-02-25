@@ -321,17 +321,105 @@ jobs:
             - name: Deploy and test
               shell: bash -l {0}
               working-directory: ${{ matrix.example_directories }}/test
+              timeout-minutes: 30
               run: source ../venv/bin/activate && npm install && npm test
 
+    cpython-ic-deploy:
+        needs: release-candidate-deploy
+        runs-on: ubuntu-latest
+        if: ${{ needs.release-candidate-deploy.outputs.should_run_tests == 'true' }}
+        env:
+            BASILISK_PYTHON_BACKEND: cpython
+            BASILISK_COMPILE_RUST_PYTHON_STDLIB: false
+            WASI_SDK_VERSION: "24"
+            WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
+        steps:
+            - uses: actions/checkout@v3
+            - uses: actions/setup-node@v3
+              with:
+                  node-version: 20
+
+            - name: Cache basilisk cargo
+              uses: actions/cache@v3
+              with:
+                  path: ~/.config/basilisk
+                  key: basilisk-cargo-cpython-v3-${{ hashFiles('basilisk/cargotoml.py') }}
+
+            - name: Install dfx
+              run: |
+                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Install WASI SDK
+              run: |
+                  curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
+
+            - name: Install wasm-opt (binaryen)
+              run: sudo apt-get install -y binaryen
+
+            - name: Pre-download CPython wasm
+              run: |
+                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+                  CPYTHON_DIR="$HOME/.config/basilisk/${VERSION}/cpython_wasm"
+                  if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ] || [ ! -f "${CPYTHON_DIR}/lib/libz.a" ]; then
+                    mkdir -p "${CPYTHON_DIR}"
+                    curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
+                    tar -xzf /tmp/cpython-wasm.tar.gz -C "${CPYTHON_DIR}"
+                  fi
+
+            - name: Setup Python environment
+              working-directory: examples/query
+              run: |
+                  curl https://pyenv.run | bash
+                  ~/.pyenv/bin/pyenv install 3.10.7
+                  ~/.pyenv/versions/3.10.7/bin/python -m venv venv
+
+            - name: Install basilisk from repo
+              shell: bash -l {0}
+              working-directory: examples/query
+              run: source venv/bin/activate && pip install ../..
+
+            - name: Install dfx extension
+              working-directory: examples/query
+              run: source venv/bin/activate && python -m basilisk install-dfx-extension
+
+            - name: Import DFX identity for IC deployment
+              run: |
+                  echo "${{ secrets.DFX_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext
+                  rm /tmp/ci-identity.pem
+                  dfx identity use ci-deploy
+
+            - name: Build canister wasm
+              shell: bash -l {0}
+              working-directory: examples/query
+              timeout-minutes: 10
+              run: |
+                  source venv/bin/activate
+                  python -m basilisk query src/main.py
+
+            - name: Deploy to IC mainnet
+              working-directory: examples/query
+              timeout-minutes: 10
+              run: |
+                  dfx deploy query --network ic --yes
+
+            - name: Verify deployment
+              working-directory: examples/query
+              run: |
+                  dfx canister call query simple_query --network ic
+
     check-basic-integration-tests-success:
-        needs: [basic-integration-tests, cpython-integration-tests]
+        needs: [basic-integration-tests, cpython-integration-tests, cpython-ic-deploy]
         runs-on: ubuntu-latest
         if: success()
         steps:
             - run: exit 0
 
     check-basic-integration-tests-failure:
-        needs: [basic-integration-tests, cpython-integration-tests]
+        needs: [basic-integration-tests, cpython-integration-tests, cpython-ic-deploy]
         runs-on: ubuntu-latest
         if: failure()
         steps:

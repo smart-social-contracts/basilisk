@@ -74,7 +74,7 @@ fn main() {
     // See CPYTHON_MIGRATION_NOTES.md section 7 for details.
     let trimmed_lib = build_trimmed_libpython(&lib_dir, &include_dir);
     println!("cargo:rustc-link-search=native={}", trimmed_lib.parent().unwrap().display());
-    println!("cargo:rustc-link-lib=static=python3.13-trimmed");
+    println!("cargo:rustc-link-lib=static:+whole-archive=python3.13-trimmed");
 
     // Link zlib if available (CPython's zlibmodule.o depends on external zlib symbols)
     if lib_dir.join("libz.a").exists() {
@@ -208,6 +208,84 @@ fn build_trimmed_libpython(lib_dir: &std::path::Path, include_dir: &std::path::P
         .status()
         .expect("Failed to run llvm-ar to replace config.o");
     assert!(status.success(), "Failed to replace config.o in libpython3.13-trimmed.a");
+
+    // 4. Remove .o files for modules NOT in cpython_config.c.
+    //    With +whole-archive these would all be pulled in, bloating the wasm.
+    //    See CPYTHON_MIGRATION_NOTES.md section 8 for the full rationale.
+    let remove_objects = [
+        // --- External library deps (libmpdec, libexpat, HACL*) ---
+        "_decimal.o",
+        "pyexpat.o",
+        "_elementtree.o",
+        "Hacl_Hash_MD5.o",
+        "Hacl_Hash_SHA1.o",
+        "Hacl_Hash_SHA3.o",
+        // --- Large unused modules (never in config.c) ---
+        "unicodedata.o",
+        "_codecs_cn.o",
+        "_codecs_hk.o",
+        "_codecs_jp.o",
+        "_codecs_kr.o",
+        "_codecs_tw.o",
+        "multibytecodec.o",
+        "_datetimemodule.o",
+        "_pickle.o",
+        "_asynciomodule.o",
+        "arraymodule.o",
+        "cmathmodule.o",
+        "_json.o",
+        "_csv.o",
+        "_lsprof.o",
+        "_opcode.o",
+        "_randommodule.o",
+        "_statisticsmodule.o",
+        "_bisectmodule.o",
+        "_heapqmodule.o",
+        "_queuemodule.o",
+        "_zoneinfo.o",
+        "selectmodule.o",
+        "socketmodule.o",
+        "binascii.o",
+        "mathmodule.o",
+        "_elementtree.o",       // XML C accelerator
+        "_decimal.o",           // decimal C accelerator
+        "pyexpat.o",            // expat XML parser
+        "blake2b_impl.o",       // blake2b hash implementation
+        "blake2s_impl.o",       // blake2s hash implementation
+        "blake2module.o",       // blake2 module wrapper
+        "_codecs_iso2022.o",    // ISO-2022 codec
+        // NOTE: picklebufobject.o must NOT be removed — PyPickleBuffer_Type
+        // is in CPython's static_types array; removing it causes type_ready
+        // failure → _PyErr_Format infinite recursion → stack overflow.
+        // --- Stripped for IC mainnet wasm size reduction (section 8) ---
+        // These were previously in config.c but are not essential for
+        // Py_Initialize + basic script execution on the IC.
+        "timemodule.o",         // time module
+        "signalmodule.o",       // _signal (PyInit stub in config.c, internals stubbed)
+        "_tracemalloc.o",       // _tracemalloc module
+        "faulthandler.o",       // faulthandler (config.faulthandler=0 on WASI, init stubbed)
+        "_localemodule.o",      // _locale module
+        "_contextvarsmodule.o", // _contextvars module
+        "itertoolsmodule.o",    // itertools module
+        "symtablemodule.o",     // _symtable module
+        "_suggestions.o",       // _suggestions module
+        "_sysconfig.o",         // _sysconfig module
+        // --- Small non-essential core .o files ---
+        "perf_trampoline.o",    // Linux perf support (not available on IC)
+        "rotatingtree.o",       // profiling tree (only used by removed _lsprof)
+        // NOTE: Do NOT remove core .o files (hamt.o, crossinterp.o, tracemalloc.o,
+        // suggestions.o, odictobject.o) — they are referenced during Py_Initialize
+        // and stubbing them causes 'heap out of bounds' traps.
+    ];
+    for obj in &remove_objects {
+        let status = std::process::Command::new(&ar)
+            .args(["d", &trimmed_lib.to_string_lossy(), obj])
+            .status()
+            .unwrap_or_else(|_| panic!("Failed to run llvm-ar d for {}", obj));
+        if !status.success() {
+            println!("cargo:warning=basilisk_cpython: Could not remove {} from archive (may not exist)", obj);
+        }
+    }
 
     println!("cargo:rerun-if-changed={}", config_src.display());
     println!("cargo:warning=basilisk_cpython: Built trimmed libpython3.13.a with custom config.o");

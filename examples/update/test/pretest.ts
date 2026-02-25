@@ -1,53 +1,50 @@
 import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
 
 async function pretest() {
-    try {
-        execSync(`dfx canister uninstall-code update || true`, {
-            stdio: 'inherit',
-            timeout: 60_000
-        });
-    } catch {}
+    const dfxConfig = JSON.parse(readFileSync('dfx.json', 'utf-8'));
+    const canisterName = Object.keys(dfxConfig.canisters)[0];
 
-    // CPython wasm is large (~3.6MB) and PocketIC native compilation may
-    // exceed dfx's 5-minute ingress timeout. Strategy:
-    // 1. Submit deploy (will likely timeout)
-    // 2. PocketIC continues compiling in background
-    // 3. Poll canister status until module hash appears
+    // Try regular deploy. On a system subnet with fast enough hardware,
+    // this completes within the dfx ingress timeout (~5 min).
     try {
-        execSync(`dfx deploy`, { stdio: 'inherit' });
-        execSync(`dfx generate`, { stdio: 'inherit' });
+        execSync('dfx deploy', { stdio: 'inherit' });
+        execSync('dfx generate', { stdio: 'inherit' });
         return;
     } catch {
-        console.log('Deploy timed out — PocketIC still compiling wasm...');
+        console.log(
+            `Deploy failed/timed out for ${canisterName}. ` +
+            'Polling for background completion on system subnet...'
+        );
     }
 
-    // Poll for up to 20 minutes until PocketIC finishes compilation
-    const maxWaitSec = 1200;
-    const pollSec = 30;
-    let installed = false;
+    // On a system subnet (no instruction limit), the IC replica continues
+    // processing install_code even after the dfx ingress timeout expires.
+    // Poll canister status until the module hash appears.
+    const maxWaitMs = 20 * 60 * 1000; // 20 minutes
+    const pollMs = 15_000;
+    const startTime = Date.now();
 
-    for (let waited = 0; waited < maxWaitSec; waited += pollSec) {
-        execSync(`sleep ${pollSec}`);
+    while (Date.now() - startTime < maxWaitMs) {
+        await new Promise(r => setTimeout(r, pollMs));
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
         try {
-            const out = execSync(`dfx canister status update 2>&1`, {
-                timeout: 15_000
-            }).toString();
-            if (out.includes('Module hash: 0x')) {
-                console.log(`Canister installed after ~${waited + pollSec}s`);
-                installed = true;
-                break;
+            const status = execSync(
+                `dfx canister status ${canisterName} 2>&1`,
+                { timeout: 15_000 }
+            ).toString();
+            if (status.includes('Module hash: 0x')) {
+                console.log(`Canister ${canisterName} installed after ~${elapsed}s`);
+                execSync('dfx generate', { stdio: 'inherit' });
+                return;
             }
-        } catch {
-            console.log(`Waiting for PocketIC... (${waited + pollSec}s/${maxWaitSec}s)`);
-        }
+        } catch {}
+        console.log(`Waiting for wasm installation... (${elapsed}s)`);
     }
 
-    if (!installed) {
-        // Final attempt after PocketIC should have finished
-        execSync(`dfx deploy`, { stdio: 'inherit' });
-    }
-
-    execSync(`dfx generate`, { stdio: 'inherit' });
+    throw new Error(
+        `Canister ${canisterName} did not install within 20 minutes`
+    );
 }
 
 pretest();

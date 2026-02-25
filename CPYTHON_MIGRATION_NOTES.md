@@ -310,6 +310,104 @@ ic-wasm canister.wasm info
 # Located at: ~/.local/share/wasi-sdk/bin/llvm-{nm,ar,objdump}
 ```
 
+## 8. IC Mainnet Deployment — Wasm Size Problem
+
+### The problem (confirmed 2025-02-25)
+
+The CPython wasm binary **cannot be installed on IC mainnet** via `install_code` or
+`install_chunked_code`. The IC's Deterministic Time Slicing (DTS) instruction budget
+for `install_code` on application subnets is insufficient to compile the wasm to
+native code.
+
+| Metric | Original | After stripping |
+|--------|----------|-----------------|
+| Wasm size (raw) | 6,022,795 bytes (5.7 MB) | 3,948,111 bytes (3.77 MB) |
+| Function count | 8,079 | ~6,300 |
+| Code section | 3,408,178 bytes (56.6%) | ~2.2 MB |
+| Cycles consumed per failed install | ~300B–920B | — |
+| IC DTS budget (app subnet) | ~200B–300B instructions | same |
+
+### What was tested
+
+- `dfx canister install --wasm <file> --network ic` — timed out
+- `dfx canister install --wasm <file.gz> --network ic` — timed out (IC accepts gzip)
+- `install_chunked_code` via management canister (upload 7 chunks, then install) — timed out
+- dfx versions 0.29.0 and 0.30.2 — same result
+- Polling canister status after timeout — `Module hash: None` (install failed, not slow)
+- Total cycles burned across attempts: ~920B (canister `2i66l-saaaa-aaaas-qe3sq-cai`)
+
+### Stripping progress (2025-02-25)
+
+Aggressive module stripping reduced the wasm from 6.0 MB to 3.95 MB:
+
+**Modules removed from `cpython_config.c`** (inittab):
+- `time`, `_tracemalloc`, `_locale`, `_contextvars`, `itertools`
+- `_symtable`, `_tokenize`, `_suggestions`, `_sysconfig`
+- `faulthandler` (config.faulthandler=0 on WASI, so init never imports it)
+
+**`_signal` module**: Replaced with a minimal C stub in `cpython_config.c` that
+returns an empty module from `PyInit__signal`. Internal functions (`_PySignal_Init`,
+`PyErr_CheckSignals`, `_PyErr_CheckSignalsTstate`, `_PyOS_InterruptOccurred`,
+`PyErr_SetInterruptEx`) are also stubbed in C. `signalmodule.o` is removed from
+the archive.
+
+**`faulthandler` and `perf_trampoline`**: Stubbed in C in `cpython_config.c`.
+`_PyFaulthandler_Init` returns `PyStatus {0}` (OK). `_PyPerfTrampoline_*` return 0.
+The `.o` files are removed from the archive.
+
+**Important**: All stubs returning `PyStatus` (16-byte struct) MUST be in C, not Rust.
+Rust's `extern "C"` on `wasm32-wasip1` may use wasm multi-value returns instead of
+clang's sret calling convention, causing ABI mismatch → heap out of bounds traps.
+
+**Additional `.o` files removed from archive** (already excluded from config.c):
+- `_elementtree.o`, `_decimal.o`, `pyexpat.o` — XML/decimal with external deps
+- `blake2b_impl.o`, `blake2s_impl.o`, `blake2module.o` — blake2 hashes
+- `_codecs_iso2022.o` — ISO-2022 codec
+- `rotatingtree.o` — profiling support (only used by removed `_lsprof`)
+
+**Critical: `picklebufobject.o` must NOT be removed.** `PyPickleBuffer_Type` is a
+core type in CPython's `static_types` array. Removing it causes `_PyTypes_InitTypes`
+→ `type_ready` failure → `_PyErr_Format` infinite recursion → stack overflow →
+"heap out of bounds" trap during `canister_init`.
+
+### Current status
+
+The stripped wasm (3,948,111 bytes) is right at the empirical DTS boundary but still
+times out on IC mainnet. The wasm does NOT trap — `canister_init` would succeed if
+compilation finished within the DTS budget. Further reduction is needed.
+
+### Debugging notes
+
+**How to get stack traces for canister traps**: Build without `wasm-opt` (rename
+`~/.cargo/bin/wasm-opt` temporarily). The unoptimized wasm preserves function names
+in the wasm name section, which the IC replica includes in trap messages.
+
+**Return type verification**: Always check CPython internal headers for correct
+function signatures before stubbing. E.g., `_PySignal_Init` returns `int` (not
+`PyStatus`). Wrong return type causes sret ABI mismatch → writes to random memory.
+Headers at: `~/.config/basilisk/0.7.2/cpython_wasm/include/internal/pycore_*.h`
+
+### Remaining options for IC mainnet
+
+1. **Rebuild `libpython3.13.a` with `--disable-*` flags** — strip at CPython configure level
+2. **LTO across C/Rust boundary** — use `-flto` in WASI SDK build for better dead code elimination
+3. **Strip Data section** — remove frozen bytecode modules not needed at runtime
+4. **`wasm-opt` with `--strip-debug --strip-producers --dce`** — more aggressive wasm optimization
+5. **Explore `wasm32-unknown-unknown` target** — may produce smaller wasm than `wasm32-wasip1`
+6. **Module demand-loading** — load stripped modules at runtime via stable memory
+
+### Local replica workaround (CI)
+
+For local testing (CI and development), the wasm deploys successfully on a **system
+subnet** which has no instruction limit. The `pretest.ts` includes polling logic to
+handle the dfx ingress timeout (5 min) — it polls `dfx canister status` for up to
+20 minutes until the module hash appears.
+
+```json
+// ~/.config/dfx/networks.json
+{"local":{"replica":{"subnet_type":"system"}}}
+```
+
 ## Open items
 
 1. ~~Rebuild CPython with modules disabled~~ → replaced by custom `config.c` approach
@@ -318,3 +416,4 @@ ic-wasm canister.wasm info
 4. **Complex type Candid generation** — extend source-based `.did` generator for Records/Variants
 5. **Fork/patch cdk_framework** — fix `panic!(err)` upstream instead of post-generation fixup
 6. **Module demand-loading** — explore loading stripped modules at runtime via stable memory
+7. **Wasm size reduction for IC mainnet** — need ~200KB more reduction below 3.95MB DTS boundary

@@ -4,33 +4,18 @@
  * This replaces the stock config.o from libpython3.13.a to control which
  * built-in extension modules are linked into the final wasm binary.
  *
- * Only modules required for CPython boot (Py_Initialize) and basic canister
- * operation are included. Removing a module from this table prevents the
- * linker from pulling in its object file, significantly reducing wasm size.
+ * Includes all CPython internal modules needed for Py_Initialize and basic
+ * canister operation. Only heavy modules with external library dependencies
+ * are excluded (_decimal/libmpdec, pyexpat/libexpat, _hashlib/HACL*).
  *
- * See CPYTHON_MIGRATION_NOTES.md section 7 for the full module classification
- * and instructions on adding/removing modules.
+ * See CPYTHON_MIGRATION_NOTES.md section 7 for details.
  */
 
 #include "Python.h"
 
-/*
- * Forward declarations for init functions of included modules.
- *
- * MINIMAL set — only what Py_Initialize absolutely requires.
- * Modules removed vs. stock CPython 3.13 config.c:
- *   _tracemalloc  — memory tracing (skipped during init if missing)
- *   faulthandler  — crash handler (skipped during init if missing)
- *   _symtable     — only needed for compile()
- *   _tokenize     — only needed for tokenize module
- *   _suggestions  — nicer error messages, not essential
- *   _locale       — locale support, not needed on IC
- *   _sysconfig    — build-time config, not needed at runtime
- *   itertools     — common but not boot-critical
- *   _contextvars  — context variables, not needed for basic operation
- *   _signal       — signal handling, not useful on IC/WASI
- *   time          — may be needed; add back if init fails
- */
+/* --- Forward declarations for all included modules --- */
+
+/* Core modules required by Py_Initialize / importlib bootstrap */
 extern PyObject* PyInit_posix(void);
 extern PyObject* PyInit__io(void);
 extern PyObject* PyInit__abc(void);
@@ -49,13 +34,50 @@ extern PyObject* PyInit_atexit(void);
 extern PyObject* PyInit_errno(void);
 extern PyObject* PyInit_gc(void);
 
-/* These are always needed by the interpreter core */
+/* Minimal _signal stub — signalmodule.o removed to save ~179K.
+ * All stubs in C to guarantee correct ABI (especially PyStatus).
+ */
+static PyMethodDef _signal_stub_methods[] = {{NULL, NULL, 0, NULL}};
+static struct PyModuleDef _signal_stub_module = {
+    PyModuleDef_HEAD_INIT, "_signal", NULL, -1, _signal_stub_methods
+};
+static PyObject* PyInit__signal(void) {
+    return PyModule_Create(&_signal_stub_module);
+}
+
+/* Signal internal stubs */
+int _PySignal_Init(int install_signal_handlers) { return 0; }
+void _PySignal_Fini(void) {}
+int PyErr_CheckSignals(void) { return 0; }
+int _PyErr_CheckSignalsTstate(void *tstate) { return 0; }
+int _PyOS_InterruptOccurred(void *tstate) { return 0; }
+int PyErr_SetInterruptEx(int signum) { return 0; }
+
+/* Faulthandler internal stubs (config.faulthandler=0 on WASI) */
+PyStatus _PyFaulthandler_Init(int enable) {
+    PyStatus status = {0};
+    return status;
+}
+void _PyFaulthandler_Fini(void) {}
+
+/* Perf trampoline stubs (Linux-only, N/A on IC) */
+int _PyPerfTrampoline_Init(int activate) { return 0; }
+int _PyPerfTrampoline_Fini(void) { return 0; }
+void _PyPerfTrampoline_FreeArenas(void) {}
+
+/* NOTE: Non-essential modules removed for wasm size reduction.
+ * See CPYTHON_MIGRATION_NOTES.md section 8 for details.
+ * Removed: time, _tracemalloc, _locale, _contextvars, itertools,
+ *          _symtable, _tokenize, _suggestions, _sysconfig
+ */
+
+/* Internal modules (always needed by interpreter core) */
 extern PyObject* PyMarshal_Init(void);
 extern PyObject* PyInit__imp(void);
 extern PyObject* _PyWarnings_Init(void);
 
 struct _inittab _PyImport_Inittab[] = {
-    /* Absolute minimum for Py_Initialize to complete */
+    /* Core modules for Py_Initialize */
     {"posix", PyInit_posix},
     {"_io", PyInit__io},
     {"_abc", PyInit__abc},
@@ -73,6 +95,9 @@ struct _inittab _PyImport_Inittab[] = {
     {"atexit", PyInit_atexit},
     {"errno", PyInit_errno},
     {"gc", PyInit_gc},
+
+    /* Modules needed during Py_Initialize */
+    {"_signal", PyInit__signal},
 
     /* Internal modules (always needed by interpreter core) */
     {"marshal", PyMarshal_Init},
