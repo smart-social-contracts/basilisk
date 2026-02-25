@@ -67,16 +67,18 @@ fn main() {
         println!("cargo:rerun-if-changed={}", init_helper_src.display());
     }
 
-    // Link against the static CPython library. We use regular static linking
-    // (not +whole-archive) because whole-archive pulls in ALL object files,
-    // bloating the wasm beyond the IC's instruction limit for canister installation.
-    // Frozen module data (frozen.o) is still included via transitive symbol
-    // resolution since PyImport_FrozenModules is referenced by CPython's import system.
-    println!("cargo:rustc-link-search=native={}", lib_dir.display());
-    println!("cargo:rustc-link-lib=static=python3.13");
+    // Build a trimmed copy of libpython3.13.a with a custom config.o that
+    // only references essential modules. This prevents the linker from pulling
+    // in heavy unused modules (_decimal, pyexpat, _elementtree, etc.) that
+    // would bloat the wasm beyond the IC's install_code budget.
+    // See CPYTHON_MIGRATION_NOTES.md section 7 for details.
+    let trimmed_lib = build_trimmed_libpython(&lib_dir, &include_dir);
+    println!("cargo:rustc-link-search=native={}", trimmed_lib.parent().unwrap().display());
+    println!("cargo:rustc-link-lib=static=python3.13-trimmed");
 
     // Link zlib if available (CPython's zlibmodule.o depends on external zlib symbols)
     if lib_dir.join("libz.a").exists() {
+        println!("cargo:rustc-link-search=native={}", lib_dir.display());
         println!("cargo:rustc-link-lib=static=z");
     }
 
@@ -151,6 +153,66 @@ fn compile_c_init_helper(src: &std::path::Path, include_dir: &std::path::Path) {
 
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static=cpython_init_helper");
+}
+
+/// Build a trimmed copy of libpython3.13.a with a custom config.o that only
+/// references essential modules, preventing the linker from pulling in unused
+/// heavy modules (_decimal, pyexpat, _elementtree, CJK codecs, etc.).
+fn build_trimmed_libpython(lib_dir: &std::path::Path, include_dir: &std::path::Path) -> PathBuf {
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let home = env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+
+    let original_lib = lib_dir.join("libpython3.13.a");
+    let trimmed_lib = out_dir.join("libpython3.13-trimmed.a");
+    let config_src = manifest_dir.join("src/cpython_config.c");
+    let config_obj = out_dir.join("config.o");
+
+    // Find WASI SDK tools
+    let clang_candidates = if let Ok(sdk) = env::var("WASI_SDK_PATH") {
+        vec![PathBuf::from(&sdk).join("bin/clang")]
+    } else {
+        vec![
+            PathBuf::from(format!("{home}/.local/share/wasi-sdk/bin/clang")),
+            PathBuf::from("/opt/wasi-sdk/bin/clang"),
+        ]
+    };
+    let clang = clang_candidates.iter().find(|p| p.exists())
+        .expect("WASI SDK clang not found. Set WASI_SDK_PATH.");
+    let ar = clang.with_file_name("llvm-ar");
+
+    // 1. Compile custom config.c → config.o
+    let status = std::process::Command::new(clang)
+        .args([
+            "-c", &config_src.to_string_lossy(),
+            "-o", &config_obj.to_string_lossy(),
+            "-I", &include_dir.to_string_lossy(),
+            "-O2",
+            "--target=wasm32-wasip1",
+            "-D_WASI_EMULATED_SIGNAL",
+            "-D_WASI_EMULATED_PROCESS_CLOCKS",
+            "-D_WASI_EMULATED_MMAN",
+            "-D_WASI_EMULATED_GETPID",
+        ])
+        .status()
+        .expect("Failed to run WASI SDK clang for cpython_config.c");
+    assert!(status.success(), "Failed to compile cpython_config.c");
+
+    // 2. Copy the original archive to OUT_DIR
+    std::fs::copy(&original_lib, &trimmed_lib)
+        .expect("Failed to copy libpython3.13.a to OUT_DIR");
+
+    // 3. Replace config.o in the copy with our custom one
+    let status = std::process::Command::new(&ar)
+        .args(["r", &trimmed_lib.to_string_lossy(), &config_obj.to_string_lossy()])
+        .status()
+        .expect("Failed to run llvm-ar to replace config.o");
+    assert!(status.success(), "Failed to replace config.o in libpython3.13-trimmed.a");
+
+    println!("cargo:rerun-if-changed={}", config_src.display());
+    println!("cargo:warning=basilisk_cpython: Built trimmed libpython3.13.a with custom config.o");
+
+    trimmed_lib
 }
 
 fn find_wasi_sysroot_lib() -> Option<PathBuf> {

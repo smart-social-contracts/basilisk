@@ -128,11 +128,193 @@ directly, bypassing `candid-extractor`.
 complex user-defined types (Records, Variants). For those, the type definitions would need to
 be extracted from the Python AST or the generated Rust structs.
 
+### 7. Wasm size reduction — stripping unused CPython modules
+
+#### Problem
+
+The IC replica must compile the wasm binary during `install_code`. CPython's `libpython3.13.a`
+contains 221 object files (~38 MB), and even with normal static linking (no `+whole-archive`),
+the linker pulls in far more code than needed because of **`config.o`**.
+
+`config.o` defines `_PyImport_Inittab` — a table of `{ name, PyInit_* }` entries for every
+built-in extension module. Since every `PyInit_*` function is an undefined symbol in `config.o`,
+the linker resolves them from other `.o` files, which transitively pull in their dependencies
+(mpdecimal, expat, HACL*, etc.). The result is a ~6.9 MB wasm that exceeds the replica's
+compilation budget and times out during `dfx canister install`.
+
+#### Solution: custom `config.c`
+
+Replace the stock `config.o` with a custom one that only lists modules needed for CPython boot
+and basic canister operation. This is done in `build.rs`:
+
+1. Copy `libpython3.13.a` to `OUT_DIR` (to avoid modifying the shared artifact)
+2. Compile a custom `config.c` → `config.o` using WASI SDK clang
+3. Use `llvm-ar` to replace the stock `config.o` in the copied archive
+4. Link against the modified archive
+
+#### How `config.c` works
+
+CPython's `Modules/config.c.in` (generated during `./configure`) contains:
+
+```c
+struct _inittab _PyImport_Inittab[] = {
+    {"posix", PyInit_posix},
+    {"_io", PyInit__io},
+    {"_decimal", PyInit__decimal},    // ← pulls in _decimal.o → mpd_* symbols
+    {"pyexpat", PyInit_pyexpat},      // ← pulls in pyexpat.o → XML_* symbols
+    ...
+    {0, 0}
+};
+```
+
+Each entry causes the linker to include that module's `.o` file (and its dependencies).
+By removing entries from this table, the corresponding object files become unreferenced and
+the linker drops them entirely.
+
+#### Module classification
+
+**Essential** — required for CPython to boot (`Py_Initialize`) and run basic Python:
+
+| Module | Init function | Object file | Why needed |
+|--------|--------------|-------------|------------|
+| `posix` | `PyInit_posix` | `posixmodule.o` | OS interface (file ops, env vars) |
+| `_io` | `PyInit__io` | `_iomodule.o` | All I/O (print, file, StringIO) |
+| `_abc` | `PyInit__abc` | `_abc.o` | Abstract base classes (used by io) |
+| `_codecs` | `PyInit__codecs` | `_codecsmodule.o` | String encoding (boot requirement) |
+| `_collections` | `PyInit__collections` | `_collectionsmodule.o` | deque, OrderedDict |
+| `_functools` | `PyInit__functools` | `_functoolsmodule.o` | lru_cache, partial |
+| `_operator` | `PyInit__operator` | `_operator.o` | operator module (used by functools) |
+| `_signal` | `PyInit__signal` | `signalmodule.o` | Signal handling (boot) |
+| `_sre` | `PyInit__sre` | `sre.o` | Regex engine (used by importlib) |
+| `_stat` | `PyInit__stat` | `_stat.o` | File stat constants |
+| `_string` | `PyInit__string` | | Formatter |
+| `_struct` | `PyInit__struct` | `_struct.o` | struct pack/unpack |
+| `_thread` | `PyInit__thread` | `_threadmodule.o` | Threading primitives |
+| `_tokenize` | `PyInit__tokenize` | | Tokenizer |
+| `_tracemalloc` | `PyInit__tracemalloc` | `_tracemalloc.o` | Memory tracing |
+| `_typing` | `PyInit__typing` | `_typingmodule.o` | Typing support |
+| `_weakref` | `PyInit__weakref` | `_weakref.o` | Weak references |
+| `atexit` | `PyInit_atexit` | `atexitmodule.o` | Exit handlers |
+| `errno` | `PyInit_errno` | `errnomodule.o` | Error numbers |
+| `faulthandler` | `PyInit_faulthandler` | `faulthandler.o` | Crash diagnostics |
+| `gc` | `PyInit_gc` | `gcmodule.o` | Garbage collector |
+| `itertools` | `PyInit_itertools` | `itertoolsmodule.o` | Iterator tools |
+| `time` | `PyInit_time` | `timemodule.o` | Time functions |
+| `_locale` | `PyInit__locale` | `_localemodule.o` | Locale (needed by codecs) |
+| `_suggestions` | `PyInit__suggestions` | `_suggestions.o` | Error suggestions |
+| `_symtable` | `PyInit__symtable` | `symtablemodule.o` | Symbol tables |
+| `_sysconfig` | `PyInit__sysconfig` | `_sysconfig.o` | Build config |
+| `_contextvars` | `PyInit__contextvars` | `_contextvarsmodule.o` | Context variables |
+
+**Removable** — extension modules not needed for boot or typical canister workloads:
+
+| Module | Object file(s) | Size | External deps (stubs needed) |
+|--------|----------------|------|------------------------------|
+| `_decimal` | `_decimal.o` | 812 KB | `mpd_*` (~100 symbols) |
+| `pyexpat` | `pyexpat.o` | 193 KB | `PyExpat_XML_*` (~50 symbols) |
+| `_elementtree` | `_elementtree.o` | 396 KB | (depends on pyexpat) |
+| `_pickle` | `_pickle.o` | 577 KB | — |
+| `_datetime` | `_datetimemodule.o` | 493 KB | — |
+| `_asyncio` | `_asynciomodule.o` | 338 KB | — |
+| `unicodedata` | `unicodedata.o` | 752 KB | — |
+| `_codecs_cn` | `_codecs_cn.o` | 152 KB | — |
+| `_codecs_hk` | `_codecs_hk.o` | 164 KB | — |
+| `_codecs_iso2022` | `_codecs_iso2022.o` | 59 KB | — |
+| `_codecs_jp` | `_codecs_jp.o` | 257 KB | — |
+| `_codecs_kr` | `_codecs_kr.o` | 142 KB | — |
+| `_codecs_tw` | `_codecs_tw.o` | 113 KB | — |
+| `_multibytecodec` | `multibytecodec.o` | 126 KB | — |
+| `_socket` | `socketmodule.o` | 225 KB | — |
+| `select` | `selectmodule.o` | 163 KB | — |
+| `_csv` | `_csv.o` | 98 KB | — |
+| `_lsprof` | `_lsprof.o` | 182 KB | — |
+| `cmath` | `cmathmodule.o` | 106 KB | — |
+| `_zoneinfo` | `_zoneinfo.o` | 129 KB | — |
+| `_blake2` | `blake2*.o` | 441 KB | — |
+| `_statistics` | `_statisticsmodule.o` | 8 KB | — |
+| `_md5` | `md5module.o` + `Hacl_Hash_MD5.o` | 209 KB | — |
+| `_sha1` | `sha1module.o` + `Hacl_Hash_SHA1.o` | 170 KB | — |
+| `_sha2` | `sha2module.o` | 173 KB | — |
+| `_sha3` | `sha3module.o` + `Hacl_Hash_SHA3.o` | 212 KB | — |
+| `math` | `mathmodule.o` | ~250 KB | — |
+| `_random` | `_randommodule.o` | ~50 KB | — |
+| `array` | `arraymodule.o` | ~200 KB | — |
+| `_bisect` | `_bisectmodule.o` | ~30 KB | — |
+| `_heapq` | `_heapqmodule.o` | ~50 KB | — |
+| `_opcode` | `_opcode.o` | ~30 KB | — |
+| `_queue` | `_queuemodule.o` | ~30 KB | — |
+| `binascii` | `binascii.o` | ~50 KB | — |
+| `_json` | `_json.o` | ~100 KB | — |
+
+**Total removable**: ~5.6 MB of object files. After LTO dead code elimination, expected
+wasm reduction: 2–4 MB.
+
+#### How to add a module back
+
+If user code needs a module that was stripped (e.g., `import datetime` fails):
+
+1. Add the module's `PyInit_*` entry to `src/cpython_config.c`
+2. If the module has external dependencies (e.g., `_decimal` needs `mpd_*`), either:
+   - Add stubs to `wasm_stubs.rs` (quick, module will import but won't work), or
+   - Include the real library in the CPython wasm build (proper fix)
+3. Rebuild
+
+#### How to remove additional modules
+
+1. Remove the `PyInit_*` entry from `src/cpython_config.c`
+2. Remove any corresponding stubs from `wasm_stubs.rs` (if they become unused)
+3. Rebuild and verify with `wasm-objdump -x` that the symbols are gone
+
+#### Cargo profile settings
+
+The `[profile.release]` in `cargotoml.py` for CPython uses aggressive optimization:
+
+```toml
+[profile.release]
+opt-level = 'z'       # optimize for size
+lto = true            # link-time optimization (critical for dead code elimination)
+incremental = false   # incompatible with LTO
+codegen-units = 1     # maximize cross-module optimization
+```
+
+**Why these matter**: Without `lto = true`, the linker cannot eliminate unused functions
+from the statically linked `libpython3.13.a`. Without `codegen-units = 1`, LLVM can't
+optimize across codegen units. These settings are the difference between a 7.4 MB and
+~4-5 MB wasm.
+
+#### Post-link optimization
+
+The build pipeline runs `wasm-opt -Oz` (from Binaryen, via `ic-wasm`) after cargo produces
+the wasm. This provides an additional ~15% size reduction through wasm-specific optimizations
+(dead code elimination, constant folding, stack-to-local, etc.).
+
+#### Diagnostic commands
+
+```bash
+# List all object files in the archive
+llvm-ar t libpython3.13.a | sort
+
+# Check which modules config.o references
+llvm-nm config.o | grep " U PyInit_"
+
+# Check object file sizes
+llvm-ar x libpython3.13.a --output=/tmp/objs && ls -lhS /tmp/objs/
+
+# Check what symbols a module needs (e.g., what _decimal.o imports)
+llvm-nm _decimal.o | grep " U "
+
+# Check final wasm exports (should not have stub functions)
+ic-wasm canister.wasm info
+
+# Use WASI SDK tools (they understand wasm object files)
+# Located at: ~/.local/share/wasi-sdk/bin/llvm-{nm,ar,objdump}
+```
+
 ## Open items
 
-1. **Rebuild CPython with modules disabled** — eliminates need for `wasm_stubs.rs`
+1. ~~Rebuild CPython with modules disabled~~ → replaced by custom `config.c` approach
 2. **Pre-built CPython wasm artifacts in CI** — avoid 30-min cross-compilation per developer
-3. **dfx deploy + runtime test** — verify the canister actually responds to queries
-4. **Performance benchmarking** — measure CPython vs RustPython on IC workloads
-5. **Complex type Candid generation** — extend source-based `.did` generator for Records/Variants
-6. **Fork/patch cdk_framework** — fix `panic!(err)` upstream instead of post-generation fixup
+3. **Performance benchmarking** — measure CPython vs RustPython on IC workloads
+4. **Complex type Candid generation** — extend source-based `.did` generator for Records/Variants
+5. **Fork/patch cdk_framework** — fix `panic!(err)` upstream instead of post-generation fixup
+6. **Module demand-loading** — explore loading stripped modules at runtime via stable memory

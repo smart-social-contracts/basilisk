@@ -13,9 +13,9 @@ edition = "2021"
 
 [profile.release]
 opt-level = 'z'
-lto = false
-incremental = true
-codegen-units = 256
+lto = true
+incremental = false
+codegen-units = 1
 
 [lib]
 crate-type = ["cdylib"]

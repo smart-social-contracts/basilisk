@@ -23,6 +23,7 @@ def build_wasm_binary_or_exit(
     copy_wasm_to_dev_location(paths, canister_name)
     run_wasi2ic_on_wasm(paths, canister_name, cargo_env, verbose)
     if python_backend == "cpython":
+        optimize_wasm(paths, canister_name, cargo_env, verbose)
         generate_candid_file_from_source(paths, verbose)
     else:
         generate_and_create_candid_file(paths, canister_name, cargo_env, verbose)
@@ -230,6 +231,25 @@ def run_wasi2ic_on_wasm(
             f"{paths['canister']}/{canister_name}.wasm",
             f"{paths['canister']}/{canister_name}.wasm",
         ],
+        cargo_env,
+        verbose,
+    )
+
+
+def optimize_wasm(
+    paths: Paths, canister_name: str, cargo_env: dict[str, str], verbose: bool
+):
+    """Run wasm-opt -Oz on the wasm binary to reduce size for IC deployment."""
+    wasm_path = f"{paths['canister']}/{canister_name}.wasm"
+    wasm_opt = shutil.which("wasm-opt")
+    if wasm_opt is None:
+        # Try cargo bin directory
+        wasm_opt = os.path.expanduser("~/.cargo/bin/wasm-opt")
+        if not os.path.exists(wasm_opt):
+            print("Warning: wasm-opt not found, skipping wasm optimization")
+            return
+    run_subprocess(
+        [wasm_opt, "-Oz", wasm_path, "-o", wasm_path],
         cargo_env,
         verbose,
     )
