@@ -5,8 +5,8 @@ async function pretest() {
     const dfxConfig = JSON.parse(readFileSync('dfx.json', 'utf-8'));
     const canisterName = Object.keys(dfxConfig.canisters)[0];
 
-    // Try regular deploy. On a system subnet with fast enough hardware,
-    // this completes within the dfx ingress timeout (~5 min).
+    // Try regular deploy. On an application subnet with DTS,
+    // this may timeout but installation continues across rounds.
     try {
         execSync('dfx deploy', { stdio: 'inherit' });
         execSync('dfx generate', { stdio: 'inherit' });
@@ -14,13 +14,13 @@ async function pretest() {
     } catch {
         console.log(
             `Deploy failed/timed out for ${canisterName}. ` +
-            'Polling for background completion on system subnet...'
+            'Polling for background completion (DTS across rounds)...'
         );
     }
 
-    // On a system subnet (no instruction limit), the IC replica continues
-    // processing install_code even after the dfx ingress timeout expires.
-    // Poll canister status until the module hash appears.
+    // With DTS (Deterministic Time Slicing), the replica splits wasm
+    // compilation across rounds. Poll canister status until the module
+    // hash appears, indicating installation completed.
     const maxWaitMs = 35 * 60 * 1000; // 35 minutes
     const pollMs = 15_000;
     const startTime = Date.now();
