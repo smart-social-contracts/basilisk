@@ -9,6 +9,11 @@ setup(
     include_package_data=True,
     packages=["basilisk"],
     install_requires=["modulegraph==0.19.3"],
+    entry_points={
+        "console_scripts": [
+            "basilisk=basilisk.cli:main",
+        ],
+    },
     long_description=Path("README.md").read_text(encoding="utf-8"),
     long_description_content_type="text/markdown",
 )
