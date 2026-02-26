@@ -198,46 +198,18 @@ def manipulate_wasm(
     python_bytes = python_source.encode("utf-8")
     method_meta_json = json.dumps(methods).encode("utf-8")
 
-    # Build the new wasm with:
-    # 1. Additional function types (for method stubs)
-    # 2. Additional functions (method stubs that call dispatcher)
-    # 3. Additional exports (canister_query/canister_update)
-    # 4. Additional data segments (Python source + method metadata)
-    #
-    # For simplicity, we use a two-pass approach:
-    # Pass 1: Count existing functions, types, etc.
-    # Pass 2: Append new sections/entries
-
-    # For now, we use a simpler approach: embed the Python source and metadata
-    # as global byte arrays that the template reads at init time, and add
-    # wrapper functions + exports for each canister method.
-
-    # Strategy: Instead of passive data segments (which require memory.init
-    # instructions that are hard to inject), we embed the data in the
-    # existing data section as active segments at a known offset, and
-    # patch the size-returning functions.
-    #
-    # Even simpler: We create a new wasm that wraps the template by
-    # appending to sections. The key insight is that we can add new
-    # exports that reference new functions which are thin wrappers
-    # calling the existing dispatcher functions.
-
-    # For the MVP, we'll use a different approach: write the Python source
-    # and metadata to files that the init code reads via WASI.
-    # But WASI file access isn't available after wasi2ic...
-    #
-    # So let's use the custom section approach: add custom sections that
-    # the Rust code reads. Actually, custom sections aren't accessible
-    # at runtime either.
-    #
-    # The correct approach: active data segments. We'll add active data
-    # segments that write the Python source and metadata to known memory
-    # locations, and patch the placeholder functions to return the correct
-    # sizes and read from those locations.
-    #
-    # Actually, the simplest correct approach for MVP:
-    # Just reconstruct the entire wasm binary, copying all existing sections
-    # and modifying/adding the ones we need.
+    # Find placeholder function indices for patching
+    placeholder_funcs = {}
+    for name in [
+        "python_source_passive_data_size",
+        "method_meta_passive_data_size",
+        "init_python_source_passive_data",
+        "init_method_meta_passive_data",
+    ]:
+        idx = find_function_index(exports, name)
+        if idx is None:
+            raise ValueError(f"Template wasm missing placeholder export: {name}")
+        placeholder_funcs[name] = idx
 
     modified_wasm = build_modified_wasm(
         wasm, sections, exports,
@@ -245,6 +217,7 @@ def manipulate_wasm(
         methods,
         query_dispatcher_idx,
         update_dispatcher_idx,
+        placeholder_funcs,
     )
 
     with open(output_wasm_path, "wb") as f:
@@ -268,52 +241,16 @@ def build_modified_wasm(
     methods: List[Dict],
     query_dispatcher_idx: int,
     update_dispatcher_idx: int,
+    placeholder_funcs: Dict[str, int],
 ) -> bytes:
     """
     Build the modified wasm binary with injected data and method exports.
 
-    For each canister method, we need to:
-    1. Add a function type: () -> () (void to void, since we use reply_raw)
-    2. Add a function that calls execute_query/update_method(index)
-    3. Add an export with the canister_query/canister_update name
-
-    For the data, we need to:
-    1. Add passive data segments containing the Python source and metadata
-    2. Make the placeholder size functions return the correct sizes
-    3. Make the placeholder init functions execute memory.init
-
-    Since modifying existing function bodies is complex, we use a simpler
-    approach for the data: add a custom "basilisk_data" section that the
-    Rust code reads, or add global variables.
-
-    MVP approach: We store the data in globals (as byte arrays encoded
-    in data segments) and patch the placeholder functions.
-
-    Actually, the cleanest MVP approach:
-    - Add the data as new active data segments
-    - The Rust code declares mutable globals for the data pointers/sizes
-    - The data segments initialize memory at __heap_base + offset
-    - The placeholder functions read from those known offsets
-
-    But this requires knowing __heap_base and coordinating memory layout.
-
-    Simplest possible approach that works:
-    - Embed data as DATA section entries (active segments at offset 0
-      in a secondary memory would work, but wasm MVP has only 1 memory)
-    - Use global variables to communicate sizes
-
-    Let me use the approach azle uses: passive data segments + memory.init.
-    This requires adding:
-    1. New data segments in the data section (passive = no memory target)
-    2. New functions that call memory.init to copy data to a buffer
-    3. Patch the size functions to return correct values
-
-    For the method stubs:
-    1. Find or add the function type for (i32) -> ()
-    2. Add new functions: each one does (i32.const INDEX, call DISPATCHER)
-    3. Add new exports: canister_query "name" -> new_func_idx
-
-    Let's build this step by step.
+    This function:
+    1. Adds passive data segments containing Python source + method metadata
+    2. Patches 4 placeholder function bodies to read from those segments
+    3. Adds method stub functions that call execute_query/update_method(index)
+    4. Adds canister_query/canister_update exports for each method
     """
 
     # ─── Step 1: Parse existing section data ─────────────────────────────
@@ -325,7 +262,6 @@ def build_modified_wasm(
     datacount_section = find_section(sections, SECTION_DATACOUNT)
     import_section = find_section(sections, SECTION_IMPORT)
 
-    # Count existing entries
     existing_type_count = 0
     if type_section:
         existing_type_count, _ = decode_unsigned_leb128(wasm, type_section.content_offset)
@@ -334,83 +270,89 @@ def build_modified_wasm(
     if func_section:
         existing_func_count, _ = decode_unsigned_leb128(wasm, func_section.content_offset)
 
-    existing_import_func_count = 0
-    if import_section:
-        offset = import_section.content_offset
-        import_count, offset = decode_unsigned_leb128(wasm, offset)
-        for _ in range(import_count):
-            # module name
-            name_len, offset = decode_unsigned_leb128(wasm, offset)
-            offset += name_len
-            # field name
-            name_len, offset = decode_unsigned_leb128(wasm, offset)
-            offset += name_len
-            # kind
-            kind = wasm[offset]
-            offset += 1
-            if kind == 0:  # function import
-                _, offset = decode_unsigned_leb128(wasm, offset)
-                existing_import_func_count += 1
-            elif kind == 1:  # table
-                offset += 1  # elemtype
-                _, offset = decode_unsigned_leb128(wasm, offset)  # limits flag
-                # This is simplified; real parsing would check limits flag
-                if wasm[offset - 1] & 1:
-                    _, offset = decode_unsigned_leb128(wasm, offset)
-            elif kind == 2:  # memory
-                flag = wasm[offset]
-                offset += 1
-                _, offset = decode_unsigned_leb128(wasm, offset)
-                if flag & 1:
-                    _, offset = decode_unsigned_leb128(wasm, offset)
-            elif kind == 3:  # global
-                offset += 1  # valtype
-                offset += 1  # mutability
-                # init expr - skip until 0x0b (end)
-                while wasm[offset] != 0x0B:
-                    offset += 1
-                offset += 1
-
+    existing_import_func_count = count_import_functions(wasm, import_section)
     total_existing_funcs = existing_import_func_count + existing_func_count
 
+    # Read existing data segment count from data section (not datacount section,
+    # which may not exist in the original wasm)
     existing_data_count = 0
-    if datacount_section:
+    if data_section:
+        existing_data_count, _ = decode_unsigned_leb128(wasm, data_section.content_offset)
+    elif datacount_section:
         existing_data_count, _ = decode_unsigned_leb128(wasm, datacount_section.content_offset)
 
-    # ─── Step 2: Determine new entries needed ────────────────────────────
+    # ─── Step 2: Determine new entries ───────────────────────────────────
 
-    # We need a function type for the method stubs: () -> ()
-    # The stubs will: i32.const <index>, call <dispatcher>, return
-    # Actually dispatcher is execute_query_method(i32) or execute_update_method(i32)
-    # which takes an i32 parameter. But canister methods take no explicit params
-    # (they read from arg_data_raw). So stub type is () -> ().
-
-    # New type: () -> ()
-    void_to_void_type = b'\x60\x00\x00'  # func type, 0 params, 0 results
-
-    # New data segments (passive)
-    new_data_segment_count = 2  # python source + method metadata
+    void_to_void_type = b'\x60\x00\x00'  # func type: () -> ()
+    new_data_segment_count = 2
     python_data_segment_idx = existing_data_count
     meta_data_segment_idx = existing_data_count + 1
-
-    # New functions: one per method
     new_func_count = len(methods)
 
-    # ─── Step 3: Rebuild wasm binary ─────────────────────────────────────
+    # Map placeholder export func indices to code section body indices
+    placeholder_code_indices = {
+        name: idx - existing_import_func_count
+        for name, idx in placeholder_funcs.items()
+    }
 
-    # We rebuild by copying sections and modifying the ones we need.
-    # Section order in wasm: type, import, func, table, memory, global,
-    #                        export, start, element, datacount, code, data
+    # ─── Step 3: Build replacement function bodies ───────────────────────
+
+    def build_size_func_body(size: int) -> bytes:
+        """Build function body for: () -> i32 { return <size>; }"""
+        body = bytearray()
+        body.extend(b'\x00')          # 0 local declarations
+        body.extend(b'\x41')          # i32.const
+        body.extend(encode_signed_leb128(size))
+        body.extend(b'\x0b')          # end
+        return bytes(body)
+
+    def build_init_func_body(segment_idx: int, size: int) -> bytes:
+        """Build function body for: (dest: i32) { memory.init seg dest 0 size; data.drop seg; }"""
+        body = bytearray()
+        body.extend(b'\x00')          # 0 local declarations
+        body.extend(b'\x20\x00')      # local.get 0 (dest pointer)
+        body.extend(b'\x41\x00')      # i32.const 0 (source offset in segment)
+        body.extend(b'\x41')          # i32.const
+        body.extend(encode_signed_leb128(size))  # size to copy
+        body.extend(b'\xfc')          # prefix byte
+        body.extend(encode_unsigned_leb128(8))   # memory.init opcode
+        body.extend(encode_unsigned_leb128(segment_idx))  # data segment index
+        body.extend(b'\x00')          # memory index (always 0)
+        body.extend(b'\xfc')          # prefix byte
+        body.extend(encode_unsigned_leb128(9))   # data.drop opcode
+        body.extend(encode_unsigned_leb128(segment_idx))  # data segment index
+        body.extend(b'\x0b')          # end
+        return bytes(body)
+
+    replacement_bodies = {
+        placeholder_code_indices["python_source_passive_data_size"]:
+            build_size_func_body(len(python_bytes)),
+        placeholder_code_indices["method_meta_passive_data_size"]:
+            build_size_func_body(len(method_meta_bytes)),
+        placeholder_code_indices["init_python_source_passive_data"]:
+            build_init_func_body(python_data_segment_idx, len(python_bytes)),
+        placeholder_code_indices["init_method_meta_passive_data"]:
+            build_init_func_body(meta_data_segment_idx, len(method_meta_bytes)),
+    }
+
+    # ─── Step 4: Rebuild wasm binary ─────────────────────────────────────
+    # Section order: type(1), import(2), func(3), table(4), memory(5),
+    # global(6), export(7), start(8), element(9), datacount(12), code(10), data(11)
+    # The datacount section is REQUIRED for memory.init/data.drop (bulk memory).
+    # If the original wasm doesn't have one, we must inject it before the code section.
+
+    total_data_count = existing_data_count + new_data_segment_count
+    has_datacount = datacount_section is not None
+    datacount_injected = False
 
     output = bytearray()
-    output.extend(b'\x00asm')  # magic
-    output.extend(struct.pack('<I', 1))  # version
+    output.extend(b'\x00asm')
+    output.extend(struct.pack('<I', 1))
 
     for section in sections:
         section_content = wasm[section.content_offset:section.content_offset + section.size]
 
         if section.section_id == SECTION_TYPE:
-            # Append the void->void type
             new_count = existing_type_count + 1
             _, first_entry_offset = decode_unsigned_leb128(wasm, section.content_offset)
             rest = wasm[first_entry_offset:section.content_offset + section.size]
@@ -418,11 +360,10 @@ def build_modified_wasm(
             write_section(output, SECTION_TYPE, new_content)
 
         elif section.section_id == SECTION_FUNCTION:
-            # Append new function type indices
             new_count = existing_func_count + new_func_count
             _, first_entry_offset = decode_unsigned_leb128(wasm, section.content_offset)
             rest = wasm[first_entry_offset:section.content_offset + section.size]
-            new_type_idx = existing_type_count  # index of our new void->void type
+            new_type_idx = existing_type_count
             new_entries = b''.join(
                 encode_unsigned_leb128(new_type_idx) for _ in range(new_func_count)
             )
@@ -430,7 +371,6 @@ def build_modified_wasm(
             write_section(output, SECTION_FUNCTION, new_content)
 
         elif section.section_id == SECTION_EXPORT:
-            # Append new canister method exports
             export_count = len(exports)
             new_export_count = export_count + len(methods)
             _, first_entry_offset = decode_unsigned_leb128(wasm, section.content_offset)
@@ -438,7 +378,6 @@ def build_modified_wasm(
             new_entries = bytearray()
             for i, method in enumerate(methods):
                 func_idx = total_existing_funcs + i
-                # Export name is "canister_query <name>" or "canister_update <name>"
                 export_name = f"canister_{method['method_type']} {method['name']}"
                 new_entries.extend(encode_name(export_name))
                 new_entries.extend(b'\x00')  # kind = function
@@ -447,68 +386,149 @@ def build_modified_wasm(
             write_section(output, SECTION_EXPORT, new_content)
 
         elif section.section_id == SECTION_DATACOUNT:
-            # Update data segment count
-            new_count = existing_data_count + new_data_segment_count
-            new_content = encode_unsigned_leb128(new_count)
-            write_section(output, SECTION_DATACOUNT, new_content)
+            # Update existing datacount section
+            write_section(output, SECTION_DATACOUNT, encode_unsigned_leb128(total_data_count))
+            datacount_injected = True
 
         elif section.section_id == SECTION_CODE:
-            # Append new function bodies (method stubs)
-            code_count = existing_func_count
-            new_code_count = code_count + new_func_count
-            _, first_entry_offset = decode_unsigned_leb128(wasm, section.content_offset)
-            rest = wasm[first_entry_offset:section.content_offset + section.size]
+            # If no datacount section existed, inject one now (before code section)
+            if not datacount_injected:
+                write_section(output, SECTION_DATACOUNT, encode_unsigned_leb128(total_data_count))
+                datacount_injected = True
 
-            new_code_entries = bytearray()
-            for i, method in enumerate(methods):
-                # Function body: i32.const <index>, call <dispatcher>, end
-                if method["method_type"] == "query":
-                    dispatcher_idx = query_dispatcher_idx
-                else:
-                    dispatcher_idx = update_dispatcher_idx
-
-                body = bytearray()
-                body.extend(b'\x00')  # 0 local declarations
-                body.extend(b'\x41')  # i32.const
-                body.extend(encode_signed_leb128(i))
-                body.extend(b'\x10')  # call
-                body.extend(encode_unsigned_leb128(dispatcher_idx))
-                body.extend(b'\x0b')  # end
-
-                # Function body is prefixed with its byte length
-                new_code_entries.extend(encode_unsigned_leb128(len(body)))
-                new_code_entries.extend(body)
-
-            new_content = encode_unsigned_leb128(new_code_count) + rest + bytes(new_code_entries)
+            new_content = rebuild_code_section(
+                wasm, section,
+                existing_func_count, new_func_count,
+                replacement_bodies,
+                methods, query_dispatcher_idx, update_dispatcher_idx,
+            )
             write_section(output, SECTION_CODE, new_content)
 
         elif section.section_id == SECTION_DATA:
-            # Append passive data segments for Python source and method metadata
             _, first_entry_offset = decode_unsigned_leb128(wasm, section.content_offset)
             rest = wasm[first_entry_offset:section.content_offset + section.size]
-            new_count = existing_data_count + new_data_segment_count
 
             new_data_entries = bytearray()
-
-            # Passive data segment for Python source
-            # Passive segment: flag=1, then data bytes
-            new_data_entries.extend(b'\x01')  # passive flag
+            # Passive data segment for Python source (flag=1 = passive)
+            new_data_entries.extend(b'\x01')
             new_data_entries.extend(encode_unsigned_leb128(len(python_bytes)))
             new_data_entries.extend(python_bytes)
-
             # Passive data segment for method metadata
-            new_data_entries.extend(b'\x01')  # passive flag
+            new_data_entries.extend(b'\x01')
             new_data_entries.extend(encode_unsigned_leb128(len(method_meta_bytes)))
             new_data_entries.extend(method_meta_bytes)
 
-            new_content = encode_unsigned_leb128(new_count) + rest + bytes(new_data_entries)
+            new_content = encode_unsigned_leb128(total_data_count) + rest + bytes(new_data_entries)
             write_section(output, SECTION_DATA, new_content)
 
         else:
-            # Copy section as-is
             write_section(output, section.section_id, section_content)
 
     return bytes(output)
+
+
+def count_import_functions(wasm: bytes, import_section: Optional[WasmSection]) -> int:
+    """Count the number of function imports in the import section."""
+    if import_section is None:
+        return 0
+
+    count = 0
+    offset = import_section.content_offset
+    import_count, offset = decode_unsigned_leb128(wasm, offset)
+
+    for _ in range(import_count):
+        # module name
+        name_len, offset = decode_unsigned_leb128(wasm, offset)
+        offset += name_len
+        # field name
+        name_len, offset = decode_unsigned_leb128(wasm, offset)
+        offset += name_len
+        # kind
+        kind = wasm[offset]
+        offset += 1
+        if kind == 0:  # function import
+            _, offset = decode_unsigned_leb128(wasm, offset)
+            count += 1
+        elif kind == 1:  # table
+            offset += 1  # elemtype
+            flags, offset = decode_unsigned_leb128(wasm, offset)
+            _, offset = decode_unsigned_leb128(wasm, offset)  # min
+            if flags & 1:
+                _, offset = decode_unsigned_leb128(wasm, offset)  # max
+        elif kind == 2:  # memory
+            flags, offset = decode_unsigned_leb128(wasm, offset)
+            _, offset = decode_unsigned_leb128(wasm, offset)  # min
+            if flags & 1:
+                _, offset = decode_unsigned_leb128(wasm, offset)  # max
+        elif kind == 3:  # global
+            offset += 1  # valtype
+            offset += 1  # mutability
+            while wasm[offset] != 0x0B:
+                offset += 1
+            offset += 1  # skip end byte
+
+    return count
+
+
+def rebuild_code_section(
+    wasm: bytes,
+    code_section: WasmSection,
+    existing_func_count: int,
+    new_func_count: int,
+    replacement_bodies: Dict[int, bytes],
+    methods: List[Dict],
+    query_dispatcher_idx: int,
+    update_dispatcher_idx: int,
+) -> bytes:
+    """
+    Rebuild the code section with patched placeholder functions and new method stubs.
+
+    Parses each existing function body individually. For functions whose code-section
+    index is in replacement_bodies, substitutes the new body. Then appends the new
+    method stub function bodies.
+    """
+    offset = code_section.content_offset
+    func_count, offset = decode_unsigned_leb128(wasm, offset)
+    assert func_count == existing_func_count
+
+    # Parse and optionally replace each existing function body
+    rebuilt_bodies = bytearray()
+    for i in range(existing_func_count):
+        body_size, offset = decode_unsigned_leb128(wasm, offset)
+        body_start = offset
+        offset += body_size
+
+        if i in replacement_bodies:
+            # Replace this function body
+            new_body = replacement_bodies[i]
+            rebuilt_bodies.extend(encode_unsigned_leb128(len(new_body)))
+            rebuilt_bodies.extend(new_body)
+        else:
+            # Copy original function body as-is
+            original_body = wasm[body_start:body_start + body_size]
+            rebuilt_bodies.extend(encode_unsigned_leb128(body_size))
+            rebuilt_bodies.extend(original_body)
+
+    # Append new method stub function bodies
+    for i, method in enumerate(methods):
+        if method["method_type"] == "query":
+            dispatcher_idx = query_dispatcher_idx
+        else:
+            dispatcher_idx = update_dispatcher_idx
+
+        body = bytearray()
+        body.extend(b'\x00')      # 0 local declarations
+        body.extend(b'\x41')      # i32.const
+        body.extend(encode_signed_leb128(i))
+        body.extend(b'\x10')      # call
+        body.extend(encode_unsigned_leb128(dispatcher_idx))
+        body.extend(b'\x0b')      # end
+
+        rebuilt_bodies.extend(encode_unsigned_leb128(len(body)))
+        rebuilt_bodies.extend(body)
+
+    new_count = existing_func_count + new_func_count
+    return encode_unsigned_leb128(new_count) + bytes(rebuilt_bodies)
 
 
 def write_section(output: bytearray, section_id: int, content: bytes) -> None:
