@@ -14,6 +14,12 @@ def build_wasm_binary_or_exit(
     paths: Paths, canister_name: str, cargo_env: dict[str, str], verbose: bool = False
 ):
     python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "rustpython")
+    use_template = os.environ.get("BASILISK_USE_TEMPLATE", "").lower() == "true"
+
+    if python_backend == "cpython" and use_template:
+        build_with_template(paths, canister_name, cargo_env, verbose)
+        return
+
     if python_backend == "cpython":
         install_cpython_wasm(paths, cargo_env, verbose)
         copy_cpython_to_canister_staging(paths, cargo_env)
@@ -27,6 +33,112 @@ def build_wasm_binary_or_exit(
         generate_candid_file_from_source(paths, verbose)
     else:
         generate_and_create_candid_file(paths, canister_name, cargo_env, verbose)
+
+
+def build_with_template(
+    paths: Paths, canister_name: str, cargo_env: dict[str, str], verbose: bool
+):
+    """Build canister using pre-compiled template wasm (azle-style pattern).
+
+    Instead of generating Rust code and running cargo build (~5-10 min),
+    this takes the pre-compiled template wasm and injects the Python source
+    + method metadata as passive data segments (~seconds).
+    """
+    from basilisk.wasm_manipulator import (
+        manipulate_wasm,
+        extract_methods_from_python,
+        generate_candid_from_methods,
+    )
+
+    # 1. Locate the pre-built template wasm
+    template_wasm_path = find_template_wasm(paths)
+    if template_wasm_path is None:
+        print(red("Template wasm not found. Building from source instead..."))
+        # Fall back to full build
+        install_cpython_wasm(paths, cargo_env, verbose)
+        copy_cpython_to_canister_staging(paths, cargo_env)
+        compile_generated_rust_code(paths, canister_name, cargo_env, verbose)
+        copy_wasm_to_dev_location(paths, canister_name)
+        run_wasi2ic_on_wasm(paths, canister_name, cargo_env, verbose)
+        optimize_wasm(paths, canister_name, cargo_env, verbose)
+        generate_candid_file_from_source(paths, verbose)
+        return
+
+    # 2. Read the user's Python source
+    python_source = read_python_source(paths)
+
+    # 3. Extract method metadata from the Python source
+    methods = extract_methods_from_python(python_source)
+    if verbose:
+        print(f"Extracted {len(methods)} canister methods from Python source")
+        for m in methods:
+            print(f"  @{m['method_type']} {m['name']}")
+
+    # 4. Inject Python source + method metadata into template wasm
+    output_wasm = f"{paths['canister']}/{canister_name}.wasm"
+    os.makedirs(os.path.dirname(output_wasm), exist_ok=True)
+    manipulate_wasm(template_wasm_path, output_wasm, python_source, methods)
+
+    # 5. Run wasm-opt to optimize
+    optimize_wasm(paths, canister_name, cargo_env, verbose)
+
+    # 6. Generate .did file from method metadata
+    candid_content = generate_candid_from_methods(methods)
+    create_file(paths["did"], candid_content)
+    if verbose:
+        print(f"Generated Candid file: {paths['did']}")
+        print(candid_content)
+
+
+def find_template_wasm(paths: Paths) -> str | None:
+    """Locate the pre-built CPython canister template wasm.
+
+    Searches in order:
+    1. BASILISK_TEMPLATE_WASM env var (explicit path)
+    2. ~/.config/basilisk/<version>/cpython_canister_template.wasm (downloaded artifact)
+    3. <compiler_dir>/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm (local build)
+    """
+    # 1. Explicit path
+    explicit = os.environ.get("BASILISK_TEMPLATE_WASM")
+    if explicit and os.path.exists(explicit):
+        return explicit
+
+    # 2. Downloaded artifact
+    artifact_path = f"{paths['global_basilisk_version_dir']}/cpython_canister_template.wasm"
+    if os.path.exists(artifact_path):
+        return artifact_path
+
+    # 3. Local build
+    compiler_dir = os.path.dirname(basilisk.__file__) + "/compiler"
+    local_path = f"{compiler_dir}/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm"
+    if os.path.exists(local_path):
+        return local_path
+
+    return None
+
+
+def read_python_source(paths: Paths) -> str:
+    """Read all bundled Python source files into a single string."""
+    python_source_dir = paths.get("python_source", "")
+    entry_file = paths.get("py_entry_file", "")
+
+    # If python_source dir exists (bundled by compile_python_or_exit), read the entry point
+    if python_source_dir and os.path.isdir(python_source_dir):
+        # Find the main Python file
+        entry_module = paths.get("py_entry_module_name", "main")
+        main_py = os.path.join(python_source_dir, f"{entry_module}.py")
+        if os.path.exists(main_py):
+            with open(main_py, "r") as f:
+                return f.read()
+
+    # Fall back to reading the original entry point file
+    if entry_file and os.path.exists(entry_file):
+        with open(entry_file, "r") as f:
+            return f.read()
+
+    raise FileNotFoundError(
+        f"Could not find Python source. Checked: {python_source_dir}, {entry_file}"
+    )
 
 
 def install_cpython_wasm(paths: Paths, cargo_env: dict[str, str], verbose: bool):

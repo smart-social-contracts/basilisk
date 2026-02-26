@@ -51,11 +51,40 @@ def main():
 
     print(f"\nBuilding canister {green(canister_name)}{verbose_mode_qualifier}\n")
 
+    python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "rustpython")
+    use_template = os.environ.get("BASILISK_USE_TEMPLATE", "").lower() == "true"
+
+    # Template mode: skip Rust codegen entirely, just bundle Python + manipulate wasm
+    if python_backend == "cpython" and use_template:
+        # Only need the canister staging dir (for output wasm) and Python source
+        os.makedirs(paths["canister"], exist_ok=True)
+
+        cargo_env = {
+            **os.environ.copy(),
+            "CARGO_TARGET_DIR": paths["global_basilisk_target_dir"],
+            "CARGO_HOME": paths["global_basilisk_rust_dir"],
+            "RUSTUP_HOME": paths["global_basilisk_rust_dir"],
+        }
+
+        # Bundle the user's Python code (no Rust codegen needed)
+        bundle_python_code(paths)
+
+        build_wasm_binary_or_exit(
+            paths,
+            canister_name,
+            cargo_env,
+            verbose=is_verbose,
+            label=f"[1/1] ⚡ Building Wasm from template...",
+        )
+
+        print(f"\n🎉 Built canister {green(canister_name)} at {dim(paths['wasm'])}")
+        return
+
+    # Standard mode: generate Rust code and compile
     # Copy all of the Rust project structure from the pip package to an area designed for Rust compiling
     if os.path.exists(paths["canister"]):
         shutil.rmtree(paths["canister"])
     shutil.copytree(paths["compiler"], paths["canister"], dirs_exist_ok=True)
-    python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "rustpython")
     create_file(f"{paths['canister']}/Cargo.toml", generate_cargo_toml(canister_name, python_backend))
     create_file(f"{paths['canister']}/Cargo.lock", generate_cargo_lock())
 
