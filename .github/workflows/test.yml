@@ -389,11 +389,11 @@ jobs:
 
             - name: Import DFX identity for IC deployment
               run: |
-                  if [ -z "${{ secrets.DFX_IDENTITY_PEM }}" ]; then
-                    echo "::error::DFX_IDENTITY_PEM secret is not set. Add the PEM file contents as a repository secret."
+                  if [ -z "${{ secrets.IC_IDENTITY_PEM }}" ]; then
+                    echo "::error::IC_IDENTITY_PEM secret is not set. Add the PEM file contents as a repository secret."
                     exit 1
                   fi
-                  echo "${{ secrets.DFX_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
                   dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext
                   rm /tmp/ci-identity.pem
                   dfx identity use ci-deploy
