@@ -30,13 +30,13 @@ def cmd_new(project_name: str):
     src_dir = project_dir / "src"
     src_dir.mkdir(parents=True)
 
-    # dfx.json
+    # dfx.json — uses template mode (fast builds) with CPython backend
     dfx_json = f"""\
 {{
     "canisters": {{
         "{project_name}": {{
             "type": "custom",
-            "build": "python -m basilisk {project_name} src/main.py",
+            "build": "BASILISK_PYTHON_BACKEND=cpython BASILISK_USE_TEMPLATE=true CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py",
             "candid": "{project_name}.did",
             "wasm": ".basilisk/{project_name}/{project_name}.wasm"
         }}
