@@ -370,11 +370,82 @@ core type in CPython's `static_types` array. Removing it causes `_PyTypes_InitTy
 → `type_ready` failure → `_PyErr_Format` infinite recursion → stack overflow →
 "heap out of bounds" trap during `canister_init`.
 
-### Current status
+### IC mainnet deployment — SOLVED (Feb 26, 2026, commit `7940ce82`)
 
-The stripped wasm (3,948,111 bytes) is right at the empirical DTS boundary but still
-times out on IC mainnet. The wasm does NOT trap — `canister_init` would succeed if
-compilation finished within the DTS budget. Further reduction is needed.
+**Final wasm size: 3,725,331 bytes (3.73MB)** — deploys and runs on IC mainnet.
+
+Canister `2i66l-saaaa-aaaas-qe3sq-cai` returns `("This is a query function")` correctly.
+
+#### The journey: what we tried and what worked
+
+The core problem was a two-sided constraint:
+
+| Configuration | IC Compilation | canister_init |
+|---|---|---|
+| `opt-level='z'`, no strip, no closed-world | Timeout (DTS exceeded) | Works |
+| `opt-level='z'` + `strip="symbols"` | Compiles | Stack overflow |
+| `opt-level='z'` + `--closed-world --converge` | Timeout (closer) | Works |
+| `opt-level='s'` + `strip="symbols"` | Compiles | Stack overflow |
+| `opt-level='z'`, no strip + **more .o removals** | **Compiles via DTS** | **Works** |
+
+**Approaches that did NOT work:**
+
+1. **`strip="symbols"`** — causes stack overflow during `Py_InitializeFromConfig` (even
+   with minimal init that skips `_Py_InitializeMain()`). The stack overflow is from IC's
+   **call stack depth limit**, not linear memory stack size. Increasing stack to 8MB via
+   `-C link-arg=-z -C link-arg=stack-size=8388608` had no effect.
+2. **`opt-level='s'` + `strip="symbols"`** — fewer functions (5,720 vs 6,268) but still
+   stack overflows. The deep call chains are baked into the pre-compiled CPython C code.
+3. **`-C llvm-args=-enable-machine-outliner=never`** — disabling LLVM's machine outliner
+   via RUSTFLAGS doesn't help because the C code in `libpython3.13.a` is already compiled.
+4. **`lto="thin"`** — produces LARGER wasm (4.04MB, 6,501 funcs) than `lto=true` (3.93MB, 6,268 funcs).
+5. **`wasm-opt --strip-debug`** — increased size.
+6. **`ic-wasm shrink`** — increased size.
+7. **Skipping `_Py_InitializeMain()`** — does NOT reduce wasm size when the full basilisk
+   shim is included (LTO doesn't DCE the IO/codec code because it's referenced elsewhere).
+
+**What DID work: removing more `.o` files with C stubs in `cpython_config.c`**
+
+Five additional module `.o` files were removed from `libpython3.13.a`, each replaced with
+a minimal C stub that satisfies the linker without pulling in the full implementation:
+
+| Module | .o file | Pre-LTO size | Rationale |
+|---|---|---|---|
+| posix (os) | `posixmodule.o` | 457 KB | IC has no POSIX filesystem. Stub includes `PyOS_FSPath`. |
+| _operator | `_operator.o` | 256 KB | C accelerator; pure Python fallback in `operator.py`. |
+| _collections | `_collectionsmodule.o` | 265 KB | C accelerator; pure Python fallback for deque/OrderedDict. |
+| _sre (regex) | `sre.o` | 334 KB | Regex engine; stubbed (user code can't use `re` module). |
+| _thread | `_threadmodule.o` | 252 KB | Threading; IC is single-threaded, no threads possible. |
+
+Combined with existing removals and `wasm-opt -Oz --closed-world --converge`, this brought
+the wasm from 3.93MB to 3.73MB — crossing the IC DTS compilation threshold.
+
+#### Deployment method
+
+```bash
+# Always clear chunk store before retrying (previous attempts leave chunks behind)
+dfx canister call aaaaa-aa clear_chunk_store \
+  '(record { canister_id = principal "CANISTER_ID" })' --network ic
+
+# Use --async-call: dfx may timeout at 5 min but DTS completes in background
+dfx canister install CANISTER_ID --wasm path/to/canister.wasm \
+  --network ic --mode reinstall --yes --async-call
+
+# Poll for completion
+dfx canister status CANISTER_ID --network ic  # check Module hash is set
+dfx canister call CANISTER_ID simple_query --network ic  # verify it works
+```
+
+#### DTS boundary empirical data
+
+| Wasm size | Functions | IC mainnet result |
+|---|---|---|
+| 3,637,436 bytes | 5,729 | Compiles + init succeeds (minimal init, no shim) |
+| 3,725,115 bytes | ~5,500 | Compiles + init succeeds (full runtime, no `_Py_InitializeMain`) |
+| 3,725,331 bytes | ~5,500 | Compiles via DTS + init succeeds (full init) |
+| 3,931,098 bytes | 6,268 | Timeout — DTS budget exceeded |
+
+The empirical DTS compilation boundary on this application subnet is approximately **3.8MB**.
 
 ### Debugging notes
 
@@ -387,14 +458,9 @@ function signatures before stubbing. E.g., `_PySignal_Init` returns `int` (not
 `PyStatus`). Wrong return type causes sret ABI mismatch → writes to random memory.
 Headers at: `~/.config/basilisk/0.7.2/cpython_wasm/include/internal/pycore_*.h`
 
-### Remaining options for IC mainnet
-
-1. **Rebuild `libpython3.13.a` with `--disable-*` flags** — strip at CPython configure level
-2. **LTO across C/Rust boundary** — use `-flto` in WASI SDK build for better dead code elimination
-3. **Strip Data section** — remove frozen bytecode modules not needed at runtime
-4. **`wasm-opt` with `--strip-debug --strip-producers --dce`** — more aggressive wasm optimization
-5. **Explore `wasm32-unknown-unknown` target** — may produce smaller wasm than `wasm32-wasip1`
-6. **Module demand-loading** — load stripped modules at runtime via stable memory
+**Chunk store errors**: If `dfx canister install` fails with "Wasm chunk store has
+already reached maximum capacity", run `clear_chunk_store` (see deployment method above).
+Each failed install attempt leaves chunks behind.
 
 ### Local replica workaround (CI)
 
@@ -416,4 +482,6 @@ handle the dfx ingress timeout (5 min) — it polls `dfx canister status` for up
 4. **Complex type Candid generation** — extend source-based `.did` generator for Records/Variants
 5. **Fork/patch cdk_framework** — fix `panic!(err)` upstream instead of post-generation fixup
 6. **Module demand-loading** — explore loading stripped modules at runtime via stable memory
-7. **Wasm size reduction for IC mainnet** — need ~200KB more reduction below 3.95MB DTS boundary
+7. ~~Wasm size reduction for IC mainnet~~ → SOLVED: 3.73MB deploys via DTS (commit `7940ce82`)
+8. **Restore stubbed modules** — `_sre` (regex), `_collections` (deque), `_operator` could be
+   restored if further size reduction is achieved elsewhere, improving Python stdlib compatibility
