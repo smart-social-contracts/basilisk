@@ -11,7 +11,8 @@ on:
             - main
         paths:
             - 'basilisk/compiler/cpython/**'
-            - 'basilisk/compiler/basilisk_cpython/src/cpython_init_helper.c'
+            - 'basilisk/compiler/basilisk_cpython/**'
+            - 'basilisk/compiler/cpython_canister_template/**'
 
 permissions:
     contents: write # Required for creating GitHub releases
@@ -90,6 +91,83 @@ jobs:
                       - `include/` — CPython headers
                       - `lib/python3.13/` — frozen stdlib modules
                   files: ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz
+                  draft: false
+                  prerelease: false
+                  make_latest: false
+
+    build-canister-template:
+        runs-on: ubuntu-latest
+        needs: build-cpython-wasm
+        timeout-minutes: 30
+        env:
+            CPYTHON_VERSION: "3.13.0"
+            WASI_SDK_VERSION: "24"
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Download CPython wasm artifact
+              uses: actions/download-artifact@v4
+              with:
+                  name: cpython-wasm32-wasip1
+                  path: ${{ runner.temp }}
+
+            - name: Extract CPython wasm
+              run: |
+                  mkdir -p ~/cpython-wasm
+                  tar xzf ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz -C ~/cpython-wasm
+
+            - name: Install WASI SDK
+              run: |
+                  curl -fLO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  sudo mkdir -p /usr/local/share/wasi-sdk
+                  sudo mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/* /usr/local/share/wasi-sdk/
+                  # Also create the symlink expected by basilisk_cpython build.rs
+                  sudo mkdir -p ~/.local/share/wasi-sdk/share
+                  sudo ln -sf /usr/local/share/wasi-sdk/share/wasi-sysroot ~/.local/share/wasi-sdk/share/wasi-sysroot
+
+            - name: Install Rust wasm32-wasip1 target
+              run: rustup target add wasm32-wasip1
+
+            - name: Install wasi2ic
+              run: cargo install wasi2ic
+
+            - name: Install wasm-opt (binaryen v116)
+              run: |
+                  curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
+                  tar xzf /tmp/binaryen.tar.gz -C /tmp
+                  sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
+                  wasm-opt --version
+
+            - name: Build canister template
+              run: |
+                  CPYTHON_WASM_DIR=~/cpython-wasm \
+                  cargo build \
+                    --manifest-path=basilisk/compiler/cpython_canister_template/Cargo.toml \
+                    --target=wasm32-wasip1 \
+                    --release
+
+            - name: Post-process template wasm
+              run: |
+                  TEMPLATE_SRC=basilisk/compiler/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm
+                  wasi2ic "$TEMPLATE_SRC" ${{ runner.temp }}/template_wasi2ic.wasm
+                  wasm-opt -Oz --closed-world --converge ${{ runner.temp }}/template_wasi2ic.wasm -o ${{ runner.temp }}/cpython_canister_template.wasm
+                  echo "Template wasm size: $(du -sh ${{ runner.temp }}/cpython_canister_template.wasm | cut -f1)"
+                  ls -la ${{ runner.temp }}/cpython_canister_template.wasm
+
+            - name: Upload template artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: cpython-canister-template
+                  path: ${{ runner.temp }}/cpython_canister_template.wasm
+                  retention-days: 90
+
+            - name: Add template to GitHub Release
+              if: github.ref == 'refs/heads/main'
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}
+                  files: ${{ runner.temp }}/cpython_canister_template.wasm
                   draft: false
                   prerelease: false
                   make_latest: false

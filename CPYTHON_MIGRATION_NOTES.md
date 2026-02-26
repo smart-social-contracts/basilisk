@@ -508,10 +508,131 @@ handle the dfx ingress timeout (5 min) — it polls `dfx canister status` for up
 {"local":{"replica":{"subnet_type":"system"}}}
 ```
 
+## 9. Canister Template Pattern (azle-style)
+
+### Problem
+
+Every CPython canister build runs `cargo build` (~5-10 minutes) even though ~95% of the
+generated Rust code is **identical** across all canisters. Only the canister method stubs
+and the user's Python source differ.
+
+### Solution: pre-built template wasm + wasm binary manipulation
+
+Inspired by [Azle](https://github.com/demergent-labs/azle)'s approach for QuickJS:
+
+1. **Pre-compile a canister template wasm** (one-time build, published as CI artifact)
+2. **Per-project: inject Python source + method metadata** via wasm binary manipulation (~seconds)
+3. **Add canister exports** (`canister_query <name>`, `canister_update <name>`) pointing to
+   generic dispatcher functions in the template
+
+### Architecture
+
+```
+┌──────────────────────────────────┐
+│   Pre-built template wasm (3.6MB)│
+│                                  │
+│  ┌─ CPython interpreter ───────┐ │
+│  │  libpython3.13.a            │ │
+│  └─────────────────────────────┘ │
+│  ┌─ basilisk runtime ─────────┐ │
+│  │  IC API (_basilisk_ic)      │ │
+│  │  Python shim (decorators)   │ │
+│  │  Type conversions (dynamic) │ │
+│  │  Async handler              │ │
+│  │  Generic method dispatch    │ │
+│  └─────────────────────────────┘ │
+│                                  │
+│  execute_query_method(i32)  ◄────┤── called by injected stubs
+│  execute_update_method(i32) ◄────┤
+│                                  │
+│  get_python_code()          ◄────┤── reads from passive data segments
+│  get_method_metadata()      ◄────┤
+└──────────────────────────────────┘
+
+Per-project injection (wasm_manipulator.py):
+  ├─ Passive data segment: Python source (UTF-8)
+  ├─ Passive data segment: Method metadata (JSON)
+  └─ Export stubs: canister_query "simple_query" → func { i32.const 0; call execute_query_method }
+```
+
+### Generic method dispatch
+
+Instead of generating typed Rust functions per canister method, the template uses **dynamic
+Candid conversion** via `candid::IDLValue`:
+
+1. `ic_cdk::api::call::arg_data_raw()` → raw Candid bytes
+2. `candid::IDLArgs::from_bytes()` → `Vec<IDLValue>`
+3. Convert each `IDLValue` to Python objects dynamically
+4. Call the named Python function via CPython C API
+5. Convert Python result back to `IDLValue` based on return type metadata
+6. `candid::IDLArgs::to_bytes()` → `ic_cdk::api::call::reply_raw()`
+
+### How to use
+
+```bash
+# Template mode (seconds instead of minutes)
+export BASILISK_PYTHON_BACKEND=cpython
+export BASILISK_USE_TEMPLATE=true
+python -m basilisk <canister_name>
+
+# Or point to a specific template wasm
+export BASILISK_TEMPLATE_WASM=/path/to/cpython_canister_template.wasm
+```
+
+The build pipeline searches for the template wasm in order:
+1. `BASILISK_TEMPLATE_WASM` env var (explicit path)
+2. `~/.config/basilisk/<version>/cpython_canister_template.wasm` (downloaded artifact)
+3. `compiler/cpython_canister_template/target/wasm32-wasip1/release/` (local build)
+
+If not found, it falls back to the standard per-project Cargo build.
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `basilisk/compiler/cpython_canister_template/` | Rust crate for the template wasm |
+| `basilisk/compiler/cpython_canister_template/src/lib.rs` | Canister lifecycle (init/post_upgrade) |
+| `basilisk/compiler/cpython_canister_template/src/method_dispatch.rs` | Generic method dispatch via dynamic Candid |
+| `basilisk/compiler/cpython_canister_template/src/wasm_data.rs` | Passive data segment reading |
+| `basilisk/compiler/cpython_canister_template/src/python_init.rs` | CPython init + basilisk Python shim |
+| `basilisk/compiler/cpython_canister_template/src/ic_api.rs` | _basilisk_ic CPython module (29 IC API functions) |
+| `basilisk/compiler/cpython_canister_template/src/async_handler.rs` | Cross-canister call handler |
+| `basilisk/wasm_manipulator.py` | Wasm binary manipulation (inject data + exports) |
+| `.github/workflows/build-cpython-wasm.yml` | CI: builds template + publishes as release artifact |
+
+### Building the template locally
+
+```bash
+# Requires: wasm32-wasip1 target, WASI SDK, libpython3.13.a
+CPYTHON_WASM_DIR=~/.config/basilisk/0.7.2/cpython_wasm \
+  cargo build --manifest-path=basilisk/compiler/cpython_canister_template/Cargo.toml \
+  --target=wasm32-wasip1 --release
+
+# Post-process (wasi2ic + wasm-opt)
+wasi2ic target/wasm32-wasip1/release/cpython_canister_template.wasm template_ic.wasm
+wasm-opt -Oz --closed-world --converge template_ic.wasm -o cpython_canister_template.wasm
+```
+
+### Size comparison
+
+| Build mode | Build time | Wasm size |
+|------------|-----------|-----------|
+| Per-project Cargo build | ~5-10 min | 3.73 MB |
+| Template + wasm manipulation | ~seconds | 3.6 MB + ~200 bytes per method |
+
+### Limitations
+
+- **Cross-canister typed calls** (`call`, `call_with_payment`) are not supported in template
+  mode — use `call_raw` / `call_raw128` instead
+- **Complex Candid types** (nested records, variants) in method signatures may need the type
+  metadata extended beyond simple type strings
+- **User-defined Candid types** (Records, Variants via `@dataclass`) require additional AST
+  parsing in `extract_methods_from_python()`
+
 ## Open items
 
 1. ~~Rebuild CPython with modules disabled~~ → replaced by custom `config.c` approach
-2. **Pre-built CPython wasm artifacts in CI** — avoid 30-min cross-compilation per developer
+2. ~~Pre-built CPython wasm artifacts in CI~~ → template build added to `build-cpython-wasm.yml`
 3. **Performance benchmarking** — measure CPython vs RustPython on IC workloads
 4. **Complex type Candid generation** — extend source-based `.did` generator for Records/Variants
 5. **Fork/patch cdk_framework** — fix `panic!(err)` upstream instead of post-generation fixup
@@ -519,3 +640,5 @@ handle the dfx ingress timeout (5 min) — it polls `dfx canister status` for up
 7. ~~Wasm size reduction for IC mainnet~~ → SOLVED: 3.73MB deploys via DTS (commit `7940ce82`)
 8. **Restore stubbed modules** — `_sre` (regex), `_collections` (deque), `_operator` could be
    restored if further size reduction is achieved elsewhere, improving Python stdlib compatibility
+9. **Template: end-to-end test** — deploy a template-built canister to local replica and verify
+10. **Template: download artifact in install script** — auto-download template wasm from GitHub releases
