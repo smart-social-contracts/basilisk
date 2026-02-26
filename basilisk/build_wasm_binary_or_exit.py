@@ -79,10 +79,14 @@ def build_with_template(
     os.makedirs(os.path.dirname(output_wasm), exist_ok=True)
     manipulate_wasm(template_wasm_path, output_wasm, python_source, methods)
 
-    # 5. Run wasm-opt to optimize
+    # 5. Run wasi2ic to convert WASI imports to IC system calls
+    # (The published artifact is already wasi2ic'd, but local builds are not)
+    run_wasi2ic_on_wasm(paths, canister_name, cargo_env, verbose)
+
+    # 6. Run wasm-opt to optimize
     optimize_wasm(paths, canister_name, cargo_env, verbose)
 
-    # 6. Generate .did file from method metadata
+    # 7. Generate .did file from method metadata
     candid_content = generate_candid_from_methods(methods)
     create_file(paths["did"], candid_content)
     if verbose:
