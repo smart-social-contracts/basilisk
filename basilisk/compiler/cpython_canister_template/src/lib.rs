@@ -59,7 +59,7 @@ fn rng_seed() {
         let result: ic_cdk::api::call::CallResult<(Vec<u8>,)> =
             ic_cdk::api::management_canister::main::raw_rand().await;
         match result {
-            Ok((randomness,)) => ic_wasi_polyfill::init_seed(&randomness.0),
+            Ok((randomness,)) => ic_wasi_polyfill::init_seed(&randomness),
             Err(err) => panic!("{:?}", err),
         };
     });

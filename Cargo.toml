@@ -4,5 +4,5 @@ members = [
     "basilisk/compiler/basilisk_generate",
     "basilisk/compiler/basilisk_vm_value_derive",
 ]
-exclude = ["examples"]
+exclude = ["examples", "basilisk/compiler/cpython_canister_template"]
 edition = "2018"

@@ -76,14 +76,24 @@ pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyEr
             ));
         }
 
-        // Register in sys.modules
-        let sys_modules = ffi::PyImport_GetModuleDict();
-        if !sys_modules.is_null() {
-            ffi::PyDict_SetItemString(
-                sys_modules,
-                b"_basilisk_ic\0".as_ptr() as *const core::ffi::c_char,
-                module,
+        // Register in sys.modules via Python code
+        let sys_import = ffi::PyImport_ImportModule(
+            b"sys\0".as_ptr() as *const core::ffi::c_char,
+        );
+        if !sys_import.is_null() {
+            let modules = ffi::PyObject_GetAttrString(
+                sys_import,
+                b"modules\0".as_ptr() as *const core::ffi::c_char,
             );
+            if !modules.is_null() {
+                ffi::PyDict_SetItemString(
+                    modules,
+                    b"_basilisk_ic\0".as_ptr() as *const core::ffi::c_char,
+                    module,
+                );
+                ffi::Py_DecRef(modules);
+            }
+            ffi::Py_DecRef(sys_import);
         }
 
         PyObjectRef::from_owned(module)

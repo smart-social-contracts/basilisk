@@ -161,10 +161,7 @@ fn idl_value_to_python(
             .map_err(|e| e.to_rust_err_string()),
         IDLValue::Blob(bytes) => basilisk_cpython::PyObjectRef::from_bytes(bytes)
             .map_err(|e| e.to_rust_err_string()),
-        IDLValue::Opt(inner) => match inner.as_ref() {
-            None => Ok(basilisk_cpython::PyObjectRef::none()),
-            Some(v) => idl_value_to_python(v),
-        },
+        IDLValue::Opt(inner) => idl_value_to_python(inner.as_ref()),
         IDLValue::Vec(items) => {
             let py_items: Result<Vec<_>, _> =
                 items.iter().map(|item| idl_value_to_python(item)).collect();
@@ -338,11 +335,11 @@ fn python_to_idl_value(
         }
         other if other.starts_with("opt ") => {
             if obj.is_none() {
-                Ok(candid::IDLValue::Opt(Box::new(None)))
+                Ok(candid::IDLValue::Null)
             } else {
                 let inner_type = &other[4..];
                 let inner = python_to_idl_value(obj, inner_type)?;
-                Ok(candid::IDLValue::Opt(Box::new(Some(inner))))
+                Ok(candid::IDLValue::Opt(Box::new(inner)))
             }
         }
         other if other.starts_with("vec ") => {
