@@ -275,7 +275,11 @@ jobs:
                   mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
 
             - name: Install wasm-opt (binaryen)
-              run: sudo apt-get install -y binaryen
+              run: |
+                  curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
+                  tar xzf /tmp/binaryen.tar.gz -C /tmp
+                  sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
+                  wasm-opt --version
 
             - name: Pre-download CPython wasm
               run: |
@@ -359,7 +363,11 @@ jobs:
                   mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
 
             - name: Install wasm-opt (binaryen)
-              run: sudo apt-get install -y binaryen
+              run: |
+                  curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
+                  tar xzf /tmp/binaryen.tar.gz -C /tmp
+                  sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
+                  wasm-opt --version
 
             - name: Pre-download CPython wasm
               run: |
