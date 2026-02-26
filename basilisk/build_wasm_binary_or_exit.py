@@ -249,7 +249,7 @@ def optimize_wasm(
             print("Warning: wasm-opt not found, skipping wasm optimization")
             return
     run_subprocess(
-        [wasm_opt, "-Oz", wasm_path, "-o", wasm_path],
+        [wasm_opt, "-Oz", "--closed-world", "--converge", wasm_path, "-o", wasm_path],
         cargo_env,
         verbose,
     )

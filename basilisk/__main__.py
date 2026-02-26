@@ -66,7 +66,6 @@ def main():
         "CARGO_HOME": paths["global_basilisk_rust_dir"],
         "RUSTUP_HOME": paths["global_basilisk_rust_dir"],
     }
-
     if not os.path.exists(paths["global_basilisk_bin_dir"]):
         os.makedirs(paths["global_basilisk_bin_dir"])
 

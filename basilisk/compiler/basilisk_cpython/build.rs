@@ -273,9 +273,33 @@ fn build_trimmed_libpython(lib_dir: &std::path::Path, include_dir: &std::path::P
         // --- Small non-essential core .o files ---
         "perf_trampoline.o",    // Linux perf support (not available on IC)
         "rotatingtree.o",       // profiling tree (only used by removed _lsprof)
+        // --- Safe .o file removals (bisected Feb 26, 2026) ---
+        "dynload_shlib.o",      // dlopen-based module loading (N/A on WASI)
+        "frozenmain.o",         // Py_FrozenMain (not used by canister)
+        "main.o",               // Py_Main / Py_BytesMain (not used by canister)
+        "myreadline.o",         // readline (N/A on IC)
+        "file_tokenizer.o",     // file-based tokenizer (we use string-based)
+        "parking_lot.o",        // thread sync primitives (single-threaded on IC)
+        // legacy_tracing.o — DO NOT REMOVE: causes heap OOB (ceval state)
+        // --- CJK codecs (not needed on IC) ---
+        "_codecs_jp.o",
+        "_codecs_kr.o",
+        "_codecs_cn.o",
+        "_codecs_tw.o",
+        "_codecs_hk.o",
+        // --- Other non-essential modules ---
+        "_statisticsmodule.o",  // _statistics (C accelerator for statistics module)
+        "dup2.o",               // dup2 emulation (not needed on WASI)
+        // --- Module .o removals with stubs in cpython_config.c ---
+        "posixmodule.o",        // posix/os module (457K, stubbed — IC has no POSIX)
+        "_operator.o",          // _operator C accelerator (256K, pure Python fallback)
+        "_collectionsmodule.o", // _collections C accelerator (265K, pure Python fallback)
+        "sre.o",                // _sre regex engine (334K, stubbed)
+        "_threadmodule.o",      // _thread module (252K, stubbed — IC is single-threaded)
         // NOTE: Do NOT remove core .o files (hamt.o, crossinterp.o, tracemalloc.o,
         // suggestions.o, odictobject.o) — they are referenced during Py_Initialize
         // and stubbing them causes 'heap out of bounds' traps.
+        // NOTE: Do NOT remove picklebufobject.o — core type in static_types.
     ];
     for obj in &remove_objects {
         let status = std::process::Command::new(&ar)

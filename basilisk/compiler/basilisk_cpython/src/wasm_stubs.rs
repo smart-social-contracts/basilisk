@@ -304,6 +304,27 @@ xml_stub_ptr!(PyExpat_XML_GetInputContext, parser: *mut u8, offset: *mut i32, si
 // return ABI on wasm32 (clang sret vs Rust multi-value returns).
 
 // ---------------------------------------------------------------------------
+// Removed .o file stubs — bisecting for heap OOB cause
+// ---------------------------------------------------------------------------
+
+// dynload_shlib.o — shared library loading (N/A on WASI)
+#[no_mangle] pub unsafe extern "C" fn _PyImport_FindSharedFuncptr(_prefix: *const u8, _shortname: *const u8, _pathname: *const u8, _fqname: *const u8) -> *mut u8 { NULL }
+
+// myreadline.o — readline (N/A on IC)
+#[no_mangle] pub unsafe extern "C" fn PyOS_Readline(_stdin: *mut u8, _stdout: *mut u8, _prompt: *const u8) -> *mut u8 { NULL }
+
+// file_tokenizer.o — file-based tokenizer (N/A on IC)
+#[no_mangle] pub unsafe extern "C" fn _PyTokenizer_FromFile(_fp: *mut u8, _enc: *const u8, _enc2: *const u8, _enc3: *const u8) -> *mut u8 { NULL }
+#[no_mangle] pub unsafe extern "C" fn _PyTokenizer_FindEncodingFilename(_fd: i32, _filename: *mut u8) -> *mut u8 { NULL }
+
+// parking_lot.o — thread sync primitives (single-threaded on IC)
+#[no_mangle] pub unsafe extern "C" fn _PyParkingLot_Park(_address: *const u8, _expected: *const u8, _size: usize, _timeout_ns: i64, _park_arg: *mut u8, _detach: i32) -> i32 { 0 }
+#[no_mangle] pub unsafe extern "C" fn _PyParkingLot_Unpark(_address: *const u8, _fn: *mut u8, _arg: *mut u8) {}
+#[no_mangle] pub unsafe extern "C" fn _PyParkingLot_UnparkAll(_address: *const u8) {}
+
+// legacy_tracing.o — DO NOT REMOVE: causes heap OOB (ceval state corruption)
+
+// ---------------------------------------------------------------------------
 // _hashlib — HACL* cryptographic hash stubs
 // ---------------------------------------------------------------------------
 
