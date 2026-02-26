@@ -243,6 +243,8 @@ jobs:
                     - "examples/motoko_examples/echo"
                     - "examples/motoko_examples/hello"
                     - "examples/motoko_examples/factorial"
+                    - "examples/motoko_examples/hello-world"
+                    - "examples/motoko_examples/counter"
         steps:
             - uses: actions/checkout@v3
             - uses: actions/setup-node@v3
@@ -387,6 +389,10 @@ jobs:
 
             - name: Import DFX identity for IC deployment
               run: |
+                  if [ -z "${{ secrets.DFX_IDENTITY_PEM }}" ]; then
+                    echo "::error::DFX_IDENTITY_PEM secret is not set. Add the PEM file contents as a repository secret."
+                    exit 1
+                  fi
                   echo "${{ secrets.DFX_IDENTITY_PEM }}" > /tmp/ci-identity.pem
                   dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext
                   rm /tmp/ci-identity.pem
@@ -402,14 +408,54 @@ jobs:
 
             - name: Deploy to IC mainnet
               working-directory: examples/query
-              timeout-minutes: 10
+              timeout-minutes: 15
               run: |
-                  dfx deploy query --network ic --yes
+                  CANISTER_ID="2i66l-saaaa-aaaas-qe3sq-cai"
+                  WASM_FILE=".basilisk/query/query.wasm"
+
+                  if [ ! -f "${WASM_FILE}" ]; then
+                    echo "::error::Wasm file not found at ${WASM_FILE}"
+                    exit 1
+                  fi
+                  echo "Wasm size: $(wc -c < "${WASM_FILE}") bytes"
+
+                  # Clear any leftover chunks from previous attempts
+                  dfx canister call aaaaa-aa clear_chunk_store \
+                    "(record { canister_id = principal \"${CANISTER_ID}\" })" \
+                    --network ic --identity ci-deploy 2>/dev/null || true
+
+                  # Install with --async-call: dfx may timeout but DTS completes in background
+                  dfx canister install "${CANISTER_ID}" \
+                    --wasm "${WASM_FILE}" \
+                    --network ic --mode reinstall --yes \
+                    --async-call --identity ci-deploy || true
+
+                  # Poll for completion (up to 10 minutes)
+                  for i in $(seq 1 20); do
+                    sleep 30
+                    STATUS=$(dfx canister status "${CANISTER_ID}" --network ic --identity ci-deploy 2>&1 || true)
+                    if echo "$STATUS" | grep -q "Module hash: 0x"; then
+                      echo "Canister installed after $((i * 30))s"
+                      exit 0
+                    fi
+                    echo "Waiting for wasm installation... ($((i * 30))s)"
+                  done
+
+                  echo "::error::Canister did not install within 10 minutes"
+                  exit 1
 
             - name: Verify deployment
               working-directory: examples/query
               run: |
-                  dfx canister call query simple_query --network ic
+                  CANISTER_ID="2i66l-saaaa-aaaas-qe3sq-cai"
+                  RESULT=$(dfx canister call "${CANISTER_ID}" simple_query --network ic --identity ci-deploy 2>&1)
+                  echo "Result: ${RESULT}"
+                  if echo "${RESULT}" | grep -q "This is a query function"; then
+                    echo "Deployment verified successfully"
+                  else
+                    echo "::error::Unexpected query result: ${RESULT}"
+                    exit 1
+                  fi
 
     check-basic-integration-tests-success:
         needs: [basic-integration-tests, cpython-integration-tests, cpython-ic-deploy]
