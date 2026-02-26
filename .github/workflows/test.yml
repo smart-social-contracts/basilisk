@@ -404,7 +404,7 @@ jobs:
               timeout-minutes: 10
               run: |
                   source venv/bin/activate
-                  python -m basilisk query src/main.py
+                  CANISTER_CANDID_PATH=query.did python -m basilisk query src/main.py
 
             - name: Deploy to IC mainnet
               working-directory: examples/query
