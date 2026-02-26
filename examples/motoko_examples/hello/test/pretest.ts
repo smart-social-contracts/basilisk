@@ -21,7 +21,7 @@ async function pretest() {
     // On a system subnet (no instruction limit), the IC replica continues
     // processing install_code even after the dfx ingress timeout expires.
     // Poll canister status until the module hash appears.
-    const maxWaitMs = 20 * 60 * 1000; // 20 minutes
+    const maxWaitMs = 35 * 60 * 1000; // 35 minutes
     const pollMs = 15_000;
     const startTime = Date.now();
 
@@ -43,7 +43,7 @@ async function pretest() {
     }
 
     throw new Error(
-        `Canister ${canisterName} did not install within 20 minutes`
+        `Canister ${canisterName} did not install within 35 minutes`
     );
 }
 
