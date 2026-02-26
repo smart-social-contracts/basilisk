@@ -5,8 +5,8 @@ async function pretest() {
     const dfxConfig = JSON.parse(readFileSync('dfx.json', 'utf-8'));
     const canisterName = Object.keys(dfxConfig.canisters)[0];
 
-    // Try regular deploy. On an application subnet with DTS,
-    // this may timeout but installation continues across rounds.
+    // Try regular deploy. On a system subnet (no instruction limit),
+    // this may timeout but PocketIC continues compiling in the background.
     try {
         execSync('dfx deploy', { stdio: 'inherit' });
         execSync('dfx generate', { stdio: 'inherit' });
@@ -14,14 +14,14 @@ async function pretest() {
     } catch {
         console.log(
             `Deploy failed/timed out for ${canisterName}. ` +
-            'Polling for background completion (DTS across rounds)...'
+            'Polling for background completion on system subnet...'
         );
     }
 
-    // With DTS (Deterministic Time Slicing), the replica splits wasm
-    // compilation across rounds. Poll canister status until the module
-    // hash appears, indicating installation completed.
-    const maxWaitMs = 35 * 60 * 1000; // 35 minutes
+    // On a system subnet (no instruction limit), PocketIC compiles the
+    // wasm in a single round which can take 30-60 min on slow CI runners.
+    // Poll canister status until the module hash appears.
+    const maxWaitMs = 60 * 60 * 1000; // 60 minutes
     const pollMs = 15_000;
     const startTime = Date.now();
 
@@ -43,7 +43,7 @@ async function pretest() {
     }
 
     throw new Error(
-        `Canister ${canisterName} did not install within 35 minutes`
+        `Canister ${canisterName} did not install within 60 minutes`
     );
 }
 
