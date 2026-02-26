@@ -47,11 +47,38 @@ def cmd_new(project_name: str):
 
     # src/main.py
     main_py = """\
-from basilisk import query, text
+from basilisk import query, update, text, nat64, ic
+
+# A simple counter stored in a global variable.
+# State persists across calls but resets on canister upgrade.
+counter = 0
 
 @query
 def greet(name: text) -> text:
-    return f"Hello, {name}!"
+    \"\"\"Return a greeting message.\"\"\"
+    return f"Hello, {name}! The counter is at {counter}."
+
+@query
+def get_counter() -> nat64:
+    \"\"\"Read the current counter value.\"\"\"
+    return counter
+
+@update
+def increment() -> nat64:
+    \"\"\"Increment the counter and return the new value.\"\"\"
+    global counter
+    counter += 1
+    return counter
+
+@query
+def get_time() -> nat64:
+    \"\"\"Return the current IC timestamp in nanoseconds.\"\"\"
+    return ic.time()
+
+@query
+def whoami() -> text:
+    \"\"\"Return the caller's principal ID.\"\"\"
+    return str(ic.caller())
 """
     (src_dir / "main.py").write_text(main_py)
 
@@ -65,7 +92,7 @@ node_modules/
 
     print(f"""
 Done! Created {project_name}/
-  src/main.py    — your canister code
+  src/main.py    — your canister code (query + update examples)
   dfx.json       — IC project config
 
 Next steps:
@@ -73,6 +100,8 @@ Next steps:
   dfx start --background
   dfx deploy
   dfx canister call {project_name} greet '("World")'
+  dfx canister call {project_name} increment
+  dfx canister call {project_name} get_counter
 """)
 
 
