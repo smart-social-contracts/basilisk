@@ -187,7 +187,40 @@ class CallResult:
         self.Err = err
 _mod.CallResult = CallResult
 
-# === IC API wrappers ===
+# === ic class (wraps _basilisk_ic as static methods) ===
+class ic:
+    accept_message = staticmethod(_basilisk_ic.accept_message)
+    arg_data_raw = staticmethod(_basilisk_ic.arg_data_raw)
+    arg_data_raw_size = staticmethod(_basilisk_ic.arg_data_raw_size)
+    caller = staticmethod(_basilisk_ic.caller)
+    canister_balance = staticmethod(_basilisk_ic.canister_balance)
+    canister_balance128 = staticmethod(_basilisk_ic.canister_balance128)
+    candid_decode = staticmethod(_basilisk_ic.candid_decode)
+    candid_encode = staticmethod(_basilisk_ic.candid_encode)
+    data_certificate = staticmethod(_basilisk_ic.data_certificate)
+    id = staticmethod(_basilisk_ic.id)
+    method_name = staticmethod(_basilisk_ic.method_name)
+    msg_cycles_available = staticmethod(_basilisk_ic.msg_cycles_available)
+    msg_cycles_available128 = staticmethod(_basilisk_ic.msg_cycles_available128)
+    msg_cycles_refunded = staticmethod(_basilisk_ic.msg_cycles_refunded)
+    msg_cycles_refunded128 = staticmethod(_basilisk_ic.msg_cycles_refunded128)
+    msg_cycles_accept = staticmethod(_basilisk_ic.msg_cycles_accept)
+    msg_cycles_accept128 = staticmethod(_basilisk_ic.msg_cycles_accept128)
+    performance_counter = staticmethod(_basilisk_ic.performance_counter)
+    print = staticmethod(_basilisk_ic.print)
+    reject = staticmethod(_basilisk_ic.reject)
+    reject_code = staticmethod(_basilisk_ic.reject_code)
+    reject_message = staticmethod(_basilisk_ic.reject_message)
+    reply_raw = staticmethod(_basilisk_ic.reply_raw)
+    set_certified_data = staticmethod(_basilisk_ic.set_certified_data)
+    stable_bytes = staticmethod(_basilisk_ic.stable_bytes)
+    stable_size = staticmethod(_basilisk_ic.stable_size)
+    stable64_size = staticmethod(_basilisk_ic.stable64_size)
+    time = staticmethod(_basilisk_ic.time)
+    trap = staticmethod(_basilisk_ic.trap)
+_mod.ic = ic
+
+# Also expose IC functions directly on the module for backwards compatibility
 _mod.accept_message = _basilisk_ic.accept_message
 _mod.arg_data_raw = _basilisk_ic.arg_data_raw
 _mod.arg_data_raw_size = _basilisk_ic.arg_data_raw_size
@@ -220,7 +253,8 @@ _mod.candid_encode = _basilisk_ic.candid_encode
 
 _sys.modules["basilisk"] = _mod
 
-# Make Principal available at top level for user code
+# Make key classes available at top level for user code
 Principal = _mod.Principal
 CallResult = _mod.CallResult
+ic = _mod.ic
 "#;

@@ -2,8 +2,9 @@
 Basilisk CLI — scaffold and build IC canister projects in Python.
 
 Usage:
-    basilisk new <project_name>    Create a new canister project
+    basilisk new [--backend cpython|rustpython] <project_name>
     basilisk build                 Build the canister in the current directory
+    basilisk --version             Print version
 """
 
 import os
@@ -11,7 +12,7 @@ import sys
 from pathlib import Path
 
 
-def cmd_new(project_name: str):
+def cmd_new(project_name: str, backend: str = "cpython"):
     """Scaffold a new basilisk canister project."""
     project_dir = Path(project_name)
 
@@ -24,19 +25,28 @@ def cmd_new(project_name: str):
         print(f"Error: '{project_name}' is not a valid project name. Use alphanumeric, dashes, and underscores.", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Creating new basilisk project: {project_name}")
+    if backend not in ("cpython", "rustpython"):
+        print(f"Error: unknown backend '{backend}'. Use 'cpython' or 'rustpython'.", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Creating new basilisk project: {project_name} (backend: {backend})")
 
     # Create directory structure
     src_dir = project_dir / "src"
     src_dir.mkdir(parents=True)
 
-    # dfx.json — uses template mode (fast builds) with CPython backend
+    # Build command depends on backend
+    if backend == "cpython":
+        build_cmd = f"BASILISK_PYTHON_BACKEND=cpython BASILISK_USE_TEMPLATE=true CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
+    else:
+        build_cmd = f"CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
+
     dfx_json = f"""\
 {{
     "canisters": {{
         "{project_name}": {{
             "type": "custom",
-            "build": "BASILISK_PYTHON_BACKEND=cpython BASILISK_USE_TEMPLATE=true CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py",
+            "build": "{build_cmd}",
             "candid": "{project_name}.did",
             "wasm": ".basilisk/{project_name}/{project_name}.wasm"
         }}
@@ -90,10 +100,11 @@ node_modules/
 """
     (project_dir / ".gitignore").write_text(gitignore)
 
+    build_note = "⚡ fast template build" if backend == "cpython" else "🔨 full Rust build (~5-10 min first time)"
     print(f"""
-Done! Created {project_name}/
+Done! Created {project_name}/ ({build_note})
   src/main.py    — your canister code (query + update examples)
-  dfx.json       — IC project config
+  dfx.json       — IC project config (backend: {backend})
 
 Next steps:
   cd {project_name}
@@ -156,10 +167,21 @@ def main():
     command = sys.argv[1]
 
     if command == "new":
-        if len(sys.argv) < 3:
-            print("Usage: basilisk new <project_name>", file=sys.stderr)
+        # Parse --backend flag
+        args = sys.argv[2:]
+        backend = "cpython"  # default
+        if "--backend" in args:
+            idx = args.index("--backend")
+            if idx + 1 >= len(args):
+                print("Error: --backend requires a value (cpython or rustpython)", file=sys.stderr)
+                sys.exit(1)
+            backend = args[idx + 1]
+            args = args[:idx] + args[idx + 2:]
+
+        if len(args) < 1:
+            print("Usage: basilisk new [--backend cpython|rustpython] <project_name>", file=sys.stderr)
             sys.exit(1)
-        cmd_new(sys.argv[2])
+        cmd_new(args[0], backend)
 
     elif command == "build":
         cmd_build()
