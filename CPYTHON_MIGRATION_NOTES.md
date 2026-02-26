@@ -4,6 +4,40 @@ This document records the design decisions, fixes, and open items for the CPytho
 (`BASILISK_PYTHON_BACKEND=cpython`), which replaces the RustPython interpreter with CPython 3.13
 compiled to `wasm32-wasip1`.
 
+## TL;DR — How a Python canister gets built and deployed
+
+1. **CPython is cross-compiled once** — The standard CPython 3.13 C source code is compiled
+   using the WASI SDK (a clang-based toolchain) to produce `libpython3.13.a`, a static library
+   targeting `wasm32-wasip1`. This is a ~30-minute build done once and published as a
+   [pre-built artifact](https://github.com/smart-social-contracts/basilisk/releases/tag/cpython-wasm-3.13.0)
+   so developers don't have to rebuild it.
+
+2. **Basilisk generates a Rust canister** — When you run `python -m basilisk <name>`, basilisk
+   reads your Python source, generates Rust code that wraps each `@query`/`@update` function,
+   and produces a Cargo project. This Rust code uses FFI to call into CPython: it initializes
+   the interpreter, loads your Python code, and translates Candid arguments to/from Python objects.
+
+3. **Everything gets linked into one `.wasm`** — Cargo compiles the generated Rust code and
+   statically links it with `libpython3.13.a`. The result is a single WebAssembly binary
+   (~3.7 MB) that contains both the CPython interpreter and your Python application. Post-processing
+   tools (`wasi2ic`, `wasm-opt`) convert WASI imports to IC system calls and optimize for size.
+
+4. **Deploying to the local replica** — `dfx deploy` sends the `.wasm` to a local IC replica.
+   The replica compiles the wasm to native code and runs `canister_init`, which boots CPython
+   and executes your Python source. On a **system subnet** (used in CI/dev), there is no
+   instruction limit, but the 5-minute dfx timeout may expire before compilation finishes —
+   the pretest scripts poll `dfx canister status` until the module hash appears.
+
+5. **Deploying to IC mainnet** — The same `.wasm` is uploaded to a real IC subnet. Mainnet uses
+   **Deterministic Time Slicing (DTS)**, which splits wasm compilation across multiple rounds.
+   The empirical limit is ~3.8 MB; our 3.73 MB binary fits. We use `dfx canister install --async-call`
+   because dfx may timeout, but DTS completes the installation in the background.
+
+6. **At runtime** — When someone calls a canister method, the Rust glue deserializes the Candid
+   arguments, calls the corresponding Python function via CPython's C API, and serializes the
+   return value back to Candid. The CPython interpreter lives in linear memory for the lifetime
+   of the canister.
+
 ## Overview
 
 | Aspect | RustPython (default) | CPython |
