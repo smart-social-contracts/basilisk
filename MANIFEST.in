@@ -1,0 +1,8 @@
+recursive-include basilisk/compiler *.py *.rs *.toml *.c *.h *.sh *.json *.wasm *.a
+recursive-include basilisk/canisters *.py *.did
+include basilisk/py.typed
+recursive-exclude basilisk/compiler/*/target *
+recursive-exclude basilisk/compiler/*/.basilisk *
+prune basilisk/compiler/cpython_canister_template/target
+prune basilisk/compiler/basilisk_cpython/target
+prune basilisk/compiler/basilisk_generate/target
