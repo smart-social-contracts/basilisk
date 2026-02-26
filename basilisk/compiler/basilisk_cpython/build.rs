@@ -65,6 +65,17 @@ fn main() {
     if init_helper_src.exists() {
         compile_c_init_helper(&init_helper_src, &include_dir);
         println!("cargo:rerun-if-changed={}", init_helper_src.display());
+
+        // Export placeholder functions defined in C so the wasm manipulator
+        // can find them by name and patch their bodies at build time.
+        for sym in &[
+            "python_source_passive_data_size",
+            "method_meta_passive_data_size",
+            "init_python_source_passive_data",
+            "init_method_meta_passive_data",
+        ] {
+            println!("cargo:rustc-link-arg=--export={sym}");
+        }
     }
 
     // Build a trimmed copy of libpython3.13.a with a custom config.o that
@@ -127,12 +138,15 @@ fn compile_c_init_helper(src: &std::path::Path, include_dir: &std::path::Path) {
     let lib_path = out_dir.join("libcpython_init_helper.a");
 
     // Compile .c → .o
+    // -fno-lto prevents clang from embedding LLVM bitcode, which would let
+    // Rust's cross-language LTO inline the placeholder functions.
     let status = std::process::Command::new(clang)
         .args([
             "-c", &src.to_string_lossy(),
             "-o", &obj_path.to_string_lossy(),
             "-I", &include_dir.to_string_lossy(),
             "-O2",
+            "-fno-lto",
             "--target=wasm32-wasip1",
             "-D_WASI_EMULATED_SIGNAL",
             "-D_WASI_EMULATED_PROCESS_CLOCKS",

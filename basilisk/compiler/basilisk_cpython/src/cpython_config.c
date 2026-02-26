@@ -62,8 +62,39 @@ int _PyPerfTrampoline_Fini(void) { return 0; }
 void _PyPerfTrampoline_FreeArenas(void) {}
 
 /* Minimal posix stub — posixmodule.o removed to save ~457K.
- * IC/WASI has no POSIX filesystem. Frozen modules don't need file ops. */
-static PyMethodDef _posix_stub_methods[] = {{NULL, NULL, 0, NULL}};
+ * IC/WASI has no POSIX filesystem. Provides stubs that importlib's
+ * _bootstrap_external needs (stat, getcwd, listdir) so PathFinder
+ * gracefully skips all filesystem paths. */
+
+#include <errno.h>
+
+static PyObject* _posix_stat(PyObject *self, PyObject *args, PyObject *kwargs) {
+    errno = ENOENT;
+    PyErr_SetFromErrnoWithFilename(PyExc_OSError, "");
+    return NULL;
+}
+static PyObject* _posix_lstat(PyObject *self, PyObject *args, PyObject *kwargs) {
+    return _posix_stat(self, args, kwargs);
+}
+static PyObject* _posix_getcwd(PyObject *self, PyObject *args) {
+    return PyUnicode_FromString("/");
+}
+static PyObject* _posix_listdir(PyObject *self, PyObject *args) {
+    return PyList_New(0);
+}
+static PyObject* _posix_fspath(PyObject *self, PyObject *args) {
+    PyObject *path;
+    if (!PyArg_ParseTuple(args, "O", &path)) return NULL;
+    return PyOS_FSPath(path);
+}
+static PyMethodDef _posix_stub_methods[] = {
+    {"stat",    (PyCFunction)_posix_stat,    METH_VARARGS | METH_KEYWORDS, NULL},
+    {"lstat",   (PyCFunction)_posix_lstat,   METH_VARARGS | METH_KEYWORDS, NULL},
+    {"getcwd",  _posix_getcwd,               METH_NOARGS, NULL},
+    {"listdir", _posix_listdir,              METH_VARARGS, NULL},
+    {"fspath",  _posix_fspath,               METH_VARARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
 static struct PyModuleDef _posix_stub_module = {
     PyModuleDef_HEAD_INIT, "posix", NULL, -1, _posix_stub_methods
 };
@@ -117,13 +148,82 @@ static PyObject* PyInit__sre(void) {
 }
 
 /* Minimal _thread stub — _threadmodule.o removed to save ~252K.
- * IC is single-threaded. Stub provides lock no-ops for CPython internals. */
-static PyMethodDef _thread_stub_methods[] = {{NULL, NULL, 0, NULL}};
+ * IC is single-threaded. _thread MUST be in _inittab (required by importlib
+ * bootstrap in CPython 3.13). Provides no-op Lock/RLock using a static type
+ * (avoids PyType_FromSpec which corrupts interpreter state during early init). */
+
+typedef struct {
+    PyObject_HEAD
+} _thread_lock_object;
+
+static PyObject* _lock_acquire(PyObject *self, PyObject *args, PyObject *kwargs) {
+    Py_RETURN_TRUE;
+}
+static PyObject* _lock_release(PyObject *self, PyObject *args) {
+    Py_RETURN_NONE;
+}
+static PyObject* _lock_enter(PyObject *self, PyObject *args) {
+    Py_INCREF(self);
+    return self;
+}
+static PyObject* _lock_exit(PyObject *self, PyObject *args) {
+    Py_RETURN_FALSE;
+}
+
+static PyMethodDef _lock_methods[] = {
+    {"acquire",     (PyCFunction)_lock_acquire, METH_VARARGS | METH_KEYWORDS, NULL},
+    {"acquire_lock",(PyCFunction)_lock_acquire, METH_VARARGS | METH_KEYWORDS, NULL},
+    {"release",     (PyCFunction)_lock_release, METH_VARARGS, NULL},
+    {"release_lock",(PyCFunction)_lock_release, METH_VARARGS, NULL},
+    {"__enter__",   (PyCFunction)_lock_enter,   METH_NOARGS, NULL},
+    {"__exit__",    (PyCFunction)_lock_exit,    METH_VARARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
+
+static PyObject* _lock_new(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
+    PyObject *self = type->tp_alloc(type, 0);
+    return self;
+}
+
+static PyTypeObject _thread_lock_type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name = "_thread.lock",
+    .tp_basicsize = sizeof(_thread_lock_object),
+    .tp_flags = Py_TPFLAGS_DEFAULT,
+    .tp_methods = _lock_methods,
+    .tp_new = _lock_new,
+};
+
+static PyObject* _thread_allocate_lock(PyObject *self, PyObject *args) {
+    return _lock_new(&_thread_lock_type, NULL, NULL);
+}
+static PyObject* _thread_get_ident(PyObject *self, PyObject *args) {
+    return PyLong_FromLong(1);
+}
+static PyObject* _thread_count(PyObject *self, PyObject *args) {
+    return PyLong_FromLong(1);
+}
+
+static PyMethodDef _thread_stub_methods[] = {
+    {"allocate_lock", _thread_allocate_lock, METH_NOARGS, NULL},
+    {"allocate",      _thread_allocate_lock, METH_NOARGS, NULL},
+    {"get_ident",     _thread_get_ident,     METH_NOARGS, NULL},
+    {"_count",        _thread_count,         METH_NOARGS, NULL},
+    {NULL, NULL, 0, NULL}
+};
 static struct PyModuleDef _thread_stub_module = {
     PyModuleDef_HEAD_INIT, "_thread", NULL, -1, _thread_stub_methods
 };
 static PyObject* PyInit__thread(void) {
-    return PyModule_Create(&_thread_stub_module);
+    if (PyType_Ready(&_thread_lock_type) < 0) return NULL;
+    PyObject *module = PyModule_Create(&_thread_stub_module);
+    if (!module) return NULL;
+    Py_INCREF(&_thread_lock_type);
+    PyModule_AddObject(module, "LockType", (PyObject*)&_thread_lock_type);
+    Py_INCREF(&_thread_lock_type);
+    PyModule_AddObject(module, "RLock", (PyObject*)&_thread_lock_type);
+    PyModule_AddObject(module, "TIMEOUT_MAX", PyFloat_FromDouble(1e15));
+    return module;
 }
 
 /* NOTE: Non-essential modules removed for wasm size reduction.
@@ -150,7 +250,7 @@ struct _inittab _PyImport_Inittab[] = {
     {"_stat", PyInit__stat},
     {"_string", PyInit__string},
     {"_struct", PyInit__struct},
-    {"_thread", PyInit__thread},  /* stub — _threadmodule.o removed */
+    {"_thread", PyInit__thread},  /* stub — _threadmodule.o removed, static type Lock/RLock */
     {"_typing", PyInit__typing},
     {"_weakref", PyInit__weakref},
     {"atexit", PyInit_atexit},

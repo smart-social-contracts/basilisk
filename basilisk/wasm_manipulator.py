@@ -232,6 +232,65 @@ def manipulate_wasm(
     print(f"  Size: {original_size} -> {new_size} (+{new_size - original_size} bytes)")
 
 
+def _resolve_wrapper_inner_func(
+    wasm: bytes,
+    code_section: WasmSection,
+    wrapper_code_idx: int,
+    import_func_count: int,
+) -> int:
+    """
+    Resolve wasm-ld wrapper indirection to find the actual inner function.
+
+    wasm-ld wraps exported C functions with a prologue/epilogue pattern:
+        call <prologue>; call <real_body>; call <epilogue>; end
+
+    This function extracts the 2nd call target (the real body) and returns
+    its code section index. If the function doesn't match the wrapper pattern
+    (e.g. it's already a simple body), returns the original index.
+    """
+    # Navigate to the wrapper function body
+    offset = code_section.content_offset
+    func_count, offset = decode_unsigned_leb128(wasm, offset)
+    for i in range(wrapper_code_idx):
+        body_size, offset = decode_unsigned_leb128(wasm, offset)
+        offset += body_size
+    body_size, offset = decode_unsigned_leb128(wasm, offset)
+    body = wasm[offset:offset + body_size]
+
+    # Check for wrapper patterns added by wasm-ld:
+    #   Size funcs: call <prologue>; call <body>; call <epilogue>; end
+    #   Init funcs: call <prologue>; local.get 0; call <body>; call <epilogue>; end
+    # The inner body is always the second-to-last call instruction.
+    pos = 0
+    if body[pos] != 0x00:
+        return wrapper_code_idx  # has locals, not a simple wrapper
+    pos += 1
+
+    call_targets = []
+    while pos < len(body):
+        opcode = body[pos]
+        if opcode == 0x10:  # call
+            pos += 1
+            target, pos = decode_unsigned_leb128(body, pos)
+            call_targets.append(target)
+        elif opcode == 0x20:  # local.get (parameter passing)
+            pos += 1
+            _, pos = decode_unsigned_leb128(body, pos)  # skip local index
+        elif opcode == 0x0b:  # end
+            break
+        else:
+            return wrapper_code_idx  # unexpected opcode, not a wrapper
+
+    if len(call_targets) == 3:
+        # Wrapper pattern: prologue, real_body, epilogue
+        inner_func_idx = call_targets[1]  # 2nd call = real body
+        inner_code_idx = inner_func_idx - import_func_count
+        return inner_code_idx
+
+    # Not a wrapper — return original index (direct patch)
+    return wrapper_code_idx
+
+
 def build_modified_wasm(
     wasm: bytes,
     sections: List[WasmSection],
@@ -289,11 +348,18 @@ def build_modified_wasm(
     meta_data_segment_idx = existing_data_count + 1
     new_func_count = len(methods)
 
-    # Map placeholder export func indices to code section body indices
-    placeholder_code_indices = {
-        name: idx - existing_import_func_count
-        for name, idx in placeholder_funcs.items()
-    }
+    # Map placeholder export func indices to code section body indices.
+    # The linker (wasm-ld) may wrap exported C functions with a prologue/epilogue
+    # pattern: call <prologue>; call <real_body>; call <epilogue>; end
+    # In that case, we need to patch the INNER function (the 2nd call target),
+    # not the wrapper itself.
+    placeholder_code_indices = {}
+    for name, func_idx in placeholder_funcs.items():
+        wrapper_code_idx = func_idx - existing_import_func_count
+        inner_code_idx = _resolve_wrapper_inner_func(
+            wasm, code_section, wrapper_code_idx, existing_import_func_count
+        )
+        placeholder_code_indices[name] = inner_code_idx
 
     # ─── Step 3: Build replacement function bodies ───────────────────────
 

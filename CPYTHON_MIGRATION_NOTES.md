@@ -620,6 +620,82 @@ wasm-opt -Oz --closed-world --converge template_ic.wasm -o cpython_canister_temp
 | Per-project Cargo build | ~5-10 min | 3.73 MB |
 | Template + wasm manipulation | ~seconds | 3.6 MB + ~200 bytes per method |
 
+### Template CPython init fixes
+
+The template's CPython initialization required several fixes beyond what the per-project build
+needs, because the template uses a more minimal configuration:
+
+#### 1. `_thread` stub with static Lock/RLock type
+
+CPython 3.13's importlib bootstrap **requires** `_thread` in `_inittab`. The original empty stub
+caused `AttributeError: module '_thread' has no attribute 'RLock'`. A `PyType_FromSpec`-based
+implementation corrupted interpreter state during early init.
+
+**Fix**: Static `PyTypeObject` with `PyType_Ready()` in `cpython_config.c`. Provides no-op
+`Lock`/`RLock` types and `allocate_lock`/`get_ident` functions for single-threaded IC.
+
+#### 2. `posix` stub for PathFinder
+
+After fixing `_thread`, the error shifted to `AttributeError: module 'posix' has no attribute 'stat'`.
+CPython's `importlib._bootstrap_external.PathFinder` needs `posix.stat` to handle path lookups.
+
+**Fix**: Added `stat`/`lstat`/`getcwd`/`listdir`/`fspath` stubs to `cpython_config.c` that raise
+`OSError(ENOENT)` or return empty values, so PathFinder gracefully skips all filesystem paths.
+
+#### 3. Skip `_Py_InitializeMain` (no frozen encodings)
+
+Our WASI CPython build does **not** have `encodings` in the frozen module table, and there's no
+filesystem to load it from. `_Py_InitializeMain()` fails with `ModuleNotFoundError: No module
+named 'encodings'`.
+
+**Fix**: Skip `_Py_InitializeMain()` entirely in `cpython_init_helper.c`. Instead, set up minimal
+`sys.stdout`/`sys.stderr` via `PyRun_SimpleString` with simple `_ICWriter`/`_ICStderr` classes.
+On IC, real output goes through `ic_cdk::println!` / `ic0.debug_print` anyway.
+
+#### 4. Placeholder functions in C (LTO inlining prevention)
+
+The template uses 4 placeholder functions whose bodies are patched by `wasm_manipulator.py`:
+`python_source_passive_data_size`, `method_meta_passive_data_size`,
+`init_python_source_passive_data`, `init_method_meta_passive_data`.
+
+Initially defined in Rust with `#[no_mangle] pub extern "C"`, Rust's LTO (`lto = true`)
+inlined the `return 0` / no-op bodies at all call sites, making the binary patching ineffective.
+`#[inline(never)]` and `core::hint::black_box` did NOT prevent this on `wasm32-wasip1`.
+
+**Fix**: Moved placeholder functions to C in `cpython_init_helper.c`, compiled by WASI SDK clang
+with `-fno-lto`. C object files are opaque to Rust's LLVM LTO. The functions are exported via
+linker flags in `cpython_canister_template/build.rs`:
+```rust
+println!("cargo:rustc-link-arg=--export=python_source_passive_data_size");
+```
+
+#### 5. wasm-ld wrapper function resolution
+
+Even after moving to C, the placeholder function bodies in the final wasm didn't match the expected
+simple `i32.const 0; end` pattern. `wasm-ld` wraps exported C functions with a prologue/epilogue:
+
+```
+call <__wasm_call_ctors>     ;; prologue
+[local.get 0]                ;; parameter (for init functions)
+call <actual_function_body>  ;; the REAL body to patch
+call <__wasm_call_dtors>     ;; epilogue
+end
+```
+
+The wasm manipulator was patching the **wrapper**, not the inner function.
+
+**Fix**: `_resolve_wrapper_inner_func()` in `wasm_manipulator.py` detects this 3-call pattern
+and follows the indirection to find the actual inner function body (the 2nd of 3 call targets).
+
+### End-to-end verified (Feb 26, 2026)
+
+```bash
+$ dfx canister call query simple_query
+("This is a query function")
+```
+
+The full pipeline works: template build → wasm manipulation → wasi2ic → deploy → query ✅
+
 ### Limitations
 
 - **Cross-canister typed calls** (`call`, `call_with_payment`) are not supported in template
@@ -628,6 +704,8 @@ wasm-opt -Oz --closed-world --converge template_ic.wasm -o cpython_canister_temp
   metadata extended beyond simple type strings
 - **User-defined Candid types** (Records, Variants via `@dataclass`) require additional AST
   parsing in `extract_methods_from_python()`
+- **`random` module** — panics in rng_seed timer (`ModuleNotFoundError: No module named 'random'`);
+  non-fatal but noisy. The `random` module requires `_random` C extension which was stripped.
 
 ## Open items
 
@@ -640,5 +718,7 @@ wasm-opt -Oz --closed-world --converge template_ic.wasm -o cpython_canister_temp
 7. ~~Wasm size reduction for IC mainnet~~ → SOLVED: 3.73MB deploys via DTS (commit `7940ce82`)
 8. **Restore stubbed modules** — `_sre` (regex), `_collections` (deque), `_operator` could be
    restored if further size reduction is achieved elsewhere, improving Python stdlib compatibility
-9. **Template: end-to-end test** — deploy a template-built canister to local replica and verify
+9. ~~Template: end-to-end test~~ → DONE: template-built canister deploys + queries on local replica
 10. **Template: download artifact in install script** — auto-download template wasm from GitHub releases
+11. **Template: fix `random` module panic** — either restore `_random` module or skip rng seeding
+12. **Template: clean up debug logging** — remove diagnostic `fprintf`/`ic_cdk::println!` from init
