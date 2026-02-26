@@ -72,24 +72,11 @@ fn rng_seed() {
 fn init() {
     ic_wasi_polyfill::init(&[], &[]);
 
-    // Read Python source from passive data segment
-    let py_size = unsafe { python_source_passive_data_size() };
-    let meta_size = unsafe { method_meta_passive_data_size() };
-    ic_cdk::println!("[basilisk] init: python_source_size={}, method_meta_size={}", py_size, meta_size);
-
     let python_code = get_python_code();
-    ic_cdk::println!("[basilisk] init: python_code len={}", python_code.len());
-
     let method_meta = get_method_metadata();
-    ic_cdk::println!("[basilisk] init: method_meta count={}", method_meta.len());
-    for (i, m) in method_meta.iter().enumerate() {
-        ic_cdk::println!("[basilisk] init: method[{}] = {} ({})", i, m.name, m.method_type);
-    }
 
-    // Initialize CPython and load user code
     cpython_full_init(&python_code);
 
-    // Store method metadata for dispatch
     unsafe {
         METHOD_METADATA = Some(method_meta);
     }
