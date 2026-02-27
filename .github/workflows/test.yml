@@ -315,6 +315,11 @@ jobs:
             - working-directory: ${{ matrix.example_directories }}
               run: source venv/bin/activate && python -m basilisk install-dfx-extension
 
+            - name: Configure system subnet for PocketIC
+              run: |
+                  mkdir -p ~/.config/dfx
+                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/dfx/networks.json
+
             - working-directory: ${{ matrix.example_directories }}
               run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
 
