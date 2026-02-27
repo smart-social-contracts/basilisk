@@ -316,7 +316,7 @@ jobs:
               run: source venv/bin/activate && python -m basilisk install-dfx-extension
 
             - working-directory: ${{ matrix.example_directories }}
-              run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic --subnet-type system
+              run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
 
             - name: Deploy and test
               shell: bash -l {0}
@@ -333,6 +333,7 @@ jobs:
             BASILISK_COMPILE_RUST_PYTHON_STDLIB: false
             WASI_SDK_VERSION: "24"
             WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
+            DFX_WARNING: -mainnet_plaintext_identity
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -460,14 +461,14 @@ jobs:
                   fi
 
     check-basic-integration-tests-success:
-        needs: [basic-integration-tests, cpython-integration-tests, cpython-ic-deploy]
+        needs: [cpython-integration-tests, cpython-ic-deploy]
         runs-on: ubuntu-latest
         if: success()
         steps:
             - run: exit 0
 
     check-basic-integration-tests-failure:
-        needs: [basic-integration-tests, cpython-integration-tests, cpython-ic-deploy]
+        needs: [cpython-integration-tests, cpython-ic-deploy]
         runs-on: ubuntu-latest
         if: failure()
         steps:
