@@ -16,6 +16,7 @@ setup(
         "compiler/**/*.wasm",
         "compiler/**/*.a",
         "compiler/**/*.pdf",
+        "compiler/**/LICENSE*",
         "canisters/**",
         "py.typed",
     ]},

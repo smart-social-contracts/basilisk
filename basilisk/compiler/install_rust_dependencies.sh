@@ -44,6 +44,7 @@ function install_rustup() {
 }
 
 function update_rustup() {
+    mkdir -p "$global_basilisk_logs_dir"
     "$global_basilisk_rustup_bin" update "$rust_version" &> "$global_basilisk_logs_dir"/rustup_update
 }
 
