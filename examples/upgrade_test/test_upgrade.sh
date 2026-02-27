@@ -6,7 +6,7 @@ echo "=== Testing Decentralized Canister Upgrade ==="
 
 # 1. Start dfx if not running
 dfx stop 2>/dev/null || true
-dfx start --clean --background --host 127.0.0.1:8000 --pocketic
+dfx start --clean --background
 sleep 3
 
 # 2. Deploy all canisters
