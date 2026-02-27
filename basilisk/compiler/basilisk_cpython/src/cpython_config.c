@@ -232,6 +232,9 @@ static PyObject* PyInit__thread(void) {
  *          _symtable, _tokenize, _suggestions, _sysconfig
  */
 
+/* JSON C accelerator — restored for fast serialization (DB operations) */
+extern PyObject* PyInit__json(void);
+
 /* Internal modules (always needed by interpreter core) */
 extern PyObject* PyMarshal_Init(void);
 extern PyObject* PyInit__imp(void);
@@ -259,6 +262,9 @@ struct _inittab _PyImport_Inittab[] = {
 
     /* Modules needed during Py_Initialize */
     {"_signal", PyInit__signal},
+
+    /* JSON C accelerator — restored for fast serialization */
+    {"_json", PyInit__json},
 
     /* Internal modules (always needed by interpreter core) */
     {"marshal", PyMarshal_Init},

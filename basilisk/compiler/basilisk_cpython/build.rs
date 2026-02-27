@@ -247,7 +247,7 @@ fn build_trimmed_libpython(lib_dir: &std::path::Path, include_dir: &std::path::P
         "_asynciomodule.o",
         "arraymodule.o",
         "cmathmodule.o",
-        "_json.o",
+        // "_json.o",  // RESTORED: needed for fast JSON serialization (DB operations)
         "_csv.o",
         "_lsprof.o",
         "_opcode.o",
