@@ -12,24 +12,55 @@ jobs:
     upgrade-test:
         runs-on: ubuntu-latest
         env:
-            BASILISK_COMPILE_RUST_PYTHON_STDLIB: true
+            BASILISK_PYTHON_BACKEND: cpython
+            BASILISK_COMPILE_RUST_PYTHON_STDLIB: false
+            WASI_SDK_VERSION: "24"
+            WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
         steps:
             - uses: actions/checkout@v4
 
             - uses: actions/cache@v4
               with:
                   path: ~/.config/basilisk
-                  key: basilisk-cargo-${{ hashFiles('basilisk/cargotoml.py') }}
+                  key: basilisk-cargo-cpython-v3-${{ hashFiles('basilisk/cargotoml.py') }}
 
             - uses: actions/cache@v4
               with:
                   path: ~/.cache/dfinity
-                  key: basilisk-dfx-0.23.0
+                  key: basilisk-dfx-0.29.0
 
             - name: Install dfx
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.23.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
                   echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Install WASI SDK
+              run: |
+                  curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
+
+            - name: Install wasm-opt (binaryen)
+              run: |
+                  curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
+                  tar xzf /tmp/binaryen.tar.gz -C /tmp
+                  sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
+                  wasm-opt --version
+
+            - name: Pre-download CPython wasm
+              run: |
+                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+                  CPYTHON_DIR="$HOME/.config/basilisk/${VERSION}/cpython_wasm"
+                  if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ] || [ ! -f "${CPYTHON_DIR}/lib/libz.a" ]; then
+                    mkdir -p "${CPYTHON_DIR}"
+                    echo "Downloading CPython wasm artifacts..."
+                    curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
+                    tar -xzf /tmp/cpython-wasm.tar.gz -C "${CPYTHON_DIR}"
+                    echo "CPython wasm installed to ${CPYTHON_DIR}"
+                    ls -la "${CPYTHON_DIR}/lib/libpython3.13.a"
+                  else
+                    echo "CPython wasm already cached at ${CPYTHON_DIR}"
+                  fi
 
             - name: Install Python 3.10
               run: |
@@ -49,8 +80,14 @@ jobs:
                   source venv/bin/activate
                   python -m basilisk install-dfx-extension
 
+            - name: Configure system subnet for PocketIC
+              run: |
+                  mkdir -p ~/.config/dfx
+                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/dfx/networks.json
+
             - name: Run upgrade test
               working-directory: examples/upgrade_test
+              timeout-minutes: 65
               run: |
                   source venv/bin/activate
                   bash test_upgrade.sh
