@@ -31,7 +31,7 @@ jobs:
             should_run_tests: ${{ steps.should_run_tests.outputs.should_run_tests }} # We only want the next job to run the tests once we have finished deploying to PyPI and GitHub
             example_directories: ${{ steps.example_directories.outputs.example_directories }}
         steps:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v4
               # if: contains(github.head_ref, 'release--')
               with:
                   ref: ${{ contains(github.head_ref, 'release--') && github.event.pull_request.head.ref || github.ref }} # This is necessary for this job to be able to commit and push to the origin remote properly
@@ -128,10 +128,9 @@ jobs:
                   ]
                   END
                   )
-                  EXAMPLE_DIRECTORIES="${EXAMPLE_DIRECTORIES//'%'/'%25'}"
-                  EXAMPLE_DIRECTORIES="${EXAMPLE_DIRECTORIES//$'\n'/'%0A'}"
-                  EXAMPLE_DIRECTORIES="${EXAMPLE_DIRECTORIES//$'\r'/'%0D'}"
-                  echo "::set-output name=example_directories::$EXAMPLE_DIRECTORIES"
+                  echo "example_directories<<EOF" >> $GITHUB_OUTPUT
+                  echo "$EXAMPLE_DIRECTORIES" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
             - id: should_run_tests
               run: |
                   BRANCH_NAME="${{ github.head_ref }}"
@@ -141,7 +140,7 @@ jobs:
                   then
                     ./publish-github-action.sh $RELEASE_VERSION ${{ toJSON(steps.example_directories.outputs.example_directories) }}
                   else
-                    echo "::set-output name=should_run_tests::true"
+                    echo "should_run_tests=true" >> $GITHUB_OUTPUT
                   fi
     basic-integration-tests:
         needs: release-candidate-deploy
@@ -166,18 +165,18 @@ jobs:
                 example_directories: ${{ needs.release-candidate-deploy.outputs.should_run_tests == 'true' && fromJSON(needs.release-candidate-deploy.outputs.example_directories) || fromJSON('["dummy"]') }}
         steps:
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
-              uses: actions/checkout@v3
+              uses: actions/checkout@v4
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
-              uses: actions/setup-node@v3
+              uses: actions/setup-node@v4
               with:
                   node-version: 20
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
-              uses: actions/cache@v3
+              uses: actions/cache@v4
               with:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-${{ hashFiles('basilisk/cargotoml.py') }}
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
-              uses: actions/cache@v3
+              uses: actions/cache@v4
               with:
                   path: ~/.cache/dfinity
                   key: basilisk-dfx-0.23.0
@@ -246,19 +245,19 @@ jobs:
                     - "examples/motoko_examples/hello-world"
                     - "examples/motoko_examples/counter"
         steps:
-            - uses: actions/checkout@v3
-            - uses: actions/setup-node@v3
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
               with:
                   node-version: 20
 
             - name: Cache basilisk cargo
-              uses: actions/cache@v3
+              uses: actions/cache@v4
               with:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-cpython-v3-${{ hashFiles('basilisk/cargotoml.py') }}
 
             - name: Cache dfx
-              uses: actions/cache@v3
+              uses: actions/cache@v4
               with:
                   path: ~/.cache/dfinity
                   key: basilisk-dfx-0.29.0
@@ -335,13 +334,13 @@ jobs:
             WASI_SDK_VERSION: "24"
             WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
         steps:
-            - uses: actions/checkout@v3
-            - uses: actions/setup-node@v3
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
               with:
                   node-version: 20
 
             - name: Cache basilisk cargo
-              uses: actions/cache@v3
+              uses: actions/cache@v4
               with:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-cpython-v3-${{ hashFiles('basilisk/cargotoml.py') }}
