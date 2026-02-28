@@ -81,9 +81,9 @@ pub fn cpython_full_init(python_code: &str) {
                             .collect::<Vec<_>>()
                             .join(",")
                     );
-                    interpreter.run_code_string(&seed_code).unwrap_or_else(|e| {
+                    if let Err(e) = interpreter.run_code_string(&seed_code) {
                         ic_cdk::println!("Warning: failed to seed random: {}", e.to_rust_err_string());
-                    });
+                    }
                 }
                 Err(err) => panic!("{:?}", err),
             };
