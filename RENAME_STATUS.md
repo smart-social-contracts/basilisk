@@ -88,7 +88,7 @@ The following environment variables have been renamed:
 ### v0.8.0 – CPython Backend
 - ✅ Added **CPython 3.13 backend** as default (WASI-based, compiled to WASM)
 - ✅ **Template-based builds**: pre-compiled WASM template with Python source injected as passive data segments (~seconds vs ~60-120s for Cargo build)
-- ✅ `BASILISK_PYTHON_BACKEND` and `BASILISK_USE_TEMPLATE` environment variables
+- ✅ `BASILISK_PYTHON_BACKEND` environment variable (`cpython` default, `rustpython` opt-in)
 - ✅ `basilisk new` CLI scaffolding with `--backend` flag
 - ✅ Excluded Cargo `target/` from PyPI package (176MB → 509KB)
 
@@ -114,7 +114,6 @@ The following environment variables have been renamed:
 
 ### Environment Variables (added)
 - `BASILISK_PYTHON_BACKEND` — `cpython` (default) or `rustpython`
-- `BASILISK_USE_TEMPLATE` — `true` to use pre-compiled template (CPython only)
 - `BASILISK_TEMPLATE_WASM` — explicit path to template WASM (overrides default)
 
 ## Related

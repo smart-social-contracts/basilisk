@@ -51,11 +51,10 @@ def main():
 
     print(f"\nBuilding canister {green(canister_name)}{verbose_mode_qualifier}\n")
 
-    python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "rustpython")
-    use_template = os.environ.get("BASILISK_USE_TEMPLATE", "").lower() == "true"
+    python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "cpython")
 
-    # Template mode: skip Rust codegen entirely, just bundle Python + manipulate wasm
-    if python_backend == "cpython" and use_template:
+    # CPython template mode (default): skip Rust codegen entirely, just bundle Python + manipulate wasm
+    if python_backend == "cpython":
         # Only need the canister staging dir (for output wasm) and Python source
         os.makedirs(paths["canister"], exist_ok=True)
 

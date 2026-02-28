@@ -36,8 +36,8 @@ def cmd_new(project_name: str, backend: str = "cpython"):
     src_dir.mkdir(parents=True)
 
     # Build command depends on backend
-    if backend == "cpython":
-        build_cmd = f"BASILISK_PYTHON_BACKEND=cpython BASILISK_USE_TEMPLATE=true CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
+    if backend == "rustpython":
+        build_cmd = f"BASILISK_PYTHON_BACKEND=rustpython CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
     else:
         build_cmd = f"CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
 

@@ -15,7 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BASILISK_PYTHON_BACKEND: ${{ github.event.inputs.backend }}
-      BASILISK_USE_TEMPLATE: ${{ github.event.inputs.backend == 'cpython' && 'true' || '' }}
       BASILISK_COMPILE_RUST_PYTHON_STDLIB: ${{ github.event.inputs.backend == 'rustpython' }}
       WASI_SDK_VERSION: "24"
       WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk

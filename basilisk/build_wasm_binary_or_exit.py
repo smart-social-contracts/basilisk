@@ -13,26 +13,17 @@ from basilisk.types import Paths
 def build_wasm_binary_or_exit(
     paths: Paths, canister_name: str, cargo_env: dict[str, str], verbose: bool = False
 ):
-    python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "rustpython")
-    use_template = os.environ.get("BASILISK_USE_TEMPLATE", "").lower() == "true"
+    python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "cpython")
 
-    if python_backend == "cpython" and use_template:
+    if python_backend == "cpython":
         build_with_template(paths, canister_name, cargo_env, verbose)
         return
 
-    if python_backend == "cpython":
-        install_cpython_wasm(paths, cargo_env, verbose)
-        copy_cpython_to_canister_staging(paths, cargo_env)
-    else:
-        compile_or_download_rust_python_stdlib(paths, cargo_env, verbose)
+    compile_or_download_rust_python_stdlib(paths, cargo_env, verbose)
     compile_generated_rust_code(paths, canister_name, cargo_env, verbose)
     copy_wasm_to_dev_location(paths, canister_name)
     run_wasi2ic_on_wasm(paths, canister_name, cargo_env, verbose)
-    if python_backend == "cpython":
-        optimize_wasm(paths, canister_name, cargo_env, verbose)
-        generate_candid_file_from_source(paths, verbose)
-    else:
-        generate_and_create_candid_file(paths, canister_name, cargo_env, verbose)
+    generate_and_create_candid_file(paths, canister_name, cargo_env, verbose)
 
 
 def _get_frozen_stdlib_preamble() -> str:
