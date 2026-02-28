@@ -37,7 +37,6 @@ def dict_operations(n: nat64) -> nat64:
 def json_roundtrip(n: nat64) -> text:
     """JSON encode/decode cycle - tests _json C accelerator."""
     import json
-
     data = [
         {"id": i, "name": f"entity_{i}", "values": list(range(10))} for i in range(n)
     ]

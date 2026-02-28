@@ -35,6 +35,17 @@ def build_wasm_binary_or_exit(
         generate_and_create_candid_file(paths, canister_name, cargo_env, verbose)
 
 
+def _get_frozen_stdlib_preamble() -> str:
+    """Return pure-Python stdlib modules to prepend to user source for CPython template mode.
+
+    On WASI there is no filesystem, so stdlib packages like `json` aren't importable.
+    Reads the preamble from frozen_stdlib_preamble.py next to this file.
+    """
+    preamble_path = os.path.join(os.path.dirname(__file__), "frozen_stdlib_preamble.py")
+    with open(preamble_path, "r") as f:
+        return f.read() + "\n"
+
+
 def build_with_template(
     paths: Paths, canister_name: str, cargo_env: dict[str, str], verbose: bool
 ):
@@ -66,6 +77,9 @@ def build_with_template(
 
     # 2. Read the user's Python source
     python_source = read_python_source(paths)
+
+    # 2b. Prepend frozen stdlib modules (json, etc.) for WASI where filesystem is absent
+    python_source = _get_frozen_stdlib_preamble() + python_source
 
     # 3. Extract method metadata from the Python source
     methods = extract_methods_from_python(python_source)

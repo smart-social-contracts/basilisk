@@ -44,7 +44,8 @@ async function main() {
     const backend = process.env.BASILISK_PYTHON_BACKEND || 'rustpython';
     console.log(`\n=== Benchmark: ${backend} backend ===\n`);
 
-    const agent = new HttpAgent({ host: 'http://127.0.0.1:8000' });
+    const host = process.env.DFX_HOST || 'http://127.0.0.1:8000';
+    const agent = new HttpAgent({ host });
     await agent.fetchRootKey();
 
     const canister = createActor(getCanisterId('benchmark'), { agent });
