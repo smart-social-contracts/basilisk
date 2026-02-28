@@ -1,0 +1,7 @@
+.dfx
+.kybra
+.basilisk
+venv
+dfx_generated
+node_modules
+benchmark_results*.json

@@ -1,0 +1,12 @@
+{
+    "canisters": {
+        "benchmark": {
+            "type": "basilisk",
+            "main": "src/main.py",
+            "declarations": {
+                "output": "test/dfx_generated/benchmark",
+                "node_compatibility": true
+            }
+        }
+    }
+}
