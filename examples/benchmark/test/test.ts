@@ -24,11 +24,20 @@ async function timeit(
     fn: () => Promise<any>
 ): Promise<BenchmarkResult> {
     const start = performance.now();
-    const result = await fn();
-    const elapsed_ms = Math.round((performance.now() - start) * 100) / 100;
-    const resultStr = typeof result === 'bigint' ? result.toString() : String(result);
-    console.log(`  ${name}: ${elapsed_ms}ms`);
-    return { name, category, input_size, elapsed_ms, result: resultStr };
+    try {
+        const result = await fn();
+        const elapsed_ms = Math.round((performance.now() - start) * 100) / 100;
+        const resultStr = typeof result === 'bigint' ? result.toString() : String(result);
+        console.log(`  ${name}: ${elapsed_ms}ms`);
+        return { name, category, input_size, elapsed_ms, result: resultStr };
+    } catch (e: any) {
+        const elapsed_ms = Math.round((performance.now() - start) * 100) / 100;
+        const msg = e?.message || String(e);
+        const exceeded = msg.includes('instruction') || msg.includes('exceeded');
+        const resultStr = exceeded ? 'INSTRUCTION_LIMIT_EXCEEDED' : `ERROR: ${msg.slice(0, 200)}`;
+        console.log(`  ${name}: ${resultStr} (${elapsed_ms}ms)`);
+        return { name, category, input_size, elapsed_ms: -1, result: resultStr };
+    }
 }
 
 async function main() {
@@ -43,8 +52,9 @@ async function main() {
     const results: BenchmarkResult[] = [];
 
     // --- Pure Python compute benchmarks ---
+    // Input sizes chosen to stay within 5B instruction limit on RustPython
     console.log('--- fibonacci (integer math) ---');
-    for (const n of [1000, 5000, 10000]) {
+    for (const n of [100, 500, 1000]) {
         results.push(
             await timeit(`fibonacci(${n})`, 'compute', n, () =>
                 canister.fibonacci(BigInt(n))
@@ -53,7 +63,7 @@ async function main() {
     }
 
     console.log('--- string_processing (string alloc/concat) ---');
-    for (const n of [500, 1000, 2000]) {
+    for (const n of [100, 300, 500]) {
         results.push(
             await timeit(`string_processing(${n})`, 'compute', n, () =>
                 canister.string_processing(BigInt(n))
@@ -62,7 +72,7 @@ async function main() {
     }
 
     console.log('--- dict_operations (dict create/iterate) ---');
-    for (const n of [500, 1000, 2000]) {
+    for (const n of [100, 300, 500]) {
         results.push(
             await timeit(`dict_operations(${n})`, 'compute', n, () =>
                 canister.dict_operations(BigInt(n))
@@ -71,7 +81,7 @@ async function main() {
     }
 
     console.log('--- json_roundtrip (JSON encode/decode) ---');
-    for (const n of [100, 500, 1000]) {
+    for (const n of [50, 100, 200]) {
         results.push(
             await timeit(`json_roundtrip(${n})`, 'compute', n, () =>
                 canister.json_roundtrip(BigInt(n))
@@ -80,7 +90,7 @@ async function main() {
     }
 
     console.log('--- sort_benchmark (list sort) ---');
-    for (const n of [1000, 5000, 10000]) {
+    for (const n of [500, 1000, 2000]) {
         results.push(
             await timeit(`sort_benchmark(${n})`, 'compute', n, () =>
                 canister.sort_benchmark(BigInt(n))
@@ -89,7 +99,7 @@ async function main() {
     }
 
     console.log('--- list_comprehension (nested list creation) ---');
-    for (const n of [100, 200, 300]) {
+    for (const n of [50, 100, 150]) {
         results.push(
             await timeit(`list_comprehension(${n})`, 'compute', n, () =>
                 canister.list_comprehension(BigInt(n))
@@ -102,7 +112,7 @@ async function main() {
     await canister.clear_db();
 
     console.log('--- bulk_insert (stable memory write) ---');
-    for (const n of [50, 100, 200]) {
+    for (const n of [10, 25, 50]) {
         await canister.clear_db();
         results.push(
             await timeit(`bulk_insert(${n})`, 'io', n, () =>
@@ -113,8 +123,8 @@ async function main() {
 
     console.log('--- bulk_read (stable memory read) ---');
     await canister.clear_db();
-    await canister.bulk_insert(BigInt(200));
-    for (const n of [50, 100, 200]) {
+    await canister.bulk_insert(BigInt(50));
+    for (const n of [10, 25, 50]) {
         results.push(
             await timeit(`bulk_read(${n})`, 'io', n, () =>
                 canister.bulk_read(BigInt(n))
