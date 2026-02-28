@@ -120,11 +120,8 @@ jobs:
               run: |
                   curl -fLO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
-                  sudo mkdir -p /usr/local/share/wasi-sdk
-                  sudo mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux/* /usr/local/share/wasi-sdk/
-                  # Also create the symlink expected by basilisk_cpython build.rs
-                  sudo mkdir -p ~/.local/share/wasi-sdk/share
-                  sudo ln -sf /usr/local/share/wasi-sdk/share/wasi-sysroot ~/.local/share/wasi-sdk/share/wasi-sysroot
+                  sudo mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux /opt/wasi-sdk
+                  /opt/wasi-sdk/bin/clang --version
 
             - name: Install Rust wasm32-wasip1 target
               run: rustup target add wasm32-wasip1
@@ -142,6 +139,7 @@ jobs:
             - name: Build canister template
               run: |
                   CPYTHON_WASM_DIR=~/cpython-wasm \
+                  WASI_SDK_PATH=/opt/wasi-sdk \
                   cargo build \
                     --manifest-path=basilisk/compiler/cpython_canister_template/Cargo.toml \
                     --target=wasm32-wasip1 \
