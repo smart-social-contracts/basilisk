@@ -148,8 +148,10 @@ jobs:
             - name: Post-process template wasm
               run: |
                   TEMPLATE_SRC=basilisk/compiler/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm
-                  wasi2ic "$TEMPLATE_SRC" ${{ runner.temp }}/template_wasi2ic.wasm
-                  wasm-opt -Oz --closed-world --converge ${{ runner.temp }}/template_wasi2ic.wasm -o ${{ runner.temp }}/cpython_canister_template.wasm
+                  wasi2ic "$TEMPLATE_SRC" ${{ runner.temp }}/cpython_canister_template.wasm
+                  # NOTE: Do NOT run wasm-opt here. wasm-opt merges identical placeholder
+                  # functions (python_source_passive_data_size, method_meta_passive_data_size, etc.)
+                  # which breaks the wasm manipulator's ability to patch them individually.
                   echo "Template wasm size: $(du -sh ${{ runner.temp }}/cpython_canister_template.wasm | cut -f1)"
                   ls -la ${{ runner.temp }}/cpython_canister_template.wasm
 
