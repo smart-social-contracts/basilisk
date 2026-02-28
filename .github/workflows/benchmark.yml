@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BASILISK_PYTHON_BACKEND: ${{ github.event.inputs.backend }}
+      BASILISK_USE_TEMPLATE: ${{ github.event.inputs.backend == 'cpython' && 'true' || '' }}
       BASILISK_COMPILE_RUST_PYTHON_STDLIB: ${{ github.event.inputs.backend == 'rustpython' }}
       WASI_SDK_VERSION: "24"
       WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
@@ -28,7 +29,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.config/basilisk
-          key: basilisk-cargo-${{ github.event.inputs.backend }}-benchmark-v1-${{ hashFiles('basilisk/cargotoml.py') }}
+          key: basilisk-cargo-${{ github.event.inputs.backend }}-benchmark-v2-${{ hashFiles('basilisk/cargotoml.py') }}
 
       - name: Cache dfx
         uses: actions/cache@v4
@@ -41,13 +42,7 @@ jobs:
           DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
           echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
 
-      - name: Install WASI SDK
-        if: ${{ github.event.inputs.backend == 'cpython' }}
-        run: |
-          curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
-          tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
-          mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
-
+      # CPython template mode: download pre-built template wasm + wasm-opt
       - name: Install wasm-opt (binaryen)
         if: ${{ github.event.inputs.backend == 'cpython' }}
         run: |
@@ -56,20 +51,16 @@ jobs:
           sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
           wasm-opt --version
 
-      - name: Pre-download CPython wasm
+      - name: Download canister template wasm
         if: ${{ github.event.inputs.backend == 'cpython' }}
         run: |
           VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
-          CPYTHON_DIR="$HOME/.config/basilisk/${VERSION}/cpython_wasm"
-          if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ] || [ ! -f "${CPYTHON_DIR}/lib/libz.a" ]; then
-            mkdir -p "${CPYTHON_DIR}"
-            echo "Downloading CPython wasm artifacts..."
-            curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
-            tar -xzf /tmp/cpython-wasm.tar.gz -C "${CPYTHON_DIR}"
-            echo "CPython wasm installed to ${CPYTHON_DIR}"
-          else
-            echo "CPython wasm already cached"
-          fi
+          TEMPLATE_DIR="$HOME/.config/basilisk/${VERSION}"
+          mkdir -p "${TEMPLATE_DIR}"
+          echo "Downloading canister template wasm..."
+          curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm \
+            -o "${TEMPLATE_DIR}/cpython_canister_template.wasm"
+          echo "Template wasm: $(wc -c < "${TEMPLATE_DIR}/cpython_canister_template.wasm") bytes"
 
       - name: Setup Python environment
         working-directory: examples/benchmark

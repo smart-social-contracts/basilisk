@@ -107,31 +107,6 @@ async function main() {
         );
     }
 
-    // --- StableBTreeMap IO benchmarks ---
-    console.log('--- clear_db ---');
-    await canister.clear_db();
-
-    console.log('--- bulk_insert (stable memory write) ---');
-    for (const n of [10, 25, 50]) {
-        await canister.clear_db();
-        results.push(
-            await timeit(`bulk_insert(${n})`, 'io', n, () =>
-                canister.bulk_insert(BigInt(n))
-            )
-        );
-    }
-
-    console.log('--- bulk_read (stable memory read) ---');
-    await canister.clear_db();
-    await canister.bulk_insert(BigInt(50));
-    for (const n of [10, 25, 50]) {
-        results.push(
-            await timeit(`bulk_read(${n})`, 'io', n, () =>
-                canister.bulk_read(BigInt(n))
-            )
-        );
-    }
-
     // --- Output results ---
     const output = {
         backend,
