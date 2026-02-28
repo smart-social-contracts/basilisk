@@ -169,3 +169,126 @@ try:
 except ImportError:
     _register_json()
 del _register_json
+
+
+# --- frozen stdlib: random module (pure Python, no C extensions) ---
+# The CPython canister template seeds Python's random module with IC consensus
+# randomness (raw_rand) at init. On WASI there is no filesystem so stdlib
+# `random` isn't importable. This provides a minimal pure-Python implementation.
+
+def _register_random():
+    # Mersenne Twister constants
+    _N = 624
+    _M = 397
+    _MATRIX_A = 0x9908b0df
+    _UPPER_MASK = 0x80000000
+    _LOWER_MASK = 0x7fffffff
+
+    class Random:
+        def __init__(self, x=None):
+            self._mt = [0] * _N
+            self._mti = _N + 1
+            if x is not None:
+                self.seed(x)
+            else:
+                self.seed(0)
+
+        def seed(self, a=None):
+            if a is None:
+                a = 0
+            if isinstance(a, (bytes, bytearray)):
+                # Convert bytes to integer (big-endian)
+                a = int.from_bytes(a, 'big')
+            if isinstance(a, float):
+                a = int(a)
+            a = abs(a)
+            self._mt[0] = a & 0xffffffff
+            for i in range(1, _N):
+                self._mt[i] = (1812433253 * (self._mt[i - 1] ^ (self._mt[i - 1] >> 30)) + i) & 0xffffffff
+            self._mti = _N
+
+        def _generate(self):
+            mag01 = [0, _MATRIX_A]
+            for kk in range(_N - _M):
+                y = (self._mt[kk] & _UPPER_MASK) | (self._mt[kk + 1] & _LOWER_MASK)
+                self._mt[kk] = self._mt[kk + _M] ^ (y >> 1) ^ mag01[y & 1]
+            for kk in range(_N - _M, _N - 1):
+                y = (self._mt[kk] & _UPPER_MASK) | (self._mt[kk + 1] & _LOWER_MASK)
+                self._mt[kk] = self._mt[kk + (_M - _N)] ^ (y >> 1) ^ mag01[y & 1]
+            y = (self._mt[_N - 1] & _UPPER_MASK) | (self._mt[0] & _LOWER_MASK)
+            self._mt[_N - 1] = self._mt[_M - 1] ^ (y >> 1) ^ mag01[y & 1]
+            self._mti = 0
+
+        def _genrand_int32(self):
+            if self._mti >= _N:
+                self._generate()
+            y = self._mt[self._mti]
+            self._mti += 1
+            y ^= (y >> 11)
+            y ^= (y << 7) & 0x9d2c5680
+            y ^= (y << 15) & 0xefc60000
+            y ^= (y >> 18)
+            return y
+
+        def random(self):
+            a = self._genrand_int32() >> 5
+            b = self._genrand_int32() >> 6
+            return (a * 67108864.0 + b) * (1.0 / 9007199254740992.0)
+
+        def randint(self, a, b):
+            return a + int(self.random() * (b - a + 1))
+
+        def randrange(self, start, stop=None, step=1):
+            if stop is None:
+                return int(self.random() * start)
+            return start + step * int(self.random() * ((stop - start + step - 1) // step))
+
+        def choice(self, seq):
+            return seq[int(self.random() * len(seq))]
+
+        def shuffle(self, x):
+            for i in range(len(x) - 1, 0, -1):
+                j = int(self.random() * (i + 1))
+                x[i], x[j] = x[j], x[i]
+
+        def sample(self, population, k):
+            pool = list(population)
+            n = len(pool)
+            result = []
+            for i in range(k):
+                j = int(self.random() * (n - i))
+                result.append(pool[j])
+                pool[j] = pool[n - i - 1]
+            return result
+
+        def uniform(self, a, b):
+            return a + (b - a) * self.random()
+
+        def getrandbits(self, k):
+            if k <= 0:
+                raise ValueError("number of bits must be greater than zero")
+            numbytes = (k + 7) // 8
+            x = int.from_bytes(bytes([self._genrand_int32() & 0xff for _ in range(numbytes)]), 'big')
+            return x >> (numbytes * 8 - k)
+
+    _inst = Random()
+
+    m = type(_sys)("random")
+    m.__file__ = "<frozen random>"
+    m.Random = Random
+    m.seed = _inst.seed
+    m.random = _inst.random
+    m.randint = _inst.randint
+    m.randrange = _inst.randrange
+    m.choice = _inst.choice
+    m.shuffle = _inst.shuffle
+    m.sample = _inst.sample
+    m.uniform = _inst.uniform
+    m.getrandbits = _inst.getrandbits
+    _sys.modules["random"] = m
+
+try:
+    import random
+except ImportError:
+    _register_random()
+del _register_random

@@ -74,7 +74,7 @@ pub fn cpython_full_init(python_code: &str) {
                     let interpreter = unsafe { crate::INTERPRETER_OPTION.as_mut() }
                         .expect("SystemError: missing python interpreter");
                     let seed_code = format!(
-                        "import random; random.seed({})",
+                        "try:\n    import random\n    random.seed({})\nexcept ImportError:\n    pass",
                         randomness
                             .iter()
                             .map(|b| b.to_string())
@@ -82,7 +82,7 @@ pub fn cpython_full_init(python_code: &str) {
                             .join(",")
                     );
                     interpreter.run_code_string(&seed_code).unwrap_or_else(|e| {
-                        panic!("Failed to seed random: {}", e.to_rust_err_string())
+                        ic_cdk::println!("Warning: failed to seed random: {}", e.to_rust_err_string());
                     });
                 }
                 Err(err) => panic!("{:?}", err),
