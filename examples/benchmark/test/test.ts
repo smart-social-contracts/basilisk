@@ -1,7 +1,13 @@
-import { getCanisterId } from 'azle/test';
 import { createActor } from './dfx_generated/benchmark';
 import { HttpAgent } from '@dfinity/agent';
-import { writeFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
+
+function getCanisterId(name: string): string {
+    const idsPath = join(__dirname, '..', '.dfx', 'local', 'canister_ids.json');
+    const ids = JSON.parse(readFileSync(idsPath, 'utf-8'));
+    return ids[name].local;
+}
 
 interface BenchmarkResult {
     name: string;
