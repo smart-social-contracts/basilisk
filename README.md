@@ -120,6 +120,27 @@ basilisk new --backend rustpython my_project
 
 CPython is **~5-10x cheaper** per call due to its optimized C interpreter. Queries are free on the IC regardless of backend.
 
+### Benchmark Results
+
+Measured on a local IC replica (`dfx start`). All times are query call round-trip in milliseconds.
+
+| Benchmark | RustPython (ms) | CPython (ms) | Speedup |
+|---|---|---|---|
+| fibonacci(100) | 29.8 | 26.0 | 1.1x |
+| fibonacci(500) | 16.3 | 8.1 | **2.0x** |
+| fibonacci(1000) | 13.6 | 8.8 | **1.5x** |
+| string_processing(100) | 11.6 | 8.8 | **1.3x** |
+| string_processing(500) | 15.7 | 10.1 | **1.6x** |
+| dict_operations(100) | 16.6 | 9.4 | **1.8x** |
+| dict_operations(500) | 22.0 | 12.8 | **1.7x** |
+| json_roundtrip(50) | 88.1 | 16.0 | **5.5x** |
+| json_roundtrip(100) | 173.6 | 22.0 | **7.9x** |
+| json_roundtrip(200) | 517.6 | 30.9 | **16.8x** |
+| sort_benchmark(1000) | 15.9 | 7.6 | **2.1x** |
+| list_comprehension(100) | 45.2 | 9.6 | **4.7x** |
+
+CPython is faster across the board, with the largest gains on **JSON** (up to **16.8x**) and **list comprehensions** (up to **4.7x**). See `examples/benchmark/` for the full benchmark suite.
+
 ## CLI Reference
 
 ```bash
