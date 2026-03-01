@@ -46,20 +46,20 @@ def _wasi_safe_import(name, globals=None, locals=None, fromlist=(), level=0):
 # This ensures try/except import blocks use _orig_import and our rich stubs
 # get registered, not empty wasi-stubs.
 
-# --- Patch basilisk module with missing classes ---
-# The CPython template WASM shim may not include StableBTreeMap, Service, match.
-# Add them here so user code that imports them from basilisk works.
+# --- Patch basilisk module with missing/broken classes ---
 _bmod = _sys.modules.get('basilisk')
-if _bmod and not hasattr(_bmod, 'StableBTreeMap'):
+if _bmod:
     try:
         import _basilisk_ic as _bic
     except (ImportError, ModuleNotFoundError):
         _bic = None
 
+    # StableBTreeMap: ALWAYS override — the shim version delegates to
+    # _basilisk_ic.stable_b_tree_map_*  which don't exist in the pre-built
+    # CPython template.  This version falls back to an in-memory dict.
     class _StableBTreeMap:
         def __init__(self, memory_id, max_key_size=0, max_value_size=0):
             self.memory_id = memory_id
-            # Check if native _basilisk_ic functions exist for this memory_id
             self._native = _bic and hasattr(_bic, f"stable_b_tree_map_{memory_id}_get")
             if not self._native:
                 self._data = {}
@@ -107,28 +107,35 @@ if _bmod and not hasattr(_bmod, 'StableBTreeMap'):
             return list(self._data.values())
     _bmod.StableBTreeMap = _StableBTreeMap
 
-    class _Service:
-        def __init__(self, canister_id):
-            self.canister_id = canister_id
-    _bmod.Service = _Service
+    # Service and match: only add if missing
+    if not hasattr(_bmod, 'Service'):
+        class _Service:
+            def __init__(self, canister_id):
+                self.canister_id = canister_id
+        _bmod.Service = _Service
 
-    def _match(variant, matcher):
-        if isinstance(variant, dict):
-            for key, value in matcher.items():
-                if key in variant:
-                    return value(variant[key])
-                if key == "_":
-                    return value(None)
-        else:
-            err_value = getattr(variant, "Err", None)
-            if err_value is not None:
-                return matcher["Err"](err_value)
-            return matcher["Ok"](getattr(variant, "Ok"))
-        raise Exception("No matching case found")
-    _bmod.match = _match
+    if not hasattr(_bmod, 'match'):
+        def _match(variant, matcher):
+            if isinstance(variant, dict):
+                for key, value in matcher.items():
+                    if key in variant:
+                        return value(variant[key])
+                    if key == "_":
+                        return value(None)
+            else:
+                err_value = getattr(variant, "Err", None)
+                if err_value is not None:
+                    return matcher["Err"](err_value)
+                return matcher["Ok"](getattr(variant, "Ok"))
+            raise Exception("No matching case found")
+        _bmod.match = _match
 
     try:
-        del _bic, _StableBTreeMap, _Service, _match
+        del _bic, _StableBTreeMap
+    except NameError:
+        pass
+    try:
+        del _Service, _match
     except NameError:
         pass
 
