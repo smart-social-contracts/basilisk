@@ -103,7 +103,14 @@ if _bmod and not hasattr(_bmod, 'StableBTreeMap'):
         raise Exception("No matching case found")
     _bmod.match = _match
 
-    # Fix None-valued type aliases that need to be subscriptable (e.g. Opt[int])
+    try:
+        del _bic, _StableBTreeMap, _Service, _match
+    except NameError:
+        pass
+
+# Fix None-valued type aliases that need to be subscriptable (e.g. Opt[int])
+# This MUST be outside the StableBTreeMap check — Opt=None exists in all template versions.
+if _bmod:
     class _CandidTypeAlias:
         """Subscriptable stub for Candid type aliases like Opt, Alias, Manual."""
         def __class_getitem__(cls, params):
@@ -114,11 +121,11 @@ if _bmod and not hasattr(_bmod, 'StableBTreeMap'):
     for _attr in _none_attrs:
         if getattr(_bmod, _attr, None) is None:
             setattr(_bmod, _attr, _CandidTypeAlias)
-
     try:
-        del _bic, _StableBTreeMap, _Service, _match, _CandidTypeAlias, _none_attrs, _attr
+        del _CandidTypeAlias, _none_attrs, _attr
     except NameError:
         pass
+
 try:
     del _bmod
 except NameError:
