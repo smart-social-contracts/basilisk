@@ -223,6 +223,15 @@ class _LazyMod(_bMT):
         try:
             if self._bsrc:
                 exec(compile(self._bsrc, self.__name__.replace('.', '/') + '.py', 'exec'), self.__dict__)
+        except Exception as _be:
+            import sys as _es
+            _tb = _es.exc_info()[2]
+            _frames = []
+            while _tb:
+                _f = _tb.tb_frame
+                _frames.append(f'  File "{_f.f_code.co_filename}", line {_tb.tb_lineno}, in {_f.f_code.co_name}')
+                _tb = _tb.tb_next
+            raise type(_be)(f"{_be}\\nModule: {self.__name__}\\nTraceback:\\n" + "\\n".join(_frames)) from None
         finally:
             self.__dict__['_bloaded'] = True
             self.__dict__['_bloading'] = False
