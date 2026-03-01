@@ -306,3 +306,192 @@ try:
 except ImportError:
     _register_random()
 del _register_random
+
+
+# --- frozen stdlib: time module ---
+def _register_time():
+    def _time():
+        return 0.0
+    def _sleep(secs):
+        pass
+    def _monotonic():
+        return 0.0
+    m = type(_sys)("time")
+    m.__file__ = "<frozen time>"
+    m.time = _time
+    m.sleep = _sleep
+    m.monotonic = _monotonic
+    m.perf_counter = _monotonic
+    m.time_ns = lambda: 0
+    _sys.modules["time"] = m
+
+try:
+    import time
+except ImportError:
+    _register_time()
+del _register_time
+
+
+# --- frozen stdlib: datetime module ---
+def _register_datetime():
+    class timedelta:
+        def __init__(self, days=0, seconds=0, microseconds=0,
+                     milliseconds=0, minutes=0, hours=0, weeks=0):
+            total = (days * 86400 + hours * 3600 + minutes * 60 + seconds
+                     + milliseconds / 1000 + microseconds / 1000000 + weeks * 604800)
+            self._total_seconds = total
+        def total_seconds(self):
+            return self._total_seconds
+        def __repr__(self):
+            return f"timedelta(seconds={self._total_seconds})"
+
+    class datetime:
+        def __init__(self, year=1970, month=1, day=1, hour=0, minute=0,
+                     second=0, microsecond=0):
+            self.year = year; self.month = month; self.day = day
+            self.hour = hour; self.minute = minute; self.second = second
+            self.microsecond = microsecond
+        @staticmethod
+        def now():
+            return datetime()
+        @staticmethod
+        def fromtimestamp(ts):
+            # Minimal: just store ts, return stub
+            d = datetime()
+            d._ts = ts
+            return d
+        def strftime(self, fmt):
+            return f"{self.year:04d}-{self.month:02d}-{self.day:02d} {self.hour:02d}:{self.minute:02d}:{self.second:02d}.{self.microsecond:06d}"
+        def __repr__(self):
+            return self.strftime("%Y-%m-%d %H:%M:%S.%f")
+
+    m = type(_sys)("datetime")
+    m.__file__ = "<frozen datetime>"
+    m.datetime = datetime
+    m.timedelta = timedelta
+    _sys.modules["datetime"] = m
+
+try:
+    import datetime
+except ImportError:
+    _register_datetime()
+del _register_datetime
+
+
+# --- frozen stdlib: typing module ---
+def _register_typing():
+    m = type(_sys)("typing")
+    m.__file__ = "<frozen typing>"
+    # All typing constructs are no-ops at runtime
+    m.Any = object
+    m.Union = None
+    m.Optional = lambda x: x
+    m.List = list
+    m.Dict = dict
+    m.Set = set
+    m.Tuple = tuple
+    m.Type = type
+    m.Callable = object
+    m.Iterator = object
+    m.Generator = object
+    m.Iterable = object
+    m.Sequence = object
+    m.Mapping = object
+    m.MutableMapping = object
+    m.ClassVar = None
+    m.Final = None
+    m.Literal = None
+    m.Annotated = None
+    m.TypeAlias = None
+    m.NoReturn = None
+    m.TYPE_CHECKING = False
+    def _identity(x=None): return x
+    m.TypeVar = lambda name, *a, **kw: object
+    m.ParamSpec = lambda name, *a, **kw: object
+    m.Generic = object
+    m.Protocol = object
+    m.TypedDict = type
+    m.overload = lambda f: f
+    m.cast = lambda t, v: v
+    m.no_type_check = lambda f: f
+    m.runtime_checkable = lambda cls: cls
+    _sys.modules["typing"] = m
+
+try:
+    import typing
+except ImportError:
+    _register_typing()
+del _register_typing
+
+
+# --- frozen stdlib: abc module ---
+def _register_abc():
+    def abstractmethod(f):
+        return f
+    class ABCMeta(type):
+        pass
+    class ABC(metaclass=ABCMeta):
+        pass
+    m = type(_sys)("abc")
+    m.__file__ = "<frozen abc>"
+    m.ABC = ABC
+    m.ABCMeta = ABCMeta
+    m.abstractmethod = abstractmethod
+    _sys.modules["abc"] = m
+
+try:
+    import abc
+except ImportError:
+    _register_abc()
+del _register_abc
+
+
+# --- frozen stdlib: weakref module ---
+def _register_weakref():
+    class WeakValueDictionary(dict):
+        """Stub: acts as a regular dict (no weak references in WASI)."""
+        pass
+    class WeakSet(set):
+        pass
+    def ref(obj, callback=None):
+        return lambda: obj
+    m = type(_sys)("weakref")
+    m.__file__ = "<frozen weakref>"
+    m.WeakValueDictionary = WeakValueDictionary
+    m.WeakSet = WeakSet
+    m.ref = ref
+    _sys.modules["weakref"] = m
+
+try:
+    import weakref
+except ImportError:
+    _register_weakref()
+del _register_weakref
+
+
+# --- frozen stdlib: enum module ---
+def _register_enum():
+    class EnumMeta(type):
+        def __new__(mcs, name, bases, namespace):
+            cls = super().__new__(mcs, name, bases, namespace)
+            return cls
+        def __iter__(cls):
+            return iter([])
+    class Enum(metaclass=EnumMeta):
+        pass
+    class IntEnum(int, Enum):
+        pass
+    m = type(_sys)("enum")
+    m.__file__ = "<frozen enum>"
+    m.Enum = Enum
+    m.IntEnum = IntEnum
+    m.EnumMeta = EnumMeta
+    m.unique = lambda cls: cls
+    m.auto = lambda: 0
+    _sys.modules["enum"] = m
+
+try:
+    import enum
+except ImportError:
+    _register_enum()
+del _register_enum
