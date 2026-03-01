@@ -1,5 +1,19 @@
 import sys as _sys
 
+# --- Bootstrap import system ---
+# When _Py_InitializeMain is skipped (WASI CPython), sys.meta_path is empty
+# so even built-in C modules (time, math) and frozen modules (typing, abc)
+# can't be imported. Install the bootstrap finders manually.
+if not _sys.meta_path:
+    _frozen = _sys.modules.get('_frozen_importlib')
+    if _frozen:
+        _sys.meta_path.append(_frozen.BuiltinImporter)
+        _sys.meta_path.append(_frozen.FrozenImporter)
+    try:
+        del _frozen
+    except NameError:
+        pass
+
 # --- frozen stdlib: json module (pure Python, no C extensions) ---
 # On WASI/IC there is no filesystem, so stdlib packages like `json`
 # aren't importable. This registers a minimal pure-Python json module
