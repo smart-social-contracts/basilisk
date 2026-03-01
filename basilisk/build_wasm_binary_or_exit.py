@@ -223,10 +223,8 @@ class _LazyMod(_bMT):
         try:
             if self._bsrc:
                 exec(compile(self._bsrc, self.__name__.replace('.', '/') + '.py', 'exec'), self.__dict__)
-            self.__dict__['_bloaded'] = True
-        except Exception:
-            pass
         finally:
+            self.__dict__['_bloaded'] = True
             self.__dict__['_bloading'] = False
     def __getattr__(self, name):
         self._bload()
