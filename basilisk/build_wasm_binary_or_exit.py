@@ -210,15 +210,24 @@ class _LazyMod(_bMT):
         super().__init__(name)
         self.__dict__['_bsrc'] = source
         self.__dict__['_bloaded'] = False
+        self.__dict__['_bloading'] = False
         if is_pkg:
             self.__path__ = [name.replace('.', '/')]
             self.__package__ = name
         else:
             self.__package__ = name.rpartition('.')[0]
     def _bload(self):
-        if not self._bloaded and self._bsrc:
+        if self._bloading or self._bloaded:
+            return
+        self.__dict__['_bloading'] = True
+        try:
+            if self._bsrc:
+                exec(compile(self._bsrc, self.__name__.replace('.', '/') + '.py', 'exec'), self.__dict__)
             self.__dict__['_bloaded'] = True
-            exec(compile(self._bsrc, self.__name__.replace('.', '/') + '.py', 'exec'), self.__dict__)
+        except Exception:
+            pass
+        finally:
+            self.__dict__['_bloading'] = False
     def __getattr__(self, name):
         self._bload()
         try:

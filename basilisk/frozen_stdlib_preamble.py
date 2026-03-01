@@ -587,3 +587,79 @@ try:
 except ImportError:
     _register_enum()
 del _register_enum
+
+
+# --- frozen stdlib: collections module ---
+def _register_collections():
+    m = type(_sys)("collections")
+    m.__file__ = "<frozen collections>"
+    m.deque = list
+    m.OrderedDict = dict
+    m.defaultdict = dict
+    m.Counter = dict
+    m.namedtuple = lambda name, fields: type(name, (tuple,), {})
+    m.ChainMap = dict
+    _sys.modules["collections"] = m
+
+try:
+    import collections
+    collections.deque  # verify it's real
+except (ImportError, AttributeError):
+    _register_collections()
+del _register_collections
+
+
+# --- frozen stdlib: dataclasses module ---
+def _register_dataclasses():
+    def dataclass(cls=None, **kw):
+        if cls is None:
+            return lambda c: c
+        return cls
+    def field(**kw):
+        return kw.get('default', kw.get('default_factory', lambda: None)())
+    m = type(_sys)("dataclasses")
+    m.__file__ = "<frozen dataclasses>"
+    m.dataclass = dataclass
+    m.field = field
+    m.fields = lambda cls: []
+    m.asdict = lambda obj: {}
+    m.astuple = lambda obj: ()
+    m.replace = lambda obj, **kw: obj
+    m.is_dataclass = lambda obj: False
+    m.FrozenInstanceError = type('FrozenInstanceError', (AttributeError,), {})
+    _sys.modules["dataclasses"] = m
+
+try:
+    import dataclasses
+    dataclasses.dataclass  # verify it's real
+except (ImportError, AttributeError):
+    _register_dataclasses()
+del _register_dataclasses
+
+
+# --- frozen stdlib: functools module ---
+def _register_functools():
+    def lru_cache(maxsize=128, typed=False):
+        def decorator(f):
+            return f
+        if callable(maxsize):
+            return maxsize
+        return decorator
+    m = type(_sys)("functools")
+    m.__file__ = "<frozen functools>"
+    m.lru_cache = lru_cache
+    m.wraps = lambda f: lambda g: g
+    m.partial = lambda f, *a, **kw: lambda *a2, **kw2: f(*a, *a2, **{**kw, **kw2})
+    m.reduce = lambda f, it, *init: None
+    m.cache = lru_cache
+    m.cached_property = property
+    m.total_ordering = lambda cls: cls
+    m.singledispatch = lambda f: f
+    _sys.modules["functools"] = m
+
+try:
+    import functools
+    functools.wraps  # verify it's real
+except (ImportError, AttributeError):
+    _register_functools()
+del _register_functools
