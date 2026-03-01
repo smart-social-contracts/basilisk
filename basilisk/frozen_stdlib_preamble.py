@@ -58,15 +58,16 @@ if _bmod:
     # _basilisk_ic.stable_b_tree_map_*  which don't exist in the pre-built
     # CPython template.  This version falls back to an in-memory dict.
     class _StableBTreeMap:
+        _bic = _bic  # capture reference before cleanup
         def __init__(self, memory_id, max_key_size=0, max_value_size=0):
             self.memory_id = memory_id
-            self._native = _bic and hasattr(_bic, f"stable_b_tree_map_{memory_id}_get")
+            self._native = self._bic and hasattr(self._bic, f"stable_b_tree_map_{memory_id}_get")
             if not self._native:
                 self._data = {}
         def __class_getitem__(cls, params):
             return cls
         def _fn(self, op):
-            return getattr(_bic, f"stable_b_tree_map_{self.memory_id}_{op}")
+            return getattr(self._bic, f"stable_b_tree_map_{self.memory_id}_{op}")
         def contains_key(self, key):
             if self._native:
                 return self._fn("contains_key")(key)
