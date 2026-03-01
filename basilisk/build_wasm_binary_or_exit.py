@@ -124,20 +124,26 @@ def find_template_wasm(paths: Paths) -> str | None:
 
 
 def read_python_source(paths: Paths) -> str:
-    """Read all bundled Python source files into a single string."""
+    """Read all bundled Python source files into a single string.
+
+    For the CPython template mode, ALL bundled modules must be included in a single
+    string since there's no filesystem. This function:
+    1. Walks the bundled python_source directory
+    2. Collects all .py files with their module paths
+    3. Generates a custom import hook that serves modules from an in-memory dict
+    4. Appends the main entry point code at the end
+    """
     python_source_dir = paths.get("python_source", "")
     entry_file = paths.get("py_entry_file", "")
+    entry_module = paths.get("py_entry_module_name", "main")
 
-    # If python_source dir exists (bundled by compile_python_or_exit), read the entry point
+    # If python_source dir exists (bundled by bundle_python_code), read ALL modules
     if python_source_dir and os.path.isdir(python_source_dir):
-        # Find the main Python file
-        entry_module = paths.get("py_entry_module_name", "main")
         main_py = os.path.join(python_source_dir, f"{entry_module}.py")
         if os.path.exists(main_py):
-            with open(main_py, "r") as f:
-                return f.read()
+            return _bundle_all_modules(python_source_dir, entry_module)
 
-    # Fall back to reading the original entry point file
+    # Fall back to reading the original entry point file (no dependencies)
     if entry_file and os.path.exists(entry_file):
         with open(entry_file, "r") as f:
             return f.read()
@@ -145,6 +151,114 @@ def read_python_source(paths: Paths) -> str:
     raise FileNotFoundError(
         f"Could not find Python source. Checked: {python_source_dir}, {entry_file}"
     )
+
+
+def _bundle_all_modules(source_dir: str, entry_module: str) -> str:
+    """Bundle all Python modules from source_dir into a single string with an import hook.
+
+    Creates an in-memory module registry and a custom sys.meta_path finder/loader
+    so that 'import foo.bar' works without a filesystem.
+    """
+    modules = {}  # module_name -> source_code
+
+    for root, dirs, files in os.walk(source_dir):
+        for fname in files:
+            if not fname.endswith(".py"):
+                continue
+            filepath = os.path.join(root, fname)
+            relpath = os.path.relpath(filepath, source_dir)
+            # Convert file path to module name
+            # e.g. "ic_python_db/__init__.py" -> "ic_python_db"
+            # e.g. "ic_python_db/_cdk.py" -> "ic_python_db._cdk"
+            # e.g. "main.py" -> "main"
+            parts = relpath.replace(os.sep, "/").split("/")
+            if parts[-1] == "__init__.py":
+                mod_name = ".".join(parts[:-1])
+            else:
+                parts[-1] = parts[-1][:-3]  # strip .py
+                mod_name = ".".join(parts)
+
+            if not mod_name:
+                continue
+
+            # Skip the entry module - it will be appended at the end
+            if mod_name == entry_module:
+                continue
+
+            with open(filepath, "r") as f:
+                modules[mod_name] = f.read()
+
+    # Build the import hook preamble
+    lines = []
+    lines.append("# ── Basilisk in-memory module loader ──")
+    lines.append("import sys as _basilisk_sys")
+    lines.append("import types as _basilisk_types")
+    lines.append("_basilisk_module_sources = {}")
+
+    # Register all module sources (use repr() to safely embed source code)
+    for mod_name, source in sorted(modules.items()):
+        lines.append(f"_basilisk_module_sources[{mod_name!r}] = {source!r}")
+
+    # Custom import hook class
+    lines.append("""
+class _BasiliskFinder:
+    @classmethod
+    def find_module(cls, fullname, path=None):
+        if fullname in _basilisk_module_sources:
+            return cls
+        # Check if it's a parent package (e.g. 'foo' when 'foo.bar' exists)
+        prefix = fullname + '.'
+        for key in _basilisk_module_sources:
+            if key.startswith(prefix) or key == fullname:
+                return cls
+        return None
+
+    @classmethod
+    def load_module(cls, fullname):
+        if fullname in _basilisk_sys.modules:
+            return _basilisk_sys.modules[fullname]
+
+        mod = _basilisk_types.ModuleType(fullname)
+        mod.__loader__ = cls
+
+        # Determine if this is a package
+        is_package = False
+        if fullname in _basilisk_module_sources:
+            source = _basilisk_module_sources[fullname]
+            # It's a package if there are submodules
+            prefix = fullname + '.'
+            for key in _basilisk_module_sources:
+                if key.startswith(prefix):
+                    is_package = True
+                    break
+        else:
+            # No direct source but submodules exist -> implicit package
+            is_package = True
+            source = ''
+
+        if is_package:
+            mod.__path__ = [fullname.replace('.', '/')]
+            mod.__package__ = fullname
+        else:
+            mod.__package__ = fullname.rpartition('.')[0]
+
+        _basilisk_sys.modules[fullname] = mod
+        if source:
+            exec(compile(source, fullname.replace('.', '/') + '.py', 'exec'), mod.__dict__)
+        return mod
+
+_basilisk_sys.meta_path.insert(0, _BasiliskFinder)
+""")
+
+    # Read and append the entry module source at the end
+    entry_path = os.path.join(source_dir, f"{entry_module}.py")
+    with open(entry_path, "r") as f:
+        entry_source = f.read()
+
+    lines.append("# ── Entry point ──")
+    lines.append(entry_source)
+
+    return "\n".join(lines)
 
 
 def install_cpython_wasm(paths: Paths, cargo_env: dict[str, str], verbose: bool):
