@@ -193,41 +193,44 @@ def _bundle_all_modules(source_dir: str, entry_module: str) -> str:
 
     # Sort for registration: packages before submodules (so parent exists in sys.modules first)
     sorted_modules = sorted(modules.keys(), key=lambda m: (m.count('.'), not modules[m][1], m))
-    # Sort for execution: leaf modules first, parent packages last
-    # This ensures 'from .submod import X' works (submodule is already populated)
-    exec_order = sorted(modules.keys(), key=lambda m: (modules[m][1], -m.count('.'), m))
 
-    # Build the loader preamble
+    # Build the loader preamble using lazy modules.
+    # Modules are registered as _LazyMod instances in sys.modules.  Their source
+    # is only exec'd on the first attribute access, avoiding import-time errors
+    # from unavailable stdlib modules (time, datetime, etc. on WASI).
     lines = []
     lines.append("# ── Basilisk in-memory module loader ──")
     lines.append("import sys as _bsys")
     lines.append("_bMT = type(_bsys)  # ModuleType without importing types")
 
-    # Directly create and register each module in sys.modules
+    # Define the lazy module class
+    lines.append("""
+class _LazyMod(_bMT):
+    def __init__(self, name, source, is_pkg=False):
+        super().__init__(name)
+        self.__dict__['_bsrc'] = source
+        self.__dict__['_bloaded'] = False
+        if is_pkg:
+            self.__path__ = [name.replace('.', '/')]
+            self.__package__ = name
+        else:
+            self.__package__ = name.rpartition('.')[0]
+    def _bload(self):
+        if not self._bloaded and self._bsrc:
+            self.__dict__['_bloaded'] = True
+            exec(compile(self._bsrc, self.__name__.replace('.', '/') + '.py', 'exec'), self.__dict__)
+    def __getattr__(self, name):
+        self._bload()
+        try:
+            return self.__dict__[name]
+        except KeyError:
+            raise AttributeError(f"module '{self.__name__}' has no attribute '{name}'")
+""")
+
+    # Register each module as a lazy module in sys.modules
     for mod_name in sorted_modules:
         source, is_package = modules[mod_name]
-        varname = "_bm_" + mod_name.replace(".", "_")
-        lines.append(f"{varname} = _bMT({mod_name!r})")
-        if is_package:
-            lines.append(f"{varname}.__path__ = [{mod_name.replace('.', '/')!r}]")
-            lines.append(f"{varname}.__package__ = {mod_name!r}")
-        else:
-            parent = mod_name.rpartition('.')[0]
-            lines.append(f"{varname}.__package__ = {parent!r}")
-        lines.append(f"_bsys.modules[{mod_name!r}] = {varname}")
-
-    # Now exec each module's source in its module dict (after ALL modules are registered
-    # in sys.modules, so cross-imports resolve correctly)
-    # Use exec_order: leaf modules first so parent __init__.py can import from them
-    for mod_name in exec_order:
-        source, is_package = modules[mod_name]
-        if not source.strip():
-            continue
-        varname = "_bm_" + mod_name.replace(".", "_")
-        lines.append(f"exec(compile({source!r}, {(mod_name.replace('.', '/') + '.py')!r}, 'exec'), {varname}.__dict__)")
-
-    # Clean up temporary variables
-    lines.append("del _bMT")
+        lines.append(f"_bsys.modules[{mod_name!r}] = _LazyMod({mod_name!r}, {source!r}, {is_package!r})")
 
     # Read and append the entry module source at the end
     entry_path = os.path.join(source_dir, f"{entry_module}.py")
