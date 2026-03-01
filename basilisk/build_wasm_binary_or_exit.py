@@ -192,7 +192,7 @@ def _bundle_all_modules(source_dir: str, entry_module: str) -> str:
     lines = []
     lines.append("# ── Basilisk in-memory module loader ──")
     lines.append("import sys as _basilisk_sys")
-    lines.append("import types as _basilisk_types")
+    lines.append("_basilisk_ModuleType = type(_basilisk_sys)  # avoid importing types module")
     lines.append("_basilisk_module_sources = {}")
 
     # Register all module sources (use repr() to safely embed source code)
@@ -218,7 +218,7 @@ class _BasiliskFinder:
         if fullname in _basilisk_sys.modules:
             return _basilisk_sys.modules[fullname]
 
-        mod = _basilisk_types.ModuleType(fullname)
+        mod = _basilisk_ModuleType(fullname)
         mod.__loader__ = cls
 
         # Determine if this is a package
