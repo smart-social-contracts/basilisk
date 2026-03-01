@@ -154,12 +154,13 @@ def read_python_source(paths: Paths) -> str:
 
 
 def _bundle_all_modules(source_dir: str, entry_module: str) -> str:
-    """Bundle all Python modules from source_dir into a single string with an import hook.
+    """Bundle all Python modules from source_dir into a single string.
 
-    Creates an in-memory module registry and a custom sys.meta_path finder/loader
-    so that 'import foo.bar' works without a filesystem.
+    Directly populates sys.modules with pre-compiled module objects instead of
+    using sys.meta_path (which requires _Py_InitializeMain, skipped in WASI CPython).
+    Modules are loaded in dependency order: packages first, then submodules.
     """
-    modules = {}  # module_name -> source_code
+    modules = {}  # module_name -> (source_code, is_package)
 
     for root, dirs, files in os.walk(source_dir):
         for fname in files:
@@ -168,11 +169,9 @@ def _bundle_all_modules(source_dir: str, entry_module: str) -> str:
             filepath = os.path.join(root, fname)
             relpath = os.path.relpath(filepath, source_dir)
             # Convert file path to module name
-            # e.g. "ic_python_db/__init__.py" -> "ic_python_db"
-            # e.g. "ic_python_db/_cdk.py" -> "ic_python_db._cdk"
-            # e.g. "main.py" -> "main"
             parts = relpath.replace(os.sep, "/").split("/")
-            if parts[-1] == "__init__.py":
+            is_package = parts[-1] == "__init__.py"
+            if is_package:
                 mod_name = ".".join(parts[:-1])
             else:
                 parts[-1] = parts[-1][:-3]  # strip .py
@@ -185,70 +184,50 @@ def _bundle_all_modules(source_dir: str, entry_module: str) -> str:
             if mod_name == entry_module:
                 continue
 
-            with open(filepath, "r") as f:
-                modules[mod_name] = f.read()
+            # Skip the basilisk package - provided by the Rust BASILISK_PYTHON_SHIM
+            if mod_name == "basilisk" or mod_name.startswith("basilisk."):
+                continue
 
-    # Build the import hook preamble
+            with open(filepath, "r") as f:
+                modules[mod_name] = (f.read(), is_package)
+
+    # Sort for registration: packages before submodules (so parent exists in sys.modules first)
+    sorted_modules = sorted(modules.keys(), key=lambda m: (m.count('.'), not modules[m][1], m))
+    # Sort for execution: leaf modules first, parent packages last
+    # This ensures 'from .submod import X' works (submodule is already populated)
+    exec_order = sorted(modules.keys(), key=lambda m: (modules[m][1], -m.count('.'), m))
+
+    # Build the loader preamble
     lines = []
     lines.append("# ── Basilisk in-memory module loader ──")
-    lines.append("import sys as _basilisk_sys")
-    lines.append("_basilisk_ModuleType = type(_basilisk_sys)  # avoid importing types module")
-    lines.append("_basilisk_module_sources = {}")
+    lines.append("import sys as _bsys")
+    lines.append("_bMT = type(_bsys)  # ModuleType without importing types")
 
-    # Register all module sources (use repr() to safely embed source code)
-    for mod_name, source in sorted(modules.items()):
-        lines.append(f"_basilisk_module_sources[{mod_name!r}] = {source!r}")
-
-    # Custom import hook class
-    lines.append("""
-class _BasiliskFinder:
-    @classmethod
-    def find_module(cls, fullname, path=None):
-        if fullname in _basilisk_module_sources:
-            return cls
-        # Check if it's a parent package (e.g. 'foo' when 'foo.bar' exists)
-        prefix = fullname + '.'
-        for key in _basilisk_module_sources:
-            if key.startswith(prefix) or key == fullname:
-                return cls
-        return None
-
-    @classmethod
-    def load_module(cls, fullname):
-        if fullname in _basilisk_sys.modules:
-            return _basilisk_sys.modules[fullname]
-
-        mod = _basilisk_ModuleType(fullname)
-        mod.__loader__ = cls
-
-        # Determine if this is a package
-        is_package = False
-        if fullname in _basilisk_module_sources:
-            source = _basilisk_module_sources[fullname]
-            # It's a package if there are submodules
-            prefix = fullname + '.'
-            for key in _basilisk_module_sources:
-                if key.startswith(prefix):
-                    is_package = True
-                    break
-        else:
-            # No direct source but submodules exist -> implicit package
-            is_package = True
-            source = ''
-
+    # Directly create and register each module in sys.modules
+    for mod_name in sorted_modules:
+        source, is_package = modules[mod_name]
+        varname = "_bm_" + mod_name.replace(".", "_")
+        lines.append(f"{varname} = _bMT({mod_name!r})")
         if is_package:
-            mod.__path__ = [fullname.replace('.', '/')]
-            mod.__package__ = fullname
+            lines.append(f"{varname}.__path__ = [{mod_name.replace('.', '/')!r}]")
+            lines.append(f"{varname}.__package__ = {mod_name!r}")
         else:
-            mod.__package__ = fullname.rpartition('.')[0]
+            parent = mod_name.rpartition('.')[0]
+            lines.append(f"{varname}.__package__ = {parent!r}")
+        lines.append(f"_bsys.modules[{mod_name!r}] = {varname}")
 
-        _basilisk_sys.modules[fullname] = mod
-        if source:
-            exec(compile(source, fullname.replace('.', '/') + '.py', 'exec'), mod.__dict__)
-        return mod
+    # Now exec each module's source in its module dict (after ALL modules are registered
+    # in sys.modules, so cross-imports resolve correctly)
+    # Use exec_order: leaf modules first so parent __init__.py can import from them
+    for mod_name in exec_order:
+        source, is_package = modules[mod_name]
+        if not source.strip():
+            continue
+        varname = "_bm_" + mod_name.replace(".", "_")
+        lines.append(f"exec(compile({source!r}, {(mod_name.replace('.', '/') + '.py')!r}, 'exec'), {varname}.__dict__)")
 
-_basilisk_sys.meta_path.insert(0, _BasiliskFinder)
-""")
+    # Clean up temporary variables
+    lines.append("del _bMT")
 
     # Read and append the entry module source at the end
     entry_path = os.path.join(source_dir, f"{entry_module}.py")
