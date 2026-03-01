@@ -42,7 +42,9 @@ def _wasi_safe_import(name, globals=None, locals=None, fromlist=(), level=0):
         _sys.modules[name] = mod
         return mod
 
-_builtins.__import__ = _wasi_safe_import
+# NOTE: _wasi_safe_import is installed AFTER all rich stdlib stubs below.
+# This ensures try/except import blocks use _orig_import and our rich stubs
+# get registered, not empty wasi-stubs.
 
 # --- Patch basilisk module with missing classes ---
 # The CPython template WASM shim may not include StableBTreeMap, Service, match.
@@ -685,3 +687,8 @@ try:
 except (ImportError, AttributeError):
     _register_functools()
 del _register_functools
+
+# --- Install the universal fallback import wrapper ---
+# This MUST be after all rich stdlib stubs above, so that try/except import
+# blocks use _orig_import and the rich stubs get registered properly.
+_builtins.__import__ = _wasi_safe_import
