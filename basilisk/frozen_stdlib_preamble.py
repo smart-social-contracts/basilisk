@@ -615,11 +615,34 @@ del _register_enum
 
 # --- frozen stdlib: collections module ---
 def _register_collections():
+    class _deque(list):
+        """Stub deque backed by list (no maxlen enforcement in WASI)."""
+        def __init__(self, iterable=(), maxlen=None):
+            super().__init__(iterable)
+            self.maxlen = maxlen
+        def appendleft(self, x):
+            self.insert(0, x)
+        def extendleft(self, iterable):
+            for x in iterable:
+                self.insert(0, x)
+        def popleft(self):
+            return self.pop(0)
+        def rotate(self, n=1):
+            pass
+    class _defaultdict(dict):
+        def __init__(self, default_factory=None, *a, **kw):
+            super().__init__(*a, **kw)
+            self.default_factory = default_factory
+        def __missing__(self, key):
+            if self.default_factory is None:
+                raise KeyError(key)
+            self[key] = self.default_factory()
+            return self[key]
     m = type(_sys)("collections")
     m.__file__ = "<frozen collections>"
-    m.deque = list
+    m.deque = _deque
     m.OrderedDict = dict
-    m.defaultdict = dict
+    m.defaultdict = _defaultdict
     m.Counter = dict
     m.namedtuple = lambda name, fields: type(name, (tuple,), {})
     m.ChainMap = dict
