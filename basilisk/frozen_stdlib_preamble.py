@@ -1,18 +1,46 @@
 import sys as _sys
 
 # --- Bootstrap import system ---
-# When _Py_InitializeMain is skipped (WASI CPython), sys.meta_path is empty
-# so even built-in C modules (time, math) and frozen modules (typing, abc)
-# can't be imported. Install the bootstrap finders manually.
-if not _sys.meta_path:
-    _frozen = _sys.modules.get('_frozen_importlib')
-    if _frozen:
+# When _Py_InitializeMain is skipped (WASI CPython), sys.meta_path may be
+# empty and many stdlib modules aren't available (no filesystem).
+# 1. Try to install BuiltinImporter/FrozenImporter from _frozen_importlib
+# 2. Install a fallback finder that auto-creates empty stub modules for
+#    anything that still can't be found (e.g. pickle, copyreg, logging).
+#    This goes LAST so it only triggers when all other finders fail.
+_frozen = _sys.modules.get('_frozen_importlib')
+if _frozen:
+    if not _sys.meta_path:
         _sys.meta_path.append(_frozen.BuiltinImporter)
         _sys.meta_path.append(_frozen.FrozenImporter)
-    try:
-        del _frozen
-    except NameError:
-        pass
+    elif _frozen.BuiltinImporter not in _sys.meta_path:
+        _sys.meta_path.insert(0, _frozen.BuiltinImporter)
+        _sys.meta_path.insert(1, _frozen.FrozenImporter)
+try:
+    del _frozen
+except NameError:
+    pass
+
+class _WasiStubFinder:
+    """Fallback import finder for WASI: creates empty stub modules.
+
+    Installed last on sys.meta_path so it only activates when all real
+    finders have failed.  Prevents ModuleNotFoundError for stdlib modules
+    that aren't frozen/built-in in the WASI CPython build.
+    """
+    def find_module(self, fullname, path=None):
+        return self
+    def load_module(self, fullname):
+        if fullname in _sys.modules:
+            return _sys.modules[fullname]
+        mod = type(_sys)(fullname)
+        mod.__file__ = "<wasi-stub>"
+        mod.__loader__ = self
+        mod.__path__ = []
+        mod.__package__ = fullname
+        _sys.modules[fullname] = mod
+        return mod
+
+_sys.meta_path.append(_WasiStubFinder())
 
 # --- frozen stdlib: json module (pure Python, no C extensions) ---
 # On WASI/IC there is no filesystem, so stdlib packages like `json`
