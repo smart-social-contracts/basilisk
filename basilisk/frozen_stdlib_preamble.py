@@ -59,28 +59,52 @@ if _bmod and not hasattr(_bmod, 'StableBTreeMap'):
     class _StableBTreeMap:
         def __init__(self, memory_id, max_key_size=0, max_value_size=0):
             self.memory_id = memory_id
+            # Check if native _basilisk_ic functions exist for this memory_id
+            self._native = _bic and hasattr(_bic, f"stable_b_tree_map_{memory_id}_get")
+            if not self._native:
+                self._data = {}
         def __class_getitem__(cls, params):
             return cls
         def _fn(self, op):
             return getattr(_bic, f"stable_b_tree_map_{self.memory_id}_{op}")
         def contains_key(self, key):
-            return self._fn("contains_key")(key)
+            if self._native:
+                return self._fn("contains_key")(key)
+            return key in self._data
         def get(self, key):
-            return self._fn("get")(key)
+            if self._native:
+                return self._fn("get")(key)
+            return self._data.get(key)
         def insert(self, key, value):
-            return self._fn("insert")(key, value)
+            if self._native:
+                return self._fn("insert")(key, value)
+            old = self._data.get(key)
+            self._data[key] = value
+            return old
         def is_empty(self):
-            return self._fn("is_empty")()
+            if self._native:
+                return self._fn("is_empty")()
+            return len(self._data) == 0
         def items(self):
-            return self._fn("items")()
+            if self._native:
+                return self._fn("items")()
+            return list(self._data.items())
         def keys(self):
-            return self._fn("keys")()
+            if self._native:
+                return self._fn("keys")()
+            return list(self._data.keys())
         def len(self):
-            return self._fn("len")()
+            if self._native:
+                return self._fn("len")()
+            return len(self._data)
         def remove(self, key):
-            return self._fn("remove")(key)
+            if self._native:
+                return self._fn("remove")(key)
+            return self._data.pop(key, None)
         def values(self):
-            return self._fn("values")()
+            if self._native:
+                return self._fn("values")()
+            return list(self._data.values())
     _bmod.StableBTreeMap = _StableBTreeMap
 
     class _Service:
