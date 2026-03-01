@@ -29,14 +29,18 @@ def _wasi_safe_import(name, globals=None, locals=None, fromlist=(), level=0):
         # For relative imports (level > 0), don't stub - let it fail normally
         if level > 0:
             raise
+        # Only stub truly missing modules.
+        # If the module is already in sys.modules, the error came from INSIDE
+        # module loading (e.g. a sub-import failed) - let it propagate.
+        if name in _sys.modules:
+            raise
         # Create a stub module so the import doesn't crash
-        if name not in _sys.modules:
-            mod = _ModuleType(name)
-            mod.__file__ = "<wasi-stub>"
-            mod.__path__ = []
-            mod.__package__ = name
-            _sys.modules[name] = mod
-        return _sys.modules[name]
+        mod = _ModuleType(name)
+        mod.__file__ = "<wasi-stub>"
+        mod.__path__ = []
+        mod.__package__ = name
+        _sys.modules[name] = mod
+        return mod
 
 _builtins.__import__ = _wasi_safe_import
 
@@ -490,6 +494,24 @@ def _register_typing():
     m.Sequence = object
     m.Mapping = object
     m.MutableMapping = object
+    m.Deque = list
+    m.FrozenSet = frozenset
+    m.Counter = dict
+    m.OrderedDict = dict
+    m.DefaultDict = dict
+    m.NamedTuple = tuple
+    m.IO = object
+    m.TextIO = object
+    m.BinaryIO = object
+    m.Pattern = object
+    m.Match = object
+    m.AnyStr = object
+    m.SupportsInt = object
+    m.SupportsFloat = object
+    m.SupportsComplex = object
+    m.SupportsBytes = object
+    m.SupportsAbs = object
+    m.SupportsRound = object
     m.ClassVar = None
     m.Final = None
     m.Literal = None
