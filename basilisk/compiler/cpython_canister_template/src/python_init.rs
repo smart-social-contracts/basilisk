@@ -251,10 +251,62 @@ _mod.trap = _basilisk_ic.trap
 _mod.candid_decode = _basilisk_ic.candid_decode
 _mod.candid_encode = _basilisk_ic.candid_encode
 
+# === Service base class ===
+class Service:
+    def __init__(self, canister_id):
+        self.canister_id = canister_id
+_mod.Service = Service
+
+# === StableBTreeMap ===
+class StableBTreeMap:
+    def __init__(self, memory_id, max_key_size=0, max_value_size=0):
+        self.memory_id = memory_id
+    def __class_getitem__(cls, params):
+        return cls
+    def _fn(self, op):
+        return getattr(_basilisk_ic, f"stable_b_tree_map_{self.memory_id}_{op}")
+    def contains_key(self, key):
+        return self._fn("contains_key")(key)
+    def get(self, key):
+        return self._fn("get")(key)
+    def insert(self, key, value):
+        return self._fn("insert")(key, value)
+    def is_empty(self):
+        return self._fn("is_empty")()
+    def items(self):
+        return self._fn("items")()
+    def keys(self):
+        return self._fn("keys")()
+    def len(self):
+        return self._fn("len")()
+    def remove(self, key):
+        return self._fn("remove")(key)
+    def values(self):
+        return self._fn("values")()
+_mod.StableBTreeMap = StableBTreeMap
+
+# === match function ===
+def _match(variant, matcher):
+    if isinstance(variant, dict):
+        for key, value in matcher.items():
+            if key in variant:
+                return value(variant[key])
+            if key == "_":
+                return value(None)
+    else:
+        err_value = getattr(variant, "Err", None)
+        if err_value is not None:
+            return matcher["Err"](err_value)
+        return matcher["Ok"](getattr(variant, "Ok"))
+    raise Exception("No matching case found")
+_mod.match = _match
+
 _sys.modules["basilisk"] = _mod
 
 # Make key classes available at top level for user code
 Principal = _mod.Principal
 CallResult = _mod.CallResult
+StableBTreeMap = _mod.StableBTreeMap
+Service = _mod.Service
 ic = _mod.ic
 "#;

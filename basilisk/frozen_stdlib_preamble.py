@@ -40,6 +40,72 @@ def _wasi_safe_import(name, globals=None, locals=None, fromlist=(), level=0):
 
 _builtins.__import__ = _wasi_safe_import
 
+# --- Patch basilisk module with missing classes ---
+# The CPython template WASM shim may not include StableBTreeMap, Service, match.
+# Add them here so user code that imports them from basilisk works.
+_bmod = _sys.modules.get('basilisk')
+if _bmod and not hasattr(_bmod, 'StableBTreeMap'):
+    try:
+        import _basilisk_ic as _bic
+    except (ImportError, ModuleNotFoundError):
+        _bic = None
+
+    class _StableBTreeMap:
+        def __init__(self, memory_id, max_key_size=0, max_value_size=0):
+            self.memory_id = memory_id
+        def __class_getitem__(cls, params):
+            return cls
+        def _fn(self, op):
+            return getattr(_bic, f"stable_b_tree_map_{self.memory_id}_{op}")
+        def contains_key(self, key):
+            return self._fn("contains_key")(key)
+        def get(self, key):
+            return self._fn("get")(key)
+        def insert(self, key, value):
+            return self._fn("insert")(key, value)
+        def is_empty(self):
+            return self._fn("is_empty")()
+        def items(self):
+            return self._fn("items")()
+        def keys(self):
+            return self._fn("keys")()
+        def len(self):
+            return self._fn("len")()
+        def remove(self, key):
+            return self._fn("remove")(key)
+        def values(self):
+            return self._fn("values")()
+    _bmod.StableBTreeMap = _StableBTreeMap
+
+    class _Service:
+        def __init__(self, canister_id):
+            self.canister_id = canister_id
+    _bmod.Service = _Service
+
+    def _match(variant, matcher):
+        if isinstance(variant, dict):
+            for key, value in matcher.items():
+                if key in variant:
+                    return value(variant[key])
+                if key == "_":
+                    return value(None)
+        else:
+            err_value = getattr(variant, "Err", None)
+            if err_value is not None:
+                return matcher["Err"](err_value)
+            return matcher["Ok"](getattr(variant, "Ok"))
+        raise Exception("No matching case found")
+    _bmod.match = _match
+
+    try:
+        del _bic, _StableBTreeMap, _Service, _match
+    except NameError:
+        pass
+try:
+    del _bmod
+except NameError:
+    pass
+
 # --- frozen stdlib: json module (pure Python, no C extensions) ---
 # On WASI/IC there is no filesystem, so stdlib packages like `json`
 # aren't importable. This registers a minimal pure-Python json module
