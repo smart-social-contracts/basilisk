@@ -480,57 +480,71 @@ del _register_datetime
 def _register_typing():
     m = type(_sys)("typing")
     m.__file__ = "<frozen typing>"
+    # Subscriptable stub: T[X] returns T, so Optional[str] works etc.
+    class _TypingStub:
+        def __class_getitem__(cls, params):
+            return cls
+        def __init_subclass__(cls, **kw):
+            pass
+    class _CallableStub(_TypingStub):
+        pass
     # All typing constructs are no-ops at runtime
-    m.Any = object
-    m.Union = None
-    m.Optional = lambda x: x
+    m.Any = _TypingStub
+    m.Union = _TypingStub
+    m.Optional = _TypingStub
     m.List = list
     m.Dict = dict
     m.Set = set
     m.Tuple = tuple
     m.Type = type
-    m.Callable = object
-    m.Iterator = object
-    m.Generator = object
-    m.Iterable = object
-    m.Sequence = object
-    m.Mapping = object
-    m.MutableMapping = object
-    m.Deque = list
+    m.Callable = _CallableStub
+    m.Iterator = _TypingStub
+    m.Generator = _TypingStub
+    m.Iterable = _TypingStub
+    m.Sequence = _TypingStub
+    m.Mapping = _TypingStub
+    m.MutableMapping = _TypingStub
+    m.MutableSequence = _TypingStub
+    m.MutableSet = _TypingStub
+    m.Deque = _TypingStub
     m.FrozenSet = frozenset
-    m.Counter = dict
-    m.OrderedDict = dict
-    m.DefaultDict = dict
-    m.NamedTuple = tuple
-    m.IO = object
-    m.TextIO = object
-    m.BinaryIO = object
-    m.Pattern = object
-    m.Match = object
-    m.AnyStr = object
-    m.SupportsInt = object
-    m.SupportsFloat = object
-    m.SupportsComplex = object
-    m.SupportsBytes = object
-    m.SupportsAbs = object
-    m.SupportsRound = object
-    m.ClassVar = None
-    m.Final = None
-    m.Literal = None
-    m.Annotated = None
-    m.TypeAlias = None
-    m.NoReturn = None
+    m.Counter = _TypingStub
+    m.OrderedDict = _TypingStub
+    m.DefaultDict = _TypingStub
+    m.NamedTuple = _TypingStub
+    m.IO = _TypingStub
+    m.TextIO = _TypingStub
+    m.BinaryIO = _TypingStub
+    m.Pattern = _TypingStub
+    m.Match = _TypingStub
+    m.AnyStr = _TypingStub
+    m.SupportsInt = _TypingStub
+    m.SupportsFloat = _TypingStub
+    m.SupportsComplex = _TypingStub
+    m.SupportsBytes = _TypingStub
+    m.SupportsAbs = _TypingStub
+    m.SupportsRound = _TypingStub
+    m.ClassVar = _TypingStub
+    m.Final = _TypingStub
+    m.Literal = _TypingStub
+    m.Annotated = _TypingStub
+    m.TypeAlias = _TypingStub
+    m.NoReturn = _TypingStub
     m.TYPE_CHECKING = False
-    def _identity(x=None): return x
-    m.TypeVar = lambda name, *a, **kw: object
-    m.ParamSpec = lambda name, *a, **kw: object
-    m.Generic = object
-    m.Protocol = object
+    class _TypeVar(_TypingStub):
+        def __init__(self, name, *a, **kw):
+            self.__name__ = name
+    m.TypeVar = _TypeVar
+    m.ParamSpec = _TypeVar
+    m.Generic = _TypingStub
+    m.Protocol = _TypingStub
     m.TypedDict = type
     m.overload = lambda f: f
     m.cast = lambda t, v: v
     m.no_type_check = lambda f: f
     m.runtime_checkable = lambda cls: cls
+    m.get_type_hints = lambda obj, **kw: {}
+    m.dataclass_transform = lambda **kw: lambda cls: cls
     _sys.modules["typing"] = m
 
 try:
