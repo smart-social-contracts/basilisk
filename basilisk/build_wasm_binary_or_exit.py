@@ -229,6 +229,7 @@ class _LazyMod(_bMT):
         try:
             if self._bsrc:
                 exec(compile(self._bsrc, self.__name__.replace('.', '/') + '.py', 'exec'), self.__dict__)
+            self.__dict__['_bloaded'] = True
         except Exception as _be:
             import sys as _es
             _tb = _es.exc_info()[2]
@@ -239,13 +240,18 @@ class _LazyMod(_bMT):
                 _tb = _tb.tb_next
             raise type(_be)(f"{_be}\\nModule: {self.__name__}\\nTraceback:\\n" + "\\n".join(_frames)) from None
         finally:
-            self.__dict__['_bloaded'] = True
             self.__dict__['_bloading'] = False
     def __getattr__(self, name):
         self._bload()
         try:
             return self.__dict__[name]
         except KeyError:
+            # Check if name is a registered submodule in sys.modules
+            _sub = self.__name__ + '.' + name
+            if _sub in _bsys.modules:
+                _mod = _bsys.modules[_sub]
+                self.__dict__[name] = _mod
+                return _mod
             raise AttributeError(f"module '{self.__name__}' has no attribute '{name}'")
 """)
 
