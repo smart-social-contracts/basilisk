@@ -452,6 +452,8 @@ fn ensure_cpython_initialized() {
 }
 
 /// Decode raw Candid bytes into Python objects using dynamic IDLArgs.
+/// Uses parameter type info from method metadata to resolve record field hashes
+/// back to their original names via TYPE_DEFS.
 fn decode_candid_args_to_python(
     arg_bytes: &[u8],
     params: &[crate::wasm_data::ParamInfo],
@@ -460,30 +462,55 @@ fn decode_candid_args_to_python(
         ic_cdk::trap(&format!("Failed to decode Candid args: {}", e));
     });
 
+    let type_defs = unsafe { TYPE_DEFS.as_ref() };
+    let empty_map = HashMap::new();
+    let type_defs = type_defs.unwrap_or(&empty_map);
+
     idl_args
         .args
         .into_iter()
         .enumerate()
         .map(|(i, idl_value)| {
-            idl_value_to_python(&idl_value).unwrap_or_else(|e| {
-                let param_name = params
-                    .get(i)
-                    .map(|p| p.name.as_str())
-                    .unwrap_or("unknown");
-                ic_cdk::trap(&format!(
-                    "Failed to convert arg '{}' to Python: {}",
-                    param_name, e
-                ));
-            })
+            let expected_type = params.get(i).map(|p| p.candid_type.as_str());
+            idl_value_to_python_typed(&idl_value, expected_type, type_defs)
+                .unwrap_or_else(|e| {
+                    let param_name = params
+                        .get(i)
+                        .map(|p| p.name.as_str())
+                        .unwrap_or("unknown");
+                    ic_cdk::trap(&format!(
+                        "Failed to convert arg '{}' to Python: {}",
+                        param_name, e
+                    ));
+                })
         })
         .collect()
 }
 
-/// Convert a candid::IDLValue to a Python object.
+/// Convert a candid::IDLValue to a Python object (convenience wrapper without type info).
 fn idl_value_to_python(
     value: &candid::IDLValue,
 ) -> Result<basilisk_cpython::PyObjectRef, String> {
+    let type_defs = unsafe { TYPE_DEFS.as_ref() };
+    let empty_map = HashMap::new();
+    let type_defs = type_defs.unwrap_or(&empty_map);
+    idl_value_to_python_typed(value, None, type_defs)
+}
+
+/// Convert a candid::IDLValue to a Python object with type information.
+/// When `expected_type` is provided, Record/Variant field hashes are mapped back
+/// to their original names using the type definitions, and types are threaded
+/// recursively through nested structures.
+fn idl_value_to_python_typed(
+    value: &candid::IDLValue,
+    expected_type: Option<&str>,
+    type_defs: &HashMap<String, String>,
+) -> Result<basilisk_cpython::PyObjectRef, String> {
     use candid::IDLValue;
+
+    // Resolve named type references (e.g. "ExtensionCallArgs" → "record { ... }")
+    let resolved = expected_type.map(|t| resolve_type(t, type_defs));
+
     match value {
         IDLValue::Null => Ok(basilisk_cpython::PyObjectRef::none()),
         IDLValue::Bool(b) => Ok(basilisk_cpython::PyObjectRef::from_bool(*b)),
@@ -528,10 +555,20 @@ fn idl_value_to_python(
         IDLValue::Blob(bytes) => basilisk_cpython::PyObjectRef::from_bytes(bytes)
             .map_err(|e| e.to_rust_err_string()),
         IDLValue::None => Ok(basilisk_cpython::PyObjectRef::none()),
-        IDLValue::Opt(inner) => idl_value_to_python(inner.as_ref()),
+        IDLValue::Opt(inner) => {
+            let inner_type = resolved.and_then(|r| {
+                let r = r.trim();
+                if r.starts_with("opt ") { Some(&r[4..]) } else { None }
+            });
+            idl_value_to_python_typed(inner.as_ref(), inner_type, type_defs)
+        }
         IDLValue::Vec(items) => {
+            let elem_type = resolved.and_then(|r| {
+                let r = r.trim();
+                if r.starts_with("vec ") { Some(&r[4..]) } else { None }
+            });
             let py_items: Result<Vec<_>, _> =
-                items.iter().map(|item| idl_value_to_python(item)).collect();
+                items.iter().map(|item| idl_value_to_python_typed(item, elem_type, type_defs)).collect();
             let items = py_items?;
             unsafe {
                 let list = basilisk_cpython::ffi::PyList_New(
@@ -552,35 +589,66 @@ fn idl_value_to_python(
             }
         }
         IDLValue::Record(fields) => {
-            // Detect tuple-style records: all fields have consecutive numeric IDs (0, 1, 2, ...)
-            let is_tuple = !fields.is_empty()
-                && fields.iter().enumerate().all(|(i, f)| {
-                    matches!(&f.id,
-                        candid::types::Label::Id(id) | candid::types::Label::Unnamed(id)
-                        if *id == i as u32
-                    )
-                });
+            // Parse field definitions from the expected type (if available)
+            let resolved_str = resolved.unwrap_or("");
+            let field_defs: Vec<(String, String)> = if let Some(inner) = strip_compound_wrapper(resolved_str, "record") {
+                parse_fields(inner)
+            } else {
+                Vec::new()
+            };
+
+            // Build hash → (name, type) map for field-name resolution
+            let hash_to_field: HashMap<u32, (String, String)> = field_defs
+                .iter()
+                .map(|(name, typ)| (candid_field_hash(name), (name.clone(), typ.clone())))
+                .collect();
+
+            // Determine if this is a tuple record
+            let is_tuple = if !field_defs.is_empty() {
+                is_tuple_record(&field_defs)
+            } else {
+                // Fallback heuristic when no type info: consecutive numeric IDs
+                !fields.is_empty()
+                    && fields.iter().enumerate().all(|(i, f)| {
+                        matches!(&f.id,
+                            candid::types::Label::Id(id) | candid::types::Label::Unnamed(id)
+                            if *id == i as u32
+                        )
+                    })
+            };
 
             if is_tuple {
-                // Convert to Python tuple
-                let py_items: Result<Vec<_>, _> =
-                    fields.iter().map(|f| idl_value_to_python(&f.val)).collect();
+                let py_items: Result<Vec<_>, _> = fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| {
+                        let ft = field_defs.get(i).map(|(_, t)| t.as_str());
+                        idl_value_to_python_typed(&f.val, ft, type_defs)
+                    })
+                    .collect();
                 let items = py_items?;
                 let tuple = basilisk_cpython::PyTuple::new(items)
                     .map_err(|e| e.to_rust_err_string())?;
                 Ok(tuple.into_object())
             } else {
-                // Convert to Python dict
                 let dict = basilisk_cpython::PyDict::new()
                     .map_err(|e| e.to_rust_err_string())?;
                 for field in fields {
-                    let key = match &field.id {
-                        candid::types::Label::Named(name) => name.clone(),
+                    let (key, field_type): (String, Option<&str>) = match &field.id {
+                        candid::types::Label::Named(name) => {
+                            let ft = hash_to_field.get(&candid_field_hash(name))
+                                .map(|(_, t)| t.as_str());
+                            (name.clone(), ft)
+                        }
                         candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => {
-                            format!("_{}", id)
+                            if let Some((name, typ)) = hash_to_field.get(id) {
+                                (name.clone(), Some(typ.as_str()))
+                            } else {
+                                (format!("_{}", id), None)
+                            }
                         }
                     };
-                    let value = idl_value_to_python(&field.val)?;
+                    let value = idl_value_to_python_typed(&field.val, field_type, type_defs)?;
                     dict.set_item_str(&key, &value)
                         .map_err(|e| e.to_rust_err_string())?;
                 }
@@ -588,15 +656,37 @@ fn idl_value_to_python(
             }
         }
         IDLValue::Variant(variant) => {
+            // Parse case definitions from the expected type
+            let resolved_str = resolved.unwrap_or("");
+            let case_defs: Vec<(String, String)> = if let Some(inner) = strip_compound_wrapper(resolved_str, "variant") {
+                parse_fields(inner)
+            } else {
+                Vec::new()
+            };
+            let hash_to_case: HashMap<u32, (String, String)> = case_defs
+                .into_iter()
+                .map(|(name, typ)| (candid_field_hash(&name), (name, typ)))
+                .collect();
+
             let dict = basilisk_cpython::PyDict::new()
                 .map_err(|e| e.to_rust_err_string())?;
-            let key = match &variant.0.id {
-                candid::types::Label::Named(name) => name.clone(),
+            let (key, case_type) = match &variant.0.id {
+                candid::types::Label::Named(name) => {
+                    let ct = hash_to_case.get(&candid_field_hash(name))
+                        .map(|(_, t)| t.clone());
+                    (name.clone(), ct)
+                }
                 candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => {
-                    format!("_{}", id)
+                    if let Some((name, typ)) = hash_to_case.get(id) {
+                        (name.clone(), Some(typ.clone()))
+                    } else {
+                        (format!("_{}", id), None)
+                    }
                 }
             };
-            let value = idl_value_to_python(&variant.0.val)?;
+            let value = idl_value_to_python_typed(
+                &variant.0.val, case_type.as_deref(), type_defs
+            )?;
             dict.set_item_str(&key, &value)
                 .map_err(|e| e.to_rust_err_string())?;
             Ok(dict.into_object())
@@ -698,7 +788,13 @@ fn parse_fields(inner: &str) -> Vec<(String, String)> {
         .iter()
         .map(|f| {
             if let Some(colon_pos) = f.find(':') {
-                let name = f[..colon_pos].trim().to_string();
+                let raw_name = f[..colon_pos].trim();
+                // Strip surrounding double quotes from Candid reserved-word field names
+                let name = if raw_name.starts_with('"') && raw_name.ends_with('"') && raw_name.len() >= 2 {
+                    raw_name[1..raw_name.len() - 1].to_string()
+                } else {
+                    raw_name.to_string()
+                };
                 let type_str = f[colon_pos + 1..].trim().to_string();
                 (name, type_str)
             } else {
@@ -744,6 +840,15 @@ fn is_tuple_record(fields: &[(String, String)]) -> bool {
             && name.len() > 2
             && name[1..name.len() - 1].parse::<u32>().ok() == Some(i as u32)
     })
+}
+
+/// Compute the Candid field-name hash (same algorithm as the candid crate).
+fn candid_field_hash(name: &str) -> u32 {
+    let mut hash: u32 = 0;
+    for b in name.bytes() {
+        hash = hash.wrapping_mul(223).wrapping_add(b as u32);
+    }
+    hash
 }
 
 // ─── Python → Candid conversion ─────────────────────────────────────────────
