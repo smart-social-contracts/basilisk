@@ -113,33 +113,29 @@ basilisk new --backend rustpython my_project
 |  | CPython 3.13 | RustPython |
 |---|---|---|
 | **Build time** | ~seconds (template) | ~60-120s (Cargo build) |
-| **canister_init** | ~51M instructions (1% of budget) | ~200-500M instructions |
-| **Cycles per update call** | ~7M | ~35-70M (estimated) |
-| **Python compatibility** | Full (reference implementation) | Partial |
-| **Python version** | 3.13 | ~3.10 (partial) |
-
-CPython is **~5-10x cheaper** per call due to its optimized C interpreter. Queries are free on the IC regardless of backend.
+| **Wasm size** | ~5.3 MB | ~26 MB |
+| **Python compatibility** | Full (reference implementation) | Partial (~3.10) |
 
 ### Benchmark Results
 
-Measured on a local IC replica (`dfx start`). All times are query call round-trip in milliseconds.
+Instruction counts measured on a local IC replica (PocketIC). Lower is better — fewer instructions means lower cycle cost on the IC.
 
-| Benchmark | RustPython (ms) | CPython (ms) | Speedup |
-|---|---|---|---|
-| fibonacci(100) | 29.8 | 26.0 | 1.1x |
-| fibonacci(500) | 16.3 | 8.1 | **2.0x** |
-| fibonacci(1000) | 13.6 | 8.8 | **1.5x** |
-| string_processing(100) | 11.6 | 8.8 | **1.3x** |
-| string_processing(500) | 15.7 | 10.1 | **1.6x** |
-| dict_operations(100) | 16.6 | 9.4 | **1.8x** |
-| dict_operations(500) | 22.0 | 12.8 | **1.7x** |
-| json_roundtrip(50) | 88.1 | 16.0 | **5.5x** |
-| json_roundtrip(100) | 173.6 | 22.0 | **7.9x** |
-| json_roundtrip(200) | 517.6 | 30.9 | **16.8x** |
-| sort_benchmark(1000) | 15.9 | 7.6 | **2.1x** |
-| list_comprehension(100) | 45.2 | 9.6 | **4.7x** |
+| Benchmark | CPython (instructions) | RustPython (instructions) | RustPython / CPython |
+|---|---:|---:|---:|
+| **noop** (call overhead) | 27,313 | 88,918 | 3.3x |
+| **increment** (state mutation) | 27,349 | 91,911 | 3.4x |
+| **fibonacci(25)** (iterative) | 49,823 | 297,086 | 6.0x |
+| **fibonacci_recursive(20)** | 29,334,665 | 338,200,210 | **11.5x** |
+| **string_ops** (100 concatenations) | 284,951 | 2,139,351 | **7.5x** |
+| **list_ops** (500 append + sort) | 604,656 | 5,819,063 | **9.6x** |
+| **dict_ops** (500 inserts + lookups) | 3,349,809 | 23,086,280 | **6.9x** |
+| **method_overhead** (total prelude) | 24,088 | 42,102 | 1.7x |
 
-CPython is faster across the board, with the largest gains on **JSON** (up to **16.8x**) and **list comprehensions** (up to **4.7x**). See `examples/benchmark/` for the full benchmark suite.
+CPython is **7–12x faster** than RustPython for compute-heavy workloads due to its optimized C interpreter. The gap is largest for **recursive function calls** (11.5x) and **list operations** (9.6x). Even the minimum overhead per call is lower: 24K vs 42K instructions.
+
+> **Run it yourself:** trigger the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) from the Actions tab — select `cpython`, `rustpython`, or `both` as the backend, and `local` or `ic` as the network. View full logs by clicking any workflow run.
+
+The benchmark source is in [`benchmarks/counter/`](benchmarks/counter/).
 
 ## CLI Reference
 
