@@ -118,22 +118,24 @@ basilisk new --backend rustpython my_project
 
 ### Benchmark Results
 
-Instruction counts measured on a local IC replica (PocketIC). Lower is better — fewer instructions means lower cycle cost on the IC.
+Wasm instruction counts measured on a PocketIC replica via GitHub Actions CI. Lower is better — fewer instructions means lower cycle cost on the IC.
 
 | Benchmark | CPython (instructions) | RustPython (instructions) | RustPython / CPython |
 |---|---:|---:|---:|
-| **noop** (call overhead) | 27,313 | 88,918 | 3.3x |
-| **increment** (state mutation) | 27,349 | 91,911 | 3.4x |
-| **fibonacci(25)** (iterative) | 49,823 | 297,086 | 6.0x |
-| **fibonacci_recursive(20)** | 29,334,665 | 338,200,210 | **11.5x** |
-| **string_ops** (100 concatenations) | 284,951 | 2,139,351 | **7.5x** |
-| **list_ops** (500 append + sort) | 604,656 | 5,819,063 | **9.6x** |
-| **dict_ops** (500 inserts + lookups) | 3,349,809 | 23,086,280 | **6.9x** |
-| **method_overhead** (total prelude) | 24,088 | 42,102 | 1.7x |
+| **noop** (call overhead) | 15,914 | 88,918 | **5.6x** |
+| **increment** (state mutation) | 16,050 | 92,485 | **5.8x** |
+| **fibonacci(25)** (iterative) | 37,269 | 294,649 | **7.9x** |
+| **fibonacci_recursive(20)** | 29,617,903 | 337,795,318 | **11.4x** |
+| **string_ops** (100 concatenations) | 275,375 | 2,135,202 | **7.8x** |
+| **list_ops** (500 append + sort) | 602,711 | 5,819,267 | **9.7x** |
+| **dict_ops** (500 inserts + lookups) | 3,407,101 | 23,087,720 | **6.8x** |
+| **method_overhead** (total prelude) | 11,122 | 42,216 | **3.8x** |
 
-CPython is **7–12x faster** than RustPython for compute-heavy workloads due to its optimized C interpreter. The gap is largest for **recursive function calls** (11.5x) and **list operations** (9.6x). Even the minimum overhead per call is lower: 24K vs 42K instructions.
+CPython is **6–11x faster** than RustPython for compute-heavy workloads due to its optimized C interpreter. The gap is largest for **recursive function calls** (11.4x) and **list operations** (9.7x). Even the minimum overhead per call is lower: 11K vs 42K instructions.
 
-> **Run it yourself:** trigger the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) from the Actions tab — select `cpython`, `rustpython`, or `both` as the backend, and `local` or `ic` as the network. View full logs by clicking any workflow run.
+Full CI logs: [CPython run](https://github.com/smart-social-contracts/basilisk/actions/runs/22616838245) · [RustPython run](https://github.com/smart-social-contracts/basilisk/actions/runs/22616844678)
+
+> **Run it yourself:** trigger the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) from the Actions tab — select `cpython`, `rustpython`, or `both` as the backend, and `local` or `ic` as the network.
 
 The benchmark source is in [`benchmarks/counter/`](benchmarks/counter/).
 
