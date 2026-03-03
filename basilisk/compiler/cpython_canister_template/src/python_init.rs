@@ -114,6 +114,12 @@ import _basilisk_ic
 _mod = type(_sys)("basilisk")
 _mod.__file__ = "<frozen basilisk>"
 
+# === Subscriptable placeholder for generic type aliases ===
+class _Sub:
+    """Subscriptable placeholder that ignores type parameters."""
+    def __class_getitem__(cls, item):
+        return cls
+
 # === Type aliases ===
 _mod.int64 = _mod.int32 = _mod.int16 = _mod.int8 = int
 _mod.nat = _mod.nat64 = _mod.nat32 = _mod.nat16 = _mod.nat8 = int
@@ -122,23 +128,23 @@ _mod.text = str
 _mod.blob = bytes
 _mod.null = None
 _mod.void = None
-_mod.Opt = None
+_mod.Opt = _Sub
 _mod.Vec = list
 _mod.Record = dict
 _mod.Variant = dict
 _mod.Tuple = tuple
-_mod.reserved = object
-_mod.empty = object
-_mod.Async = object
+_mod.reserved = _Sub
+_mod.empty = _Sub
+_mod.Async = _Sub
 _mod.TimerId = int
 _mod.Duration = int
-_mod.Alias = None
-_mod.Manual = None
-_mod.CallResult = None
-_mod.NotifyResult = None
+_mod.Alias = _Sub
+_mod.Manual = _Sub
+_mod.CallResult = _Sub
+_mod.NotifyResult = _Sub
 _mod.GuardResult = dict
-_mod.GuardType = None
-_mod.Oneway = None
+_mod.GuardType = _Sub
+_mod.Oneway = _Sub
 _mod.RejectionCode = int
 _mod.FuncTuple = tuple
 _mod.StableGrowResult = int
