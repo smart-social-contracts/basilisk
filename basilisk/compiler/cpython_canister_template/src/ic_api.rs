@@ -5,11 +5,12 @@
 
 use basilisk_cpython::ffi;
 use basilisk_cpython::PyObjectRef;
+use slotmap::Key as _SlotMapKey;
 
 /// Create the _basilisk_ic Python module with all IC API bindings.
 pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyError> {
     // Method table for the _basilisk_ic module
-    static mut METHODS: [ffi::PyMethodDef; 30] = unsafe { core::mem::zeroed() };
+    static mut METHODS: [ffi::PyMethodDef; 42] = unsafe { core::mem::zeroed() };
 
     unsafe {
         let methods = &mut METHODS;
@@ -56,6 +57,18 @@ pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyEr
         add_method!("reply_raw", ic_reply_raw, ffi::METH_O);
         add_method!("set_certified_data", ic_set_certified_data, ffi::METH_O);
         add_method!("trap", ic_trap, ffi::METH_O);
+        add_method!("reply", ic_reply, ffi::METH_O);
+        add_method!("stable_grow", ic_stable_grow, ffi::METH_O);
+        add_method!("stable_read", ic_stable_read, ffi::METH_VARARGS);
+        add_method!("stable_write", ic_stable_write, ffi::METH_VARARGS);
+        add_method!("stable64_grow", ic_stable64_grow, ffi::METH_O);
+        add_method!("stable64_read", ic_stable64_read, ffi::METH_VARARGS);
+        add_method!("stable64_write", ic_stable64_write, ffi::METH_VARARGS);
+        add_method!("set_timer", ic_set_timer, ffi::METH_VARARGS);
+        add_method!("set_timer_interval", ic_set_timer_interval, ffi::METH_VARARGS);
+        add_method!("clear_timer", ic_clear_timer, ffi::METH_O);
+        add_method!("call_raw", ic_call_raw, ffi::METH_VARARGS);
+        add_method!("call_raw128", ic_call_raw128, ffi::METH_VARARGS);
 
         // Sentinel (null terminator)
         methods[i] = core::mem::zeroed();
@@ -541,4 +554,328 @@ unsafe extern "C" fn ic_trap(
         Err(_) => "trap called with non-string argument".to_string(),
     };
     ic_cdk::trap(&message);
+}
+
+/// ic.reply(value) — encode value to Candid using the current method's return type, then reply.
+unsafe extern "C" fn ic_reply(
+    _self: *mut ffi::PyObject,
+    arg: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let obj = match PyObjectRef::from_borrowed(arg) {
+        Some(o) => o,
+        None => { ic_cdk::trap("reply: invalid argument"); }
+    };
+    let return_type = match crate::CURRENT_RETURN_TYPE.as_ref() {
+        Some(rt) => rt.clone(),
+        None => { ic_cdk::trap("reply: no return type set (not inside a canister method?)"); }
+    };
+    let result_bytes = crate::method_dispatch::encode_python_to_candid(&obj, &return_type);
+    ic_cdk::api::call::reply_raw(&result_bytes);
+    PyObjectRef::none().into_ptr()
+}
+
+// ─── Stable memory: grow/read/write ──────────────────────────────────────────
+
+unsafe extern "C" fn ic_stable_grow(
+    _self: *mut ffi::PyObject,
+    arg: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let obj = match PyObjectRef::from_borrowed(arg) {
+        Some(o) => o,
+        None => return core::ptr::null_mut(),
+    };
+    let new_pages: u32 = match obj.extract_u64() {
+        Ok(v) => v as u32,
+        Err(_) => { ic_cdk::trap("stable_grow: expected int argument"); }
+    };
+    match ic_cdk::api::stable::stable_grow(new_pages) {
+        Ok(old_size) => match PyObjectRef::from_u64(old_size as u64) {
+            Ok(obj) => obj.into_ptr(),
+            Err(_) => core::ptr::null_mut(),
+        },
+        Err(_) => { ic_cdk::trap("stable_grow: failed to grow stable memory"); }
+    }
+}
+
+/// ic.stable_read(offset, length) -> bytes
+unsafe extern "C" fn ic_stable_read(
+    _self: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let args_tuple = match basilisk_cpython::PyTuple::from_object_unchecked(args) {
+        Some(t) => t,
+        None => { ic_cdk::trap("stable_read: expected tuple args"); }
+    };
+    if args_tuple.len() != 2 {
+        ic_cdk::trap("stable_read: expected 2 arguments (offset, length)");
+    }
+    let offset = match args_tuple.get_item(0) {
+        Some(o) => match o.extract_u64() { Ok(v) => v as u32, Err(_) => { ic_cdk::trap("stable_read: offset must be int"); } },
+        None => { ic_cdk::trap("stable_read: missing offset"); }
+    };
+    let length = match args_tuple.get_item(1) {
+        Some(o) => match o.extract_u64() { Ok(v) => v as u32, Err(_) => { ic_cdk::trap("stable_read: length must be int"); } },
+        None => { ic_cdk::trap("stable_read: missing length"); }
+    };
+    let mut buf = vec![0u8; length as usize];
+    ic_cdk::api::stable::stable_read(offset, &mut buf);
+    match PyObjectRef::from_bytes(&buf) {
+        Ok(obj) => obj.into_ptr(),
+        Err(_) => core::ptr::null_mut(),
+    }
+}
+
+/// ic.stable_write(offset, data: bytes)
+unsafe extern "C" fn ic_stable_write(
+    _self: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let args_tuple = match basilisk_cpython::PyTuple::from_object_unchecked(args) {
+        Some(t) => t,
+        None => { ic_cdk::trap("stable_write: expected tuple args"); }
+    };
+    if args_tuple.len() != 2 {
+        ic_cdk::trap("stable_write: expected 2 arguments (offset, data)");
+    }
+    let offset = match args_tuple.get_item(0) {
+        Some(o) => match o.extract_u64() { Ok(v) => v as u32, Err(_) => { ic_cdk::trap("stable_write: offset must be int"); } },
+        None => { ic_cdk::trap("stable_write: missing offset"); }
+    };
+    let data = match args_tuple.get_item(1) {
+        Some(o) => match o.extract_bytes() { Ok(b) => b, Err(_) => { ic_cdk::trap("stable_write: data must be bytes"); } },
+        None => { ic_cdk::trap("stable_write: missing data"); }
+    };
+    ic_cdk::api::stable::stable_write(offset, &data);
+    PyObjectRef::none().into_ptr()
+}
+
+unsafe extern "C" fn ic_stable64_grow(
+    _self: *mut ffi::PyObject,
+    arg: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let obj = match PyObjectRef::from_borrowed(arg) {
+        Some(o) => o,
+        None => return core::ptr::null_mut(),
+    };
+    let new_pages: u64 = match obj.extract_u64() {
+        Ok(v) => v,
+        Err(_) => { ic_cdk::trap("stable64_grow: expected int argument"); }
+    };
+    match ic_cdk::api::stable::stable64_grow(new_pages) {
+        Ok(old_size) => match PyObjectRef::from_u64(old_size) {
+            Ok(obj) => obj.into_ptr(),
+            Err(_) => core::ptr::null_mut(),
+        },
+        Err(_) => { ic_cdk::trap("stable64_grow: failed to grow stable memory"); }
+    }
+}
+
+/// ic.stable64_read(offset, length) -> bytes
+unsafe extern "C" fn ic_stable64_read(
+    _self: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let args_tuple = match basilisk_cpython::PyTuple::from_object_unchecked(args) {
+        Some(t) => t,
+        None => { ic_cdk::trap("stable64_read: expected tuple args"); }
+    };
+    if args_tuple.len() != 2 {
+        ic_cdk::trap("stable64_read: expected 2 arguments (offset, length)");
+    }
+    let offset = match args_tuple.get_item(0) {
+        Some(o) => match o.extract_u64() { Ok(v) => v, Err(_) => { ic_cdk::trap("stable64_read: offset must be int"); } },
+        None => { ic_cdk::trap("stable64_read: missing offset"); }
+    };
+    let length = match args_tuple.get_item(1) {
+        Some(o) => match o.extract_u64() { Ok(v) => v, Err(_) => { ic_cdk::trap("stable64_read: length must be int"); } },
+        None => { ic_cdk::trap("stable64_read: missing length"); }
+    };
+    let mut buf = vec![0u8; length as usize];
+    ic_cdk::api::stable::stable64_read(offset, &mut buf);
+    match PyObjectRef::from_bytes(&buf) {
+        Ok(obj) => obj.into_ptr(),
+        Err(_) => core::ptr::null_mut(),
+    }
+}
+
+/// ic.stable64_write(offset, data: bytes)
+unsafe extern "C" fn ic_stable64_write(
+    _self: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let args_tuple = match basilisk_cpython::PyTuple::from_object_unchecked(args) {
+        Some(t) => t,
+        None => { ic_cdk::trap("stable64_write: expected tuple args"); }
+    };
+    if args_tuple.len() != 2 {
+        ic_cdk::trap("stable64_write: expected 2 arguments (offset, data)");
+    }
+    let offset = match args_tuple.get_item(0) {
+        Some(o) => match o.extract_u64() { Ok(v) => v, Err(_) => { ic_cdk::trap("stable64_write: offset must be int"); } },
+        None => { ic_cdk::trap("stable64_write: missing offset"); }
+    };
+    let data = match args_tuple.get_item(1) {
+        Some(o) => match o.extract_bytes() { Ok(b) => b, Err(_) => { ic_cdk::trap("stable64_write: data must be bytes"); } },
+        None => { ic_cdk::trap("stable64_write: missing data"); }
+    };
+    ic_cdk::api::stable::stable64_write(offset, &data);
+    PyObjectRef::none().into_ptr()
+}
+
+// ─── Timers ──────────────────────────────────────────────────────────────────
+
+/// ic.set_timer(delay_ns, callback) -> timer_id
+unsafe extern "C" fn ic_set_timer(
+    _self: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let args_tuple = match basilisk_cpython::PyTuple::from_object_unchecked(args) {
+        Some(t) => t,
+        None => { ic_cdk::trap("set_timer: expected tuple args"); }
+    };
+    if args_tuple.len() != 2 {
+        ic_cdk::trap("set_timer: expected 2 arguments (delay_ns, callback)");
+    }
+    let delay_ns = match args_tuple.get_item(0) {
+        Some(o) => match o.extract_u64() { Ok(v) => v, Err(_) => { ic_cdk::trap("set_timer: delay must be int (nanoseconds)"); } },
+        None => { ic_cdk::trap("set_timer: missing delay"); }
+    };
+    let callback = match args_tuple.get_item(1) {
+        Some(o) => o,
+        None => { ic_cdk::trap("set_timer: missing callback"); }
+    };
+
+    // Store callback name or function ref for later invocation
+    let func_name = match callback.extract_str() {
+        Ok(s) => s,
+        Err(_) => {
+            // Try to get __name__ attribute
+            match callback.get_attr("__name__") {
+                Ok(name_obj) => match name_obj.extract_str() {
+                    Ok(s) => s,
+                    Err(_) => { ic_cdk::trap("set_timer: callback must be a named function"); }
+                },
+                Err(_) => { ic_cdk::trap("set_timer: callback must be a named function"); }
+            }
+        }
+    };
+
+    let delay = std::time::Duration::from_nanos(delay_ns);
+    let timer_id = ic_cdk_timers::set_timer(delay, move || {
+        let interpreter = crate::INTERPRETER_OPTION.as_mut()
+            .expect("SystemError: missing python interpreter");
+        let py_func = interpreter.get_global(&func_name)
+            .unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("Timer callback '{}' not found: {}", func_name, e.to_rust_err_string()));
+            });
+        let empty = basilisk_cpython::PyTuple::new(Vec::new()).unwrap();
+        let _ = py_func.call(&empty.into_object(), None);
+    });
+
+    // Return timer_id as int
+    let id_val = timer_id.data().as_ffi() as u64;
+    match PyObjectRef::from_u64(id_val) {
+        Ok(obj) => obj.into_ptr(),
+        Err(_) => core::ptr::null_mut(),
+    }
+}
+
+/// ic.set_timer_interval(interval_ns, callback) -> timer_id
+unsafe extern "C" fn ic_set_timer_interval(
+    _self: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let args_tuple = match basilisk_cpython::PyTuple::from_object_unchecked(args) {
+        Some(t) => t,
+        None => { ic_cdk::trap("set_timer_interval: expected tuple args"); }
+    };
+    if args_tuple.len() != 2 {
+        ic_cdk::trap("set_timer_interval: expected 2 arguments (interval_ns, callback)");
+    }
+    let interval_ns = match args_tuple.get_item(0) {
+        Some(o) => match o.extract_u64() { Ok(v) => v, Err(_) => { ic_cdk::trap("set_timer_interval: interval must be int (nanoseconds)"); } },
+        None => { ic_cdk::trap("set_timer_interval: missing interval"); }
+    };
+    let callback = match args_tuple.get_item(1) {
+        Some(o) => o,
+        None => { ic_cdk::trap("set_timer_interval: missing callback"); }
+    };
+
+    let func_name = match callback.extract_str() {
+        Ok(s) => s,
+        Err(_) => {
+            match callback.get_attr("__name__") {
+                Ok(name_obj) => match name_obj.extract_str() {
+                    Ok(s) => s,
+                    Err(_) => { ic_cdk::trap("set_timer_interval: callback must be a named function"); }
+                },
+                Err(_) => { ic_cdk::trap("set_timer_interval: callback must be a named function"); }
+            }
+        }
+    };
+
+    let interval = std::time::Duration::from_nanos(interval_ns);
+    let timer_id = ic_cdk_timers::set_timer_interval(interval, move || {
+        let interpreter = crate::INTERPRETER_OPTION.as_mut()
+            .expect("SystemError: missing python interpreter");
+        let py_func = interpreter.get_global(&func_name)
+            .unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("Timer callback '{}' not found: {}", func_name, e.to_rust_err_string()));
+            });
+        let empty = basilisk_cpython::PyTuple::new(Vec::new()).unwrap();
+        let _ = py_func.call(&empty.into_object(), None);
+    });
+
+    let id_val = timer_id.data().as_ffi() as u64;
+    match PyObjectRef::from_u64(id_val) {
+        Ok(obj) => obj.into_ptr(),
+        Err(_) => core::ptr::null_mut(),
+    }
+}
+
+/// ic.clear_timer(timer_id)
+unsafe extern "C" fn ic_clear_timer(
+    _self: *mut ffi::PyObject,
+    arg: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let obj = match PyObjectRef::from_borrowed(arg) {
+        Some(o) => o,
+        None => return core::ptr::null_mut(),
+    };
+    let id_val: u64 = match obj.extract_u64() {
+        Ok(v) => v,
+        Err(_) => { ic_cdk::trap("clear_timer: expected int argument"); }
+    };
+    let key_data = slotmap::KeyData::from_ffi(id_val);
+    let timer_id = ic_cdk_timers::TimerId::from(key_data);
+    ic_cdk_timers::clear_timer(timer_id);
+    PyObjectRef::none().into_ptr()
+}
+
+// ─── Cross-canister calls ────────────────────────────────────────────────────
+
+/// ic.call_raw(canister_id: Principal, method: str, args_raw: bytes, cycles: int) -> bytes
+/// Returns a future-like that resolves to the raw Candid response bytes.
+/// For now, this is synchronous (blocking) since CPython doesn't support IC async natively.
+unsafe extern "C" fn ic_call_raw(
+    _self: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let args_tuple = match basilisk_cpython::PyTuple::from_object_unchecked(args) {
+        Some(t) => t,
+        None => { ic_cdk::trap("call_raw: expected tuple args"); }
+    };
+    if args_tuple.len() < 3 {
+        ic_cdk::trap("call_raw: expected at least 3 arguments (canister_id, method, args_raw)");
+    }
+    // For now, trap with a clear message — async cross-canister calls require generator/async support
+    ic_cdk::trap("call_raw: cross-canister calls are not yet supported in CPython mode. This requires async/generator support (Tier 2).");
+}
+
+/// ic.call_raw128 — same as call_raw but with 128-bit cycles
+unsafe extern "C" fn ic_call_raw128(
+    _self: *mut ffi::PyObject,
+    _args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    ic_cdk::trap("call_raw128: cross-canister calls are not yet supported in CPython mode. This requires async/generator support (Tier 2).");
 }

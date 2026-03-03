@@ -122,6 +122,7 @@ extern "C" {
     pub fn PyObject_SetItem(o: *mut PyObject, key: *mut PyObject, v: *mut PyObject) -> c_int;
     pub fn PyObject_Type(o: *mut PyObject) -> *mut PyObject;
     pub fn PyObject_RichCompareBool(o1: *mut PyObject, o2: *mut PyObject, opid: c_int) -> c_int;
+    pub fn PyObject_CallMethodObjArgs(o: *mut PyObject, name: *mut PyObject, ...) -> *mut PyObject;
 }
 
 // === None, True, False singletons ===
@@ -168,6 +169,8 @@ extern "C" {
     pub static mut PyExc_AttributeError: *mut PyObject;
     pub static mut PyExc_SystemError: *mut PyObject;
     pub static mut PyExc_Exception: *mut PyObject;
+    pub static mut PyExc_StopIteration: *mut PyObject;
+    pub fn PyErr_ExceptionMatches(exc: *mut PyObject) -> c_int;
 }
 
 // === Integer (Long) objects ===

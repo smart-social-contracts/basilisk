@@ -69,27 +69,33 @@ def build_with_template(
     # 2. Read the user's Python source
     python_source = read_python_source(paths)
 
-    # 2b. Prepend frozen stdlib modules (json, etc.) for WASI where filesystem is absent
-    python_source = _get_frozen_stdlib_preamble() + python_source
+    # Note: frozen stdlib preamble (json, etc.) is now embedded in the Rust template
+    # and runs before the basilisk shim during canister_init. No need to prepend here.
 
     # 3. Extract method metadata from the Python source
-    methods = extract_methods_from_python(python_source)
+    methods, type_defs, lifecycle = extract_methods_from_python(python_source)
     if verbose:
         print(f"Extracted {len(methods)} canister methods from Python source")
         for m in methods:
             print(f"  @{m['method_type']} {m['name']}")
+        if type_defs:
+            print(f"  Type definitions: {len(type_defs)}")
+            for name, defn in type_defs.items():
+                print(f"    {name} = {defn}")
+        if lifecycle:
+            print(f"  Lifecycle hooks: {', '.join(lifecycle.keys())}")
 
     # 4. Inject Python source + method metadata into template wasm
     output_wasm = f"{paths['canister']}/{canister_name}.wasm"
     os.makedirs(os.path.dirname(output_wasm), exist_ok=True)
-    manipulate_wasm(template_wasm_path, output_wasm, python_source, methods)
+    manipulate_wasm(template_wasm_path, output_wasm, python_source, methods, type_defs, lifecycle)
 
     # 5. Skip wasi2ic and wasm-opt: the downloaded template is already post-processed.
     # Running wasm-opt again would strip the passive data segments we just injected.
     # Running wasi2ic again on an already-converted binary would corrupt it.
 
     # 6. Generate .did file from method metadata
-    candid_content = generate_candid_from_methods(methods)
+    candid_content = generate_candid_from_methods(methods, type_defs, lifecycle)
     create_file(paths["did"], candid_content)
     if verbose:
         print(f"Generated Candid file: {paths['did']}")

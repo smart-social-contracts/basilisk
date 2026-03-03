@@ -127,6 +127,37 @@ impl PyObjectRef {
         }
     }
 
+    // === Iterator / Generator protocol ===
+
+    /// Get the next item from an iterator. Returns Ok(Some(item)) for a value,
+    /// Ok(None) for StopIteration, and Err for other errors.
+    pub fn iter_next(&self) -> Result<Option<PyObjectRef>, PyError> {
+        unsafe {
+            let result = ffi::PyIter_Next(self.ptr);
+            if result.is_null() {
+                if ffi::PyErr_Occurred().is_null() {
+                    Ok(None) // StopIteration (no error set)
+                } else {
+                    Err(PyError::fetch())
+                }
+            } else {
+                Ok(Some(PyObjectRef { ptr: result }))
+            }
+        }
+    }
+
+    /// Call a method on this object with one argument.
+    /// Equivalent to `obj.method_name(arg)`.
+    pub fn call_method_one_arg(
+        &self,
+        method_name: &str,
+        arg: &PyObjectRef,
+    ) -> Result<PyObjectRef, PyError> {
+        let method = self.get_attr(method_name)?;
+        let args_tuple = crate::PyTuple::new(vec![arg.clone()])?;
+        method.call(&args_tuple.into_object(), None)
+    }
+
     // === Item access (for dicts, sequences) ===
 
     /// Get an item by key. Equivalent to `obj[key]`.

@@ -9,7 +9,154 @@
 //! 5. Converts the Python return value back to an IDLValue
 //! 6. Encodes and replies with raw Candid bytes
 
-use crate::wasm_data::{MethodInfo, METHOD_METADATA};
+use crate::wasm_data::{MethodInfo, METHOD_METADATA, TYPE_DEFS, LIFECYCLE};
+use std::collections::HashMap;
+
+/// Call a user-defined lifecycle hook (init, post_upgrade, pre_upgrade, etc.).
+/// Reads the lifecycle metadata from LIFECYCLE global, decodes any Candid init args,
+/// and calls the corresponding Python function.
+pub fn call_lifecycle_hook(hook_name: &str) {
+    let hook_info = unsafe {
+        LIFECYCLE
+            .as_ref()
+            .and_then(|lc| lc.get(hook_name))
+    };
+
+    let hook_info = match hook_info {
+        Some(info) => info,
+        None => return, // No user-defined hook for this lifecycle event
+    };
+
+    let function_name = &hook_info.name;
+
+    ensure_cpython_initialized();
+    let interpreter = unsafe { crate::INTERPRETER_OPTION.as_mut() }
+        .unwrap_or_else(|| {
+            ic_cdk::trap("SystemError: missing python interpreter");
+        });
+
+    let py_func = interpreter
+        .get_global(function_name)
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!(
+                "Lifecycle function '{}' not found: {}",
+                function_name,
+                e.to_rust_err_string()
+            ));
+        });
+
+    // Decode init args if the hook takes parameters (e.g. @init with args)
+    let args = if !hook_info.params.is_empty() {
+        let arg_bytes = ic_cdk::api::call::arg_data_raw();
+        decode_candid_args_to_python(&arg_bytes, &hook_info.params)
+    } else {
+        Vec::new()
+    };
+
+    let args_tuple = basilisk_cpython::PyTuple::new(args).unwrap_or_else(|e| {
+        ic_cdk::trap(&format!(
+            "Failed to create args tuple for '{}': {}",
+            function_name,
+            e.to_rust_err_string()
+        ));
+    });
+
+    py_func
+        .call(&args_tuple.into_object(), None)
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!(
+                "Error calling lifecycle '{}': {}",
+                function_name,
+                e.to_rust_err_string()
+            ));
+        });
+}
+
+/// Call a Python function by name with no arguments.
+/// Silently returns if CPython is not initialized or the function doesn't exist.
+/// Used for internal hooks like _basilisk_save_stable_maps.
+pub fn call_python_function(func_name: &str) {
+    if !unsafe { crate::CPYTHON_INIT_DONE } {
+        return;
+    }
+    let interpreter = match unsafe { crate::INTERPRETER_OPTION.as_mut() } {
+        Some(i) => i,
+        None => return,
+    };
+    let py_func = match interpreter.get_global(func_name) {
+        Ok(f) => f,
+        Err(_) => return, // Function not found, silently skip
+    };
+    let empty = basilisk_cpython::PyTuple::new(Vec::new()).unwrap();
+    let _ = py_func.call(&empty.into_object(), None);
+}
+
+/// Execute a guard function before the main method.
+/// Guard functions return a dict: {"Ok": None} to allow, {"Err": "message"} to reject.
+/// If the guard throws an exception, the call is rejected with the exception message.
+fn execute_guard(guard_name: &str) {
+    ensure_cpython_initialized();
+    let interpreter = unsafe { crate::INTERPRETER_OPTION.as_mut() }
+        .unwrap_or_else(|| {
+            ic_cdk::trap("SystemError: missing python interpreter");
+        });
+
+    let guard_func = interpreter
+        .get_global(guard_name)
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!(
+                "Guard function '{}' not found: {}",
+                guard_name,
+                e.to_rust_err_string()
+            ));
+        });
+
+    let empty_args = basilisk_cpython::PyTuple::new(Vec::new()).unwrap_or_else(|e| {
+        ic_cdk::trap(&format!(
+            "Failed to create empty args: {}",
+            e.to_rust_err_string()
+        ));
+    });
+
+    let result = match guard_func.call(&empty_args.into_object(), None) {
+        Ok(r) => r,
+        Err(e) => {
+            ic_cdk::trap(&format!(
+                "Guard function '{}' threw an exception: {}",
+                guard_name,
+                e.to_rust_err_string()
+            ));
+        }
+    };
+
+    // Guard returns a dict: {"Ok": None} or {"Err": "message"}
+    // Use PyObjectRef::get_item_str which works on any mapping-like object
+
+    // Check for "Err" key first
+    if let Ok(err_val) = result.get_item_str("Err") {
+        if !err_val.is_none() {
+            let err_msg = match err_val.extract_str() {
+                Ok(s) => s,
+                Err(_) => match err_val.str_repr() {
+                    Ok(s) => s,
+                    Err(_) => "Guard rejected with non-string error".to_string(),
+                },
+            };
+            ic_cdk::trap(&err_msg);
+        }
+    }
+
+    // Check for "Ok" key — if present, allow the call
+    if result.get_item_str("Ok").is_ok() {
+        return; // Guard passed
+    }
+
+    // Neither "Ok" nor "Err" key found
+    ic_cdk::trap(&format!(
+        "Guard function '{}' returned invalid GuardResult (missing 'Ok' or 'Err' key)",
+        guard_name
+    ));
+}
 
 /// Main entry point for canister method execution.
 /// Called by execute_query_method / execute_update_method from lib.rs.
@@ -25,6 +172,11 @@ pub fn execute_canister_method(method_index: i32, _is_update: bool) {
 
     let function_name = &method_info.name;
 
+    // Execute guard function if present
+    if let Some(guard_name) = &method_info.guard {
+        execute_guard(guard_name);
+    }
+
     // Get raw Candid argument bytes from the IC message
     let arg_bytes = ic_cdk::api::call::arg_data_raw();
 
@@ -38,6 +190,12 @@ pub fn execute_canister_method(method_index: i32, _is_update: bool) {
 
     // Call the Python function
     ensure_cpython_initialized();
+
+    // Set current return type so ic.reply() can encode properly
+    unsafe {
+        crate::CURRENT_RETURN_TYPE = Some(method_info.returns.clone());
+    }
+
     let interpreter = unsafe { crate::INTERPRETER_OPTION.as_mut() }
         .unwrap_or_else(|| {
             ic_cdk::trap("SystemError: missing python interpreter");
@@ -70,9 +228,217 @@ pub fn execute_canister_method(method_index: i32, _is_update: bool) {
             ));
         });
 
+    // For async methods (generators), spawn the async driver
+    if method_info.is_async {
+        let return_type = method_info.returns.clone();
+        let manual_reply = method_info.manual_reply;
+        let func_name = function_name.clone();
+        execute_async_generator(py_result, return_type, manual_reply, func_name);
+        return;
+    }
+
+    // For Manual[T] methods, the Python function already called ic.reply()
+    if method_info.manual_reply {
+        return;
+    }
+
     // Encode result back to Candid and reply
     let result_bytes = encode_python_to_candid(&py_result, &method_info.returns);
     ic_cdk::api::call::reply_raw(&result_bytes);
+}
+
+/// Drive a Python generator through async cross-canister calls.
+/// The generator yields `_ServiceCall` objects which we execute via `ic_cdk::api::call::call_raw`,
+/// and we send the results back via `gen.send(result)`. When the generator raises StopIteration,
+/// we extract the return value and reply.
+fn execute_async_generator(
+    generator: basilisk_cpython::PyObjectRef,
+    return_type: String,
+    manual_reply: bool,
+    func_name: String,
+) {
+    ic_cdk::spawn(async move {
+        let result = drive_generator(generator, &func_name).await;
+
+        if manual_reply {
+            return;
+        }
+        let result_bytes = encode_python_to_candid(&result, &return_type);
+        ic_cdk::api::call::reply_raw(&result_bytes);
+    });
+}
+
+/// Recursively drive a Python generator. Handles both _ServiceCall yields (IC calls)
+/// and nested generator yields (sub-generators that themselves yield _ServiceCall objects).
+/// Returns the generator's return value (from StopIteration.value).
+fn drive_generator(
+    generator: basilisk_cpython::PyObjectRef,
+    func_name: &str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = basilisk_cpython::PyObjectRef> + 'static>> {
+    let func_name = func_name.to_string();
+    Box::pin(async move {
+        let gen = generator;
+        let mut send_value = basilisk_cpython::PyObjectRef::none();
+
+        loop {
+            let result = gen.call_method_one_arg("send", &send_value);
+
+            match result {
+                Ok(yielded) => {
+                    // Check if yielded value is a _ServiceCall (has canister_principal attr)
+                    if yielded.has_attr("canister_principal") {
+                        // It's a _ServiceCall — make the IC inter-canister call
+                        let call_result = perform_service_call(&yielded).await;
+                        send_value = match call_result {
+                            Ok(raw_bytes) => {
+                                let py_val = decode_candid_response_to_python(&raw_bytes);
+                                make_python_dict_result("Ok", py_val)
+                            }
+                            Err((rejection_code, msg)) => {
+                                let err_msg = format!("Rejection code {:?}: {}", rejection_code, msg);
+                                let py_err = basilisk_cpython::PyObjectRef::from_str(&err_msg)
+                                    .unwrap_or_else(|_| basilisk_cpython::PyObjectRef::none());
+                                make_python_dict_result("Err", py_err)
+                            }
+                        };
+                    } else if yielded.has_attr("send") {
+                        // It's a sub-generator — recursively drive it
+                        send_value = drive_generator(yielded, &func_name).await;
+                    } else {
+                        // Unknown yielded type — pass it through as-is
+                        send_value = yielded;
+                    }
+                }
+                Err(e) => {
+                    if e.type_name == "StopIteration" {
+                        return e.value.unwrap_or_else(basilisk_cpython::PyObjectRef::none);
+                    } else {
+                        ic_cdk::trap(&format!(
+                            "Error in async method '{}': {}",
+                            func_name,
+                            e.to_rust_err_string()
+                        ));
+                    }
+                }
+            }
+        }
+    })
+}
+
+/// Extract fields from a Python _ServiceCall object and make an IC inter-canister call.
+async fn perform_service_call(
+    service_call: &basilisk_cpython::PyObjectRef,
+) -> Result<Vec<u8>, (ic_cdk::api::call::RejectionCode, String)> {
+    // Extract canister_principal — a Principal Python object
+    let py_principal = service_call
+        .get_attr("canister_principal")
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("_ServiceCall missing canister_principal: {}", e));
+        });
+
+    // Get principal text via .to_str() or ._text
+    let principal_text = py_principal
+        .get_attr("_text")
+        .and_then(|t| t.extract_str())
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("Cannot extract principal text: {}", e));
+        });
+
+    let ic_principal = candid::Principal::from_text(&principal_text).unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("Invalid principal '{}': {}", principal_text, e));
+    });
+
+    // Extract method_name
+    let method_name = service_call
+        .get_attr("method_name")
+        .and_then(|m| m.extract_str())
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("_ServiceCall missing method_name: {}", e));
+        });
+
+    // Extract payment (default 0)
+    let payment = service_call
+        .get_attr("payment")
+        .and_then(|p| p.extract_u64())
+        .unwrap_or(0u64);
+
+    // Encode args to Candid
+    // The args field is a tuple of Python objects — encode them generically
+    let args_raw = encode_service_call_args(service_call);
+
+    ic_cdk::api::call::call_raw(ic_principal, &method_name, &args_raw, payment).await
+}
+
+/// Encode the args from a _ServiceCall to Candid bytes.
+/// If _raw_args is present (from ic.call_raw), use those bytes directly.
+/// Otherwise, args is a Python tuple — encode generically.
+fn encode_service_call_args(service_call: &basilisk_cpython::PyObjectRef) -> Vec<u8> {
+    // Check for pre-encoded raw args (from ic.call_raw / ic.call_raw128)
+    if let Ok(raw_args) = service_call.get_attr("_raw_args") {
+        if let Ok(bytes) = raw_args.extract_bytes() {
+            return bytes;
+        }
+    }
+
+    let py_args = match service_call.get_attr("args") {
+        Ok(a) => a,
+        Err(_) => return vec![0x44, 0x49, 0x44, 0x4c, 0x00, 0x00], // DIDL empty
+    };
+
+    // Check if args tuple is empty
+    let length = unsafe { basilisk_cpython::ffi::PyObject_Length(py_args.as_ptr()) };
+    if length <= 0 {
+        return vec![0x44, 0x49, 0x44, 0x4c, 0x00, 0x00]; // DIDL empty
+    }
+
+    // Convert each Python arg to an IDLValue and encode
+    let mut idl_values = Vec::new();
+    for i in 0..length {
+        let idx = basilisk_cpython::PyObjectRef::from_i64(i as i64).unwrap();
+        if let Ok(item) = py_args.get_item(&idx) {
+            // Use "text" as fallback type for generic encoding
+            if let Ok(val) = python_to_idl_value(&item, "text") {
+                idl_values.push(val);
+            }
+        }
+    }
+
+    let idl_args = candid::IDLArgs::new(&idl_values);
+    idl_args
+        .to_bytes()
+        .unwrap_or_else(|_| vec![0x44, 0x49, 0x44, 0x4c, 0x00, 0x00])
+}
+
+/// Decode Candid response bytes to a Python object.
+/// Returns the first value from the decoded IDLArgs, or None if empty.
+fn decode_candid_response_to_python(raw_bytes: &[u8]) -> basilisk_cpython::PyObjectRef {
+    if raw_bytes.is_empty() {
+        return basilisk_cpython::PyObjectRef::none();
+    }
+    match candid::IDLArgs::from_bytes(raw_bytes) {
+        Ok(idl_args) => {
+            if let Some(first_val) = idl_args.args.into_iter().next() {
+                idl_value_to_python(&first_val).unwrap_or_else(|_| basilisk_cpython::PyObjectRef::none())
+            } else {
+                basilisk_cpython::PyObjectRef::none()
+            }
+        }
+        Err(_) => {
+            // If we can't decode as Candid, return raw bytes
+            basilisk_cpython::PyObjectRef::from_bytes(raw_bytes)
+                .unwrap_or_else(|_| basilisk_cpython::PyObjectRef::none())
+        }
+    }
+}
+
+/// Create a Python dict with a single key-value pair: {"key": value}
+/// Used to construct CallResult-like dicts for generator send().
+fn make_python_dict_result(key: &str, value: basilisk_cpython::PyObjectRef) -> basilisk_cpython::PyObjectRef {
+    let dict = basilisk_cpython::PyDict::new().unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("Failed to create dict: {}", e));
+    });
+    let _ = dict.set_item_str(key, &value);
+    dict.into_object()
 }
 
 /// Ensure CPython is initialized. Traps if not.
@@ -161,6 +527,7 @@ fn idl_value_to_python(
             .map_err(|e| e.to_rust_err_string()),
         IDLValue::Blob(bytes) => basilisk_cpython::PyObjectRef::from_bytes(bytes)
             .map_err(|e| e.to_rust_err_string()),
+        IDLValue::None => Ok(basilisk_cpython::PyObjectRef::none()),
         IDLValue::Opt(inner) => idl_value_to_python(inner.as_ref()),
         IDLValue::Vec(items) => {
             let py_items: Result<Vec<_>, _> =
@@ -185,20 +552,40 @@ fn idl_value_to_python(
             }
         }
         IDLValue::Record(fields) => {
-            let dict = basilisk_cpython::PyDict::new()
-                .map_err(|e| e.to_rust_err_string())?;
-            for field in fields {
-                let key = match &field.id {
-                    candid::types::Label::Named(name) => name.clone(),
-                    candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => {
-                        format!("_{}", id)
-                    }
-                };
-                let value = idl_value_to_python(&field.val)?;
-                dict.set_item_str(&key, &value)
+            // Detect tuple-style records: all fields have consecutive numeric IDs (0, 1, 2, ...)
+            let is_tuple = !fields.is_empty()
+                && fields.iter().enumerate().all(|(i, f)| {
+                    matches!(&f.id,
+                        candid::types::Label::Id(id) | candid::types::Label::Unnamed(id)
+                        if *id == i as u32
+                    )
+                });
+
+            if is_tuple {
+                // Convert to Python tuple
+                let py_items: Result<Vec<_>, _> =
+                    fields.iter().map(|f| idl_value_to_python(&f.val)).collect();
+                let items = py_items?;
+                let tuple = basilisk_cpython::PyTuple::new(items)
                     .map_err(|e| e.to_rust_err_string())?;
+                Ok(tuple.into_object())
+            } else {
+                // Convert to Python dict
+                let dict = basilisk_cpython::PyDict::new()
+                    .map_err(|e| e.to_rust_err_string())?;
+                for field in fields {
+                    let key = match &field.id {
+                        candid::types::Label::Named(name) => name.clone(),
+                        candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => {
+                            format!("_{}", id)
+                        }
+                    };
+                    let value = idl_value_to_python(&field.val)?;
+                    dict.set_item_str(&key, &value)
+                        .map_err(|e| e.to_rust_err_string())?;
+                }
+                Ok(dict.into_object())
             }
-            Ok(dict.into_object())
         }
         IDLValue::Variant(variant) => {
             let dict = basilisk_cpython::PyDict::new()
@@ -239,7 +626,7 @@ fn idl_value_to_python(
 }
 
 /// Convert a Python object to Candid bytes based on the expected return type.
-fn encode_python_to_candid(
+pub fn encode_python_to_candid(
     py_result: &basilisk_cpython::PyObjectRef,
     return_type: &str,
 ) -> Vec<u8> {
@@ -253,12 +640,158 @@ fn encode_python_to_candid(
     })
 }
 
+// ─── Candid type string parsing ──────────────────────────────────────────────
+
+/// Resolve a Candid type string, expanding named type references via TYPE_DEFS.
+fn resolve_type<'a>(candid_type: &'a str, type_defs: &'a HashMap<String, String>) -> &'a str {
+    let trimmed = candid_type.trim();
+    // If it's a named type reference, look it up
+    if !trimmed.starts_with("record")
+        && !trimmed.starts_with("variant")
+        && !trimmed.starts_with("opt ")
+        && !trimmed.starts_with("vec ")
+        && !trimmed.contains(' ')
+        && !trimmed.contains('{')
+    {
+        if let Some(def) = type_defs.get(trimmed) {
+            return def.as_str();
+        }
+    }
+    trimmed
+}
+
+/// Parse field definitions from inside `record { ... }` or `variant { ... }`.
+/// Returns a list of (field_name, field_type_string) pairs.
+fn parse_fields(inner: &str) -> Vec<(String, String)> {
+    let mut fields = Vec::new();
+    let mut depth = 0;
+    let mut current = String::new();
+
+    for ch in inner.chars() {
+        match ch {
+            '{' => {
+                depth += 1;
+                current.push(ch);
+            }
+            '}' => {
+                depth -= 1;
+                current.push(ch);
+            }
+            ';' if depth == 0 => {
+                let trimmed = current.trim().to_string();
+                if !trimmed.is_empty() {
+                    fields.push(trimmed);
+                }
+                current.clear();
+            }
+            _ => {
+                current.push(ch);
+            }
+        }
+    }
+    let trimmed = current.trim().to_string();
+    if !trimmed.is_empty() {
+        fields.push(trimmed);
+    }
+
+    fields
+        .iter()
+        .map(|f| {
+            if let Some(colon_pos) = f.find(':') {
+                let name = f[..colon_pos].trim().to_string();
+                let type_str = f[colon_pos + 1..].trim().to_string();
+                (name, type_str)
+            } else {
+                (f.clone(), "null".to_string())
+            }
+        })
+        .collect()
+}
+
+/// Strip the outer `record { ... }` or `variant { ... }` wrapper and return the inner content.
+fn strip_compound_wrapper<'a>(type_str: &'a str, keyword: &str) -> Option<&'a str> {
+    let trimmed = type_str.trim();
+    if !trimmed.starts_with(keyword) {
+        return None;
+    }
+    let rest = trimmed[keyword.len()..].trim();
+    if rest.starts_with('{') && rest.ends_with('}') {
+        Some(&rest[1..rest.len() - 1])
+    } else {
+        None
+    }
+}
+
+/// Convert a field name to a Candid Label.
+/// Names matching `_N_` pattern become numeric Label::Id(N).
+fn field_name_to_label(name: &str) -> candid::types::Label {
+    if name.starts_with('_') && name.ends_with('_') && name.len() > 2 {
+        if let Ok(id) = name[1..name.len() - 1].parse::<u32>() {
+            return candid::types::Label::Id(id);
+        }
+    }
+    candid::types::Label::Named(name.to_string())
+}
+
+/// Check if a record type string represents a tuple (all fields are positional: _0_, _1_, ...).
+fn is_tuple_record(fields: &[(String, String)]) -> bool {
+    if fields.is_empty() {
+        return false;
+    }
+    fields.iter().enumerate().all(|(i, (name, _))| {
+        name.starts_with('_')
+            && name.ends_with('_')
+            && name.len() > 2
+            && name[1..name.len() - 1].parse::<u32>().ok() == Some(i as u32)
+    })
+}
+
+// ─── Python → Candid conversion ─────────────────────────────────────────────
+
 /// Convert a Python object to a candid::IDLValue based on the type string.
+/// Supports named type references (resolved via TYPE_DEFS), records, variants,
+/// tuples, opt, vec, and all primitive types.
 fn python_to_idl_value(
     obj: &basilisk_cpython::PyObjectRef,
     candid_type: &str,
 ) -> Result<candid::IDLValue, String> {
-    match candid_type.trim() {
+    let type_defs = unsafe { TYPE_DEFS.as_ref() };
+    let empty_map = HashMap::new();
+    let type_defs = type_defs.unwrap_or(&empty_map);
+
+    python_to_idl_value_inner(obj, candid_type, type_defs)
+}
+
+fn python_to_idl_value_inner(
+    obj: &basilisk_cpython::PyObjectRef,
+    candid_type: &str,
+    type_defs: &HashMap<String, String>,
+) -> Result<candid::IDLValue, String> {
+    // First resolve named type references
+    let resolved = resolve_type(candid_type, type_defs);
+
+    // Check for record { ... }
+    if let Some(inner) = strip_compound_wrapper(resolved, "record") {
+        let fields = parse_fields(inner);
+        let is_tuple = is_tuple_record(&fields);
+
+        if is_tuple {
+            // Python tuple → positional Candid record
+            return python_tuple_to_record(obj, &fields, type_defs);
+        } else {
+            // Python dict → named Candid record
+            return python_dict_to_record(obj, &fields, type_defs);
+        }
+    }
+
+    // Check for variant { ... }
+    if let Some(inner) = strip_compound_wrapper(resolved, "variant") {
+        let cases = parse_fields(inner);
+        return python_dict_to_variant(obj, &cases, type_defs);
+    }
+
+    // Primitive and compound types
+    match resolved {
         "" | "null" => Ok(candid::IDLValue::Null),
         "bool" => Ok(candid::IDLValue::Bool(obj.extract_bool())),
         "text" => {
@@ -333,12 +866,14 @@ fn python_to_idl_value(
                 .map_err(|e| format!("invalid principal: {}", e))?;
             Ok(candid::IDLValue::Principal(p))
         }
+        "empty" => Ok(candid::IDLValue::Null),
+        "reserved" => Ok(candid::IDLValue::Reserved),
         other if other.starts_with("opt ") => {
             if obj.is_none() {
-                Ok(candid::IDLValue::Null)
+                Ok(candid::IDLValue::None)
             } else {
                 let inner_type = &other[4..];
-                let inner = python_to_idl_value(obj, inner_type)?;
+                let inner = python_to_idl_value_inner(obj, inner_type, type_defs)?;
                 Ok(candid::IDLValue::Opt(Box::new(inner)))
             }
         }
@@ -357,7 +892,7 @@ fn python_to_idl_value(
                     }
                     let py_obj = basilisk_cpython::PyObjectRef::from_owned(item)
                         .ok_or_else(|| "null item".to_string())?;
-                    items.push(python_to_idl_value(&py_obj, inner_type)?);
+                    items.push(python_to_idl_value_inner(&py_obj, inner_type, type_defs)?);
                 }
                 Ok(candid::IDLValue::Vec(items))
             }
@@ -368,4 +903,136 @@ fn python_to_idl_value(
             Ok(candid::IDLValue::Text(s))
         }
     }
+}
+
+/// Convert a Python dict to a Candid Record.
+fn python_dict_to_record(
+    obj: &basilisk_cpython::PyObjectRef,
+    fields: &[(String, String)],
+    type_defs: &HashMap<String, String>,
+) -> Result<candid::IDLValue, String> {
+    let mut idl_fields = Vec::with_capacity(fields.len());
+
+    for (field_name, field_type) in fields {
+        let key = basilisk_cpython::PyObjectRef::from_str(field_name)
+            .map_err(|e| e.to_rust_err_string())?;
+        let value = unsafe {
+            let item = basilisk_cpython::ffi::PyObject_GetItem(obj.as_ptr(), key.as_ptr());
+            if item.is_null() {
+                basilisk_cpython::ffi::PyErr_Clear();
+                return Err(format!("Record field '{}' not found in Python dict", field_name));
+            }
+            basilisk_cpython::PyObjectRef::from_owned(item)
+                .ok_or_else(|| format!("null value for field '{}'", field_name))?
+        };
+
+        let idl_val = python_to_idl_value_inner(&value, field_type, type_defs)?;
+        idl_fields.push(candid::types::value::IDLField {
+            id: field_name_to_label(field_name),
+            val: idl_val,
+        });
+    }
+
+    // Sort fields by label hash as required by Candid
+    idl_fields.sort_by(|a, b| a.id.get_id().cmp(&b.id.get_id()));
+    Ok(candid::IDLValue::Record(idl_fields))
+}
+
+/// Convert a Python tuple to a positional Candid Record (tuple encoding).
+fn python_tuple_to_record(
+    obj: &basilisk_cpython::PyObjectRef,
+    fields: &[(String, String)],
+    type_defs: &HashMap<String, String>,
+) -> Result<candid::IDLValue, String> {
+    let mut idl_fields = Vec::with_capacity(fields.len());
+
+    for (i, (_field_name, field_type)) in fields.iter().enumerate() {
+        let value = unsafe {
+            let item = basilisk_cpython::ffi::PySequence_GetItem(
+                obj.as_ptr(),
+                i as basilisk_cpython::ffi::Py_ssize_t,
+            );
+            if item.is_null() {
+                basilisk_cpython::ffi::PyErr_Clear();
+                return Err(format!(
+                    "Tuple element {} not found (expected {} elements)",
+                    i,
+                    fields.len()
+                ));
+            }
+            basilisk_cpython::PyObjectRef::from_owned(item)
+                .ok_or_else(|| format!("null tuple element {}", i))?
+        };
+
+        let idl_val = python_to_idl_value_inner(&value, field_type, type_defs)?;
+        idl_fields.push(candid::types::value::IDLField {
+            id: candid::types::Label::Id(i as u32),
+            val: idl_val,
+        });
+    }
+
+    Ok(candid::IDLValue::Record(idl_fields))
+}
+
+/// Convert a Python dict (single key) to a Candid Variant.
+fn python_dict_to_variant(
+    obj: &basilisk_cpython::PyObjectRef,
+    cases: &[(String, String)],
+    type_defs: &HashMap<String, String>,
+) -> Result<candid::IDLValue, String> {
+    // Get the keys of the dict to find which variant case is active
+    let keys = unsafe {
+        let keys_obj = basilisk_cpython::ffi::PyDict_Keys(obj.as_ptr());
+        if keys_obj.is_null() {
+            return Err("Variant value is not a dict".to_string());
+        }
+        let len = basilisk_cpython::ffi::PyList_Size(keys_obj);
+        if len != 1 {
+            basilisk_cpython::ffi::Py_DecRef(keys_obj);
+            return Err(format!(
+                "Variant dict should have exactly 1 key, got {}",
+                len
+            ));
+        }
+        let key = basilisk_cpython::ffi::PyList_GetItem(keys_obj, 0); // borrowed ref
+        let key_obj = basilisk_cpython::PyObjectRef::from_borrowed(key)
+            .ok_or_else(|| "null variant key".to_string())?;
+        let key_str = key_obj.extract_str().map_err(|e| e.to_rust_err_string())?;
+        basilisk_cpython::ffi::Py_DecRef(keys_obj);
+        key_str
+    };
+
+    // Find the matching case and its type
+    let (case_idx, case_type) = cases
+        .iter()
+        .enumerate()
+        .find(|(_, (name, _))| *name == keys)
+        .map(|(i, (_, t))| (i, t.as_str()))
+        .ok_or_else(|| format!("Unknown variant case '{}'", keys))?;
+
+    // Get the value for this case
+    let key = basilisk_cpython::PyObjectRef::from_str(&keys)
+        .map_err(|e| e.to_rust_err_string())?;
+    let value = unsafe {
+        let item = basilisk_cpython::ffi::PyObject_GetItem(obj.as_ptr(), key.as_ptr());
+        if item.is_null() {
+            basilisk_cpython::ffi::PyErr_Clear();
+            return Err(format!("Variant value for '{}' is null", keys));
+        }
+        basilisk_cpython::PyObjectRef::from_owned(item)
+            .ok_or_else(|| "null variant value".to_string())?
+    };
+
+    let idl_val = if value.is_none() && case_type == "null" {
+        candid::IDLValue::Null
+    } else {
+        python_to_idl_value_inner(&value, case_type, type_defs)?
+    };
+
+    let field = candid::types::value::IDLField {
+        id: field_name_to_label(&keys),
+        val: idl_val,
+    };
+
+    Ok(candid::IDLValue::Variant(candid::types::value::VariantValue(Box::new(field), case_idx as u64)))
 }

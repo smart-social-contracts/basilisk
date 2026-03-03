@@ -76,6 +76,23 @@ impl PyTuple {
         }
     }
 
+    /// Wrap an existing Python object pointer as a PyTuple without type checking.
+    /// Returns None if the pointer is null.
+    /// Used for METH_VARARGS C API callbacks where args is guaranteed to be a tuple.
+    pub fn from_object_unchecked(ptr: *mut ffi::PyObject) -> Option<Self> {
+        if ptr.is_null() {
+            return None;
+        }
+        unsafe {
+            PyObjectRef::from_borrowed(ptr).map(|inner| PyTuple { inner })
+        }
+    }
+
+    /// Get an item by index. Alias for `get()` for clarity in C API code.
+    pub fn get_item(&self, index: usize) -> Option<PyObjectRef> {
+        self.get(index)
+    }
+
     /// Convert to a PyObjectRef (for passing to Python functions as args).
     pub fn into_object(self) -> PyObjectRef {
         self.inner

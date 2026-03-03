@@ -1,0 +1,9 @@
+venv/
+.dfx/
+.basilisk/
+benchmark_counter.wasm
+benchmark_counter.did
+benchmark_results_*.txt
+src/_bench.py
+node_modules/
+__pycache__/

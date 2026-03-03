@@ -50,6 +50,9 @@ static mut INTERPRETER_OPTION: Option<basilisk_cpython::Interpreter> = None;
 static mut SCOPE_OPTION: Option<basilisk_cpython::Scope> = None;
 static mut CPYTHON_INIT_DONE: bool = false;
 static mut PRINCIPAL_CLASS_OPTION: Option<basilisk_cpython::PyObjectRef> = None;
+/// Current method's return type string — set before calling Manual[T] methods
+/// so that ic.reply() knows how to encode the value.
+static mut CURRENT_RETURN_TYPE: Option<String> = None;
 
 // ─── RNG ────────────────────────────────────────────────────────────────────
 
@@ -73,13 +76,21 @@ fn init() {
     ic_wasi_polyfill::init(&[], &[]);
 
     let python_code = get_python_code();
-    let method_meta = get_method_metadata();
+    let (method_meta, type_defs, lifecycle) = get_method_metadata();
 
     cpython_full_init(&python_code);
 
     unsafe {
         METHOD_METADATA = Some(method_meta);
+        TYPE_DEFS = Some(type_defs);
+        LIFECYCLE = Some(lifecycle);
     }
+
+    // Call user-defined @init function if present
+    call_lifecycle_hook("init");
+
+    // Restore StableBTreeMap instances from stable memory (if upgrading with data)
+    call_python_function("_basilisk_load_stable_maps");
 }
 
 #[ic_cdk_macros::post_upgrade]
@@ -87,12 +98,54 @@ fn post_upgrade() {
     ic_wasi_polyfill::init(&[], &[]);
 
     let python_code = get_python_code();
-    let method_meta = get_method_metadata();
+    let (method_meta, type_defs, lifecycle) = get_method_metadata();
 
     cpython_full_init(&python_code);
 
     unsafe {
         METHOD_METADATA = Some(method_meta);
+        TYPE_DEFS = Some(type_defs);
+        LIFECYCLE = Some(lifecycle);
+    }
+
+    // Call user-defined @post_upgrade function if present
+    call_lifecycle_hook("post_upgrade");
+
+    // Restore StableBTreeMap instances from stable memory
+    call_python_function("_basilisk_load_stable_maps");
+}
+
+#[ic_cdk_macros::pre_upgrade]
+fn pre_upgrade() {
+    // Save StableBTreeMap instances to stable memory before upgrade
+    call_python_function("_basilisk_save_stable_maps");
+
+    // Call user-defined @pre_upgrade function if present
+    // CPython is already initialized from the original init/post_upgrade
+    call_lifecycle_hook("pre_upgrade");
+}
+
+#[ic_cdk_macros::heartbeat]
+fn heartbeat() {
+    // Only call if user defined a @heartbeat function
+    call_lifecycle_hook("heartbeat");
+}
+
+#[ic_cdk_macros::inspect_message]
+fn inspect_message() {
+    // Call user-defined @inspect_message function if present.
+    // The Python function should call ic.accept_message() to allow the call.
+    // If no inspect_message hook is defined, accept all messages by default.
+    let has_hook = unsafe {
+        LIFECYCLE
+            .as_ref()
+            .map(|lc| lc.contains_key("inspect_message"))
+            .unwrap_or(false)
+    };
+    if has_hook {
+        call_lifecycle_hook("inspect_message");
+    } else {
+        ic_cdk::api::call::accept_message();
     }
 }
 

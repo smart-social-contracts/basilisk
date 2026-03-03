@@ -1,99 +1,179 @@
 name: Benchmark
+
 on:
-  workflow_dispatch:
-    inputs:
-      backend:
-        description: 'Python backend to benchmark'
-        required: true
-        type: choice
-        options:
-          - rustpython
-          - cpython
+    workflow_dispatch:
+        inputs:
+            backend:
+                description: "Python backend to benchmark"
+                required: true
+                type: choice
+                options:
+                    - cpython
+                    - rustpython
+                    - both
+            network:
+                description: "Network to run benchmarks on"
+                required: true
+                type: choice
+                default: local
+                options:
+                    - local
+                    - ic
+            runs:
+                description: "Number of runs per benchmark (median reported)"
+                required: false
+                type: number
+                default: 5
 
 jobs:
-  benchmark:
-    runs-on: ubuntu-latest
-    env:
-      BASILISK_PYTHON_BACKEND: ${{ github.event.inputs.backend }}
-      BASILISK_COMPILE_RUST_PYTHON_STDLIB: ${{ github.event.inputs.backend == 'rustpython' }}
-      WASI_SDK_VERSION: "24"
-      WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+    benchmark:
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                backend: ${{ github.event.inputs.backend == 'both' && fromJSON('["cpython","rustpython"]') || fromJSON(format('["{0}"]', github.event.inputs.backend)) }}
+        env:
+            WASI_SDK_VERSION: "24"
+            WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
+            DFX_WARNING: -mainnet_plaintext_identity
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Cache basilisk cargo
-        uses: actions/cache@v4
-        with:
-          path: ~/.config/basilisk
-          key: basilisk-cargo-${{ github.event.inputs.backend }}-benchmark-v2-${{ hashFiles('basilisk/cargotoml.py') }}
+            # ─── Install dfx ─────────────────────────────────────────────
+            - name: Install dfx
+              run: |
+                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
 
-      - name: Cache dfx
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/dfinity
-          key: basilisk-dfx-0.29.0
+            # ─── Install Python via pyenv ────────────────────────────────
+            - name: Install Python 3.10.7
+              run: |
+                  curl https://pyenv.run | bash
+                  ~/.pyenv/bin/pyenv install 3.10.7
 
-      - name: Install dfx
-        run: |
-          DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-          echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+            - name: Create venv
+              working-directory: benchmarks/counter
+              run: ~/.pyenv/versions/3.10.7/bin/python -m venv venv
 
-      # CPython template mode: download pre-built template wasm + wasm-opt
-      - name: Install wasm-opt (binaryen)
-        if: ${{ github.event.inputs.backend == 'cpython' }}
-        run: |
-          curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
-          tar xzf /tmp/binaryen.tar.gz -C /tmp
-          sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
-          wasm-opt --version
+            # ─── CPython-specific setup ──────────────────────────────────
+            - name: Install WASI SDK
+              if: matrix.backend == 'cpython'
+              run: |
+                  curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
 
-      - name: Download canister template wasm
-        if: ${{ github.event.inputs.backend == 'cpython' }}
-        run: |
-          VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
-          TEMPLATE_DIR="$HOME/.config/basilisk/${VERSION}"
-          mkdir -p "${TEMPLATE_DIR}"
-          echo "Downloading canister template wasm..."
-          curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm \
-            -o "${TEMPLATE_DIR}/cpython_canister_template.wasm"
-          echo "Template wasm: $(wc -c < "${TEMPLATE_DIR}/cpython_canister_template.wasm") bytes"
+            - name: Install wasm-opt
+              if: matrix.backend == 'cpython'
+              run: |
+                  curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
+                  tar xzf /tmp/binaryen.tar.gz -C /tmp
+                  sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
 
-      - name: Setup Python environment
-        working-directory: examples/benchmark
-        run: |
-          curl https://pyenv.run | bash
-          ~/.pyenv/bin/pyenv install 3.10.7
-          ~/.pyenv/versions/3.10.7/bin/python -m venv venv
+            - name: Pre-download CPython wasm
+              if: matrix.backend == 'cpython'
+              run: |
+                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+                  CPYTHON_DIR="$HOME/.config/basilisk/${VERSION}/cpython_wasm"
+                  if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ]; then
+                    mkdir -p "${CPYTHON_DIR}"
+                    curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
+                    tar -xzf /tmp/cpython-wasm.tar.gz -C "${CPYTHON_DIR}"
+                  fi
 
-      - name: Install basilisk from repo
-        shell: bash -l {0}
-        working-directory: examples/benchmark
-        run: source venv/bin/activate && pip install ../..
+            - name: Cache basilisk cargo
+              if: matrix.backend == 'cpython'
+              uses: actions/cache@v4
+              with:
+                  path: ~/.config/basilisk
+                  key: basilisk-cargo-cpython-bench-${{ hashFiles('basilisk/cargotoml.py') }}
 
-      - name: Install dfx extension
-        working-directory: examples/benchmark
-        run: source venv/bin/activate && python -m basilisk install-dfx-extension
+            - name: Install Basilisk (CPython)
+              if: matrix.backend == 'cpython'
+              shell: bash -l {0}
+              working-directory: benchmarks/counter
+              run: source venv/bin/activate && pip install ../..
 
-      - name: Configure system subnet
-        run: |
-          mkdir -p ~/.config/dfx
-          echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/dfx/networks.json
+            - name: Install dfx extension (CPython)
+              if: matrix.backend == 'cpython'
+              working-directory: benchmarks/counter
+              run: source venv/bin/activate && python -m basilisk install-dfx-extension
 
-      - name: Start dfx
-        working-directory: examples/benchmark
-        run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
+            # ─── RustPython-specific setup ───────────────────────────────
+            - name: Install Kybra (RustPython)
+              if: matrix.backend == 'rustpython'
+              shell: bash -l {0}
+              working-directory: benchmarks/counter
+              run: source venv/bin/activate && pip install kybra
 
-      - name: Deploy and run benchmark
-        shell: bash -l {0}
-        working-directory: examples/benchmark/test
-        timeout-minutes: 65
-        run: source ../venv/bin/activate && npm install && npm test
+            - name: Install dfx extension (RustPython)
+              if: matrix.backend == 'rustpython'
+              working-directory: benchmarks/counter
+              run: source venv/bin/activate && python -m kybra install-dfx-extension 2>/dev/null || true
 
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v4
-        with:
-          name: benchmark-${{ github.event.inputs.backend }}
-          path: examples/benchmark/benchmark_results_${{ github.event.inputs.backend }}.json
+            # ─── Network setup ───────────────────────────────────────────
+            - name: Configure system subnet (local)
+              if: github.event.inputs.network == 'local'
+              run: |
+                  mkdir -p ~/.config/dfx
+                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/dfx/networks.json
+
+            - name: Start local replica
+              if: github.event.inputs.network == 'local'
+              working-directory: benchmarks/counter
+              run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
+
+            - name: Import IC identity
+              if: github.event.inputs.network == 'ic'
+              run: |
+                  if [ -z "${{ secrets.IC_IDENTITY_PEM }}" ]; then
+                    echo "::error::IC_IDENTITY_PEM secret required for IC deployment"
+                    exit 1
+                  fi
+                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  rm /tmp/ci-identity.pem
+                  dfx identity use ci-deploy
+
+            # ─── Build + Deploy + Benchmark ──────────────────────────────
+            - name: Run full benchmark
+              shell: bash -l {0}
+              working-directory: benchmarks/counter
+              timeout-minutes: 45
+              run: |
+                  source venv/bin/activate
+                  NETWORK="${{ github.event.inputs.network }}"
+                  RUNS="${{ github.event.inputs.runs || '5' }}"
+                  bash run_benchmark.sh "${{ matrix.backend }}" --network "$NETWORK" --runs "$RUNS"
+
+            # ─── Upload results ──────────────────────────────────────────
+            - name: Upload results
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: benchmark-${{ matrix.backend }}-${{ github.event.inputs.network }}
+                  path: benchmarks/counter/benchmark_results_*.txt
+                  if-no-files-found: ignore
+
+    # ─── Summary job (when running both backends) ────────────────────────
+    compare:
+        needs: benchmark
+        if: github.event.inputs.backend == 'both'
+        runs-on: ubuntu-latest
+        steps:
+            - name: Download all results
+              uses: actions/download-artifact@v4
+              with:
+                  path: results/
+
+            - name: Compare results
+              run: |
+                  echo "╔══════════════════════════════════════════════════════════════╗"
+                  echo "║  Benchmark Comparison: CPython vs RustPython                ║"
+                  echo "╚══════════════════════════════════════════════════════════════╝"
+                  echo ""
+                  for f in results/benchmark-*/benchmark_results_*.txt; do
+                    echo "=== $(basename "$f") ==="
+                    cat "$f"
+                    echo ""
+                  done

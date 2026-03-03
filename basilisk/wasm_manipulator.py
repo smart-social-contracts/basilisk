@@ -165,6 +165,8 @@ def manipulate_wasm(
     output_wasm_path: str,
     python_source: str,
     methods: List[Dict],
+    type_defs: Optional[Dict[str, str]] = None,
+    lifecycle: Optional[Dict[str, Dict]] = None,
 ) -> None:
     """
     Inject Python source and method metadata into the template wasm.
@@ -175,6 +177,10 @@ def manipulate_wasm(
         python_source: The user's Python source code (UTF-8)
         methods: List of method dicts with keys: name, method_type, params, returns
             e.g. [{"name": "greet", "method_type": "query", "params": [{"name": "name", "candid_type": "text"}], "returns": "text"}]
+        type_defs: Optional dict mapping type name -> Candid type definition string
+            e.g. {"User": "record { id : text; username : text }"}
+        lifecycle: Optional dict mapping lifecycle hook name -> method metadata
+            e.g. {"init": {"name": "init_", "params": [...]}, "post_upgrade": {...}}
     """
     with open(template_wasm_path, "rb") as f:
         wasm = f.read()
@@ -194,9 +200,14 @@ def manipulate_wasm(
             "Template wasm missing execute_query_method or execute_update_method exports"
         )
 
-    # Encode the data to inject
+    # Encode the data to inject: wrap methods + type_defs + lifecycle in a single JSON object
     python_bytes = python_source.encode("utf-8")
-    method_meta_json = json.dumps(methods).encode("utf-8")
+    metadata = {
+        "methods": methods,
+        "type_defs": type_defs or {},
+        "lifecycle": lifecycle or {},
+    }
+    method_meta_json = json.dumps(metadata).encode("utf-8")
 
     # Find placeholder function indices for patching
     placeholder_funcs = {}
@@ -606,72 +617,335 @@ def write_section(output: bytearray, section_id: int, content: bytes) -> None:
 
 # ─── Python source extraction ───────────────────────────────────────────────
 
+# Map Python type annotations to Candid types
+_PRIMITIVE_TYPE_MAP = {
+    "str": "text",
+    "int": "int",
+    "float": "float64",
+    "bool": "bool",
+    "bytes": "blob",
+    "None": "null",
+    "nat": "nat",
+    "nat8": "nat8",
+    "nat16": "nat16",
+    "nat32": "nat32",
+    "nat64": "nat64",
+    "int8": "int8",
+    "int16": "int16",
+    "int32": "int32",
+    "int64": "int64",
+    "float32": "float32",
+    "float64": "float64",
+    "text": "text",
+    "blob": "blob",
+    "Principal": "principal",
+    "null": "null",
+    "void": "null",
+    "empty": "empty",
+    "reserved": "reserved",
+}
+
+
+def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """
+    Walk the AST to find Record, Variant, and Tuple type definitions.
+    Returns a tuple of:
+      - type_names: dict mapping class/alias name -> Candid type name (same name, used for references)
+      - type_defs:  dict mapping class/alias name -> Candid type definition string
+                    e.g. "record { name : text; age : nat32 }"
+
+    Handles:
+      - class Foo(Record): name: str; age: nat32
+      - class Bar(Variant, total=False): A: null; B: text
+      - MyTuple = Tuple[str, nat64]
+    """
+    import ast
+
+    # type_defs maps name -> full Candid type definition
+    type_defs: Dict[str, str] = {}
+    # Track which names are user-defined types (for reference resolution)
+    known_types: set = set()
+    # Track resolution in progress (to detect cycles)
+    resolving: set = set()
+
+    # Pass 1: collect raw class/alias definitions
+    raw_records: Dict[str, list] = {}     # name -> [(field_name, annotation_node), ...]
+    raw_variants: Dict[str, list] = {}    # name -> [(case_name, annotation_node), ...]
+    raw_tuples: Dict[str, list] = {}      # name -> [annotation_node, ...]
+    raw_funcs: Dict[str, tuple] = {}      # name -> (mode, param_nodes, return_node)
+    raw_services: Dict[str, list] = {}    # name -> [(method_name, mode, param_nodes, return_node), ...]
+
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.ClassDef):
+            base_names = []
+            for base in node.bases:
+                if isinstance(base, ast.Name):
+                    base_names.append(base.id)
+                elif isinstance(base, ast.Attribute):
+                    base_names.append(base.attr)
+
+            if "Record" in base_names:
+                fields = []
+                for item in node.body:
+                    if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                        fields.append((item.target.id, item.annotation))
+                raw_records[node.name] = fields
+                known_types.add(node.name)
+            elif "Variant" in base_names:
+                cases = []
+                for item in node.body:
+                    if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
+                        cases.append((item.target.id, item.annotation))
+                raw_variants[node.name] = cases
+                known_types.add(node.name)
+            elif "Service" in base_names:
+                # Service class: extract @service_query / @service_update methods
+                svc_methods = []
+                for item in node.body:
+                    if isinstance(item, ast.FunctionDef):
+                        svc_mode = None
+                        for dec in item.decorator_list:
+                            dec_id = None
+                            if isinstance(dec, ast.Name):
+                                dec_id = dec.id
+                            elif isinstance(dec, ast.Attribute):
+                                dec_id = dec.attr
+                            if dec_id == "service_query":
+                                svc_mode = "query"
+                            elif dec_id == "service_update":
+                                svc_mode = "update"
+                        if svc_mode:
+                            # Extract params (skip self)
+                            param_anns = []
+                            for arg in item.args.args:
+                                if arg.arg == "self":
+                                    continue
+                                param_anns.append(arg.annotation)
+                            svc_methods.append((item.name, svc_mode, param_anns, item.returns))
+                if svc_methods:
+                    raw_services[node.name] = svc_methods
+                    known_types.add(node.name)
+
+        elif isinstance(node, ast.Assign):
+            # Tuple alias: MyTuple = Tuple[str, nat64]
+            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                alias_name = node.targets[0].id
+                value = node.value
+                if isinstance(value, ast.Subscript) and isinstance(value.value, ast.Name):
+                    if value.value.id == "Tuple":
+                        elements = _extract_subscript_elements(value.slice)
+                        raw_tuples[alias_name] = elements
+                        known_types.add(alias_name)
+                # Func type: BasicFunc = Func(Query[[str], str])
+                if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+                    if value.func.id == "Func" and len(value.args) == 1:
+                        func_arg = value.args[0]
+                        # func_arg should be Query[[params], ret] or Update[[params], ret]
+                        if isinstance(func_arg, ast.Subscript) and isinstance(func_arg.value, ast.Name):
+                            mode = "query" if func_arg.value.id == "Query" else "update" if func_arg.value.id == "Update" else None
+                            if mode and isinstance(func_arg.slice, ast.Tuple) and len(func_arg.slice.elts) == 2:
+                                params_node = func_arg.slice.elts[0]  # should be a List
+                                ret_node = func_arg.slice.elts[1]
+                                param_anns = []
+                                if isinstance(params_node, ast.List):
+                                    param_anns = params_node.elts
+                                raw_funcs[alias_name] = (mode, param_anns, ret_node)
+                                known_types.add(alias_name)
+
+    # Pass 2: resolve all types into Candid definitions
+    def resolve_annotation(annotation) -> str:
+        """Convert a Python type annotation AST node to a Candid type string."""
+        if annotation is None:
+            return "null"
+        if isinstance(annotation, ast.Constant):
+            if annotation.value is None:
+                return "null"
+            if isinstance(annotation.value, str):
+                # Forward reference as string: "User"
+                return resolve_name(annotation.value)
+            return "null"
+        if isinstance(annotation, ast.Name):
+            return resolve_name(annotation.id)
+        if isinstance(annotation, ast.Attribute):
+            name = annotation.attr
+            if name in _PRIMITIVE_TYPE_MAP:
+                return _PRIMITIVE_TYPE_MAP[name]
+            return resolve_name(name)
+        if isinstance(annotation, ast.Subscript):
+            if isinstance(annotation.value, ast.Name):
+                outer = annotation.value.id
+                if outer in ("list", "Vec"):
+                    inner = resolve_annotation(annotation.slice)
+                    return f"vec {inner}"
+                if outer in ("Optional", "Opt"):
+                    inner = resolve_annotation(annotation.slice)
+                    return f"opt {inner}"
+                if outer == "Manual":
+                    return resolve_annotation(annotation.slice)
+                if outer == "Async":
+                    return resolve_annotation(annotation.slice)
+                if outer == "Tuple":
+                    elements = _extract_subscript_elements(annotation.slice)
+                    field_strs = []
+                    for i, elem in enumerate(elements):
+                        ct = resolve_annotation(elem)
+                        field_strs.append(f"_{i}_ : {ct}")
+                    return "record { " + "; ".join(field_strs) + " }"
+        return "text"  # fallback
+
+    def resolve_name(name: str) -> str:
+        """Resolve a type name to a Candid type string.
+        For user-defined types, returns the type name itself (will be a named type in .did).
+        """
+        if name in _PRIMITIVE_TYPE_MAP:
+            return _PRIMITIVE_TYPE_MAP[name]
+        if name in known_types:
+            # Ensure the type definition is resolved
+            ensure_type_resolved(name)
+            return name  # Reference by name
+        return "text"  # unknown type fallback
+
+    def ensure_type_resolved(name: str):
+        """Resolve a user-defined type and store its definition."""
+        if name in type_defs:
+            return
+        if name in resolving:
+            return  # Cycle detected — already being resolved, will use name reference
+        resolving.add(name)
+
+        if name in raw_records:
+            fields = raw_records[name]
+            field_strs = []
+            for field_name, ann in fields:
+                ct = resolve_annotation(ann)
+                field_strs.append(f"{field_name} : {ct}")
+            type_defs[name] = "record { " + "; ".join(field_strs) + " }"
+        elif name in raw_variants:
+            cases = raw_variants[name]
+            case_strs = []
+            for case_name, ann in cases:
+                ct = resolve_annotation(ann)
+                case_strs.append(f"{case_name} : {ct}")
+            type_defs[name] = "variant { " + "; ".join(case_strs) + " }"
+        elif name in raw_tuples:
+            elements = raw_tuples[name]
+            field_strs = []
+            for i, elem in enumerate(elements):
+                ct = resolve_annotation(elem)
+                field_strs.append(f"_{i}_ : {ct}")
+            type_defs[name] = "record { " + "; ".join(field_strs) + " }"
+        elif name in raw_funcs:
+            mode, param_anns, ret_node = raw_funcs[name]
+            param_strs = [resolve_annotation(p) for p in param_anns]
+            ret_str = resolve_annotation(ret_node)
+            mode_suffix = " query" if mode == "query" else ""
+            ret_part = f" ({ret_str})" if ret_str not in ("null", "") else " ()"
+            type_defs[name] = f"func ({', '.join(param_strs)}) ->{ret_part}{mode_suffix}"
+        elif name in raw_services:
+            svc_methods = raw_services[name]
+            method_strs = []
+            for mname, mmode, mparam_anns, mret in svc_methods:
+                mparams = ", ".join(resolve_annotation(p) for p in mparam_anns)
+                mret_str = resolve_annotation(mret)
+                mret_part = f" ({mret_str})" if mret_str not in ("null", "") else " ()"
+                mmode_suffix = " query" if mmode == "query" else ""
+                method_strs.append(f"{mname} : ({mparams}) ->{mret_part}{mmode_suffix}")
+            type_defs[name] = "service { " + "; ".join(method_strs) + " }"
+
+        resolving.discard(name)
+
+    # Resolve all types
+    for name in list(raw_records.keys()) + list(raw_variants.keys()) + list(raw_tuples.keys()) + list(raw_funcs.keys()) + list(raw_services.keys()):
+        ensure_type_resolved(name)
+
+    return dict.fromkeys(known_types, ""), type_defs
+
+
+def _extract_subscript_elements(slice_node) -> list:
+    """Extract elements from a Subscript slice (handles Tuple[a, b, c])."""
+    import ast
+    if isinstance(slice_node, ast.Tuple):
+        return list(slice_node.elts)
+    # Single element: Tuple[str]
+    return [slice_node]
+
+
 def extract_methods_from_python(python_source: str) -> List[Dict]:
     """
     Extract method declarations from Python source code.
 
     Looks for @query and @update decorators and extracts function signatures.
+    Parses Record, Variant, and Tuple class definitions to resolve complex types.
     Returns a list of method metadata dicts.
 
     Example:
+        class User(Record):
+            name: str
+            age: nat32
+
         @query
-        def greet(name: str) -> str:
-            return f"Hello, {name}!"
+        def get_user() -> User:
+            return {"name": "Alice", "age": 30}
 
     Produces:
-        [{"name": "greet", "method_type": "query",
-          "params": [{"name": "name", "candid_type": "text"}],
-          "returns": "text"}]
+        [{"name": "get_user", "method_type": "query",
+          "params": [],
+          "returns": "record { name : text; age : nat32 }"}]
     """
     import ast
 
     tree = ast.parse(python_source)
     methods = []
+    lifecycle = {}
 
-    # Map Python type annotations to Candid types
-    type_map = {
-        "str": "text",
-        "int": "int",
-        "float": "float64",
-        "bool": "bool",
-        "bytes": "blob",
-        "None": "null",
-        "nat": "nat",
-        "nat8": "nat8",
-        "nat16": "nat16",
-        "nat32": "nat32",
-        "nat64": "nat64",
-        "int8": "int8",
-        "int16": "int16",
-        "int32": "int32",
-        "int64": "int64",
-        "float32": "float32",
-        "float64": "float64",
-        "text": "text",
-        "blob": "blob",
-        "Principal": "principal",
-    }
+    # Build type registry from class definitions
+    known_types, type_defs = _build_type_registry(tree)
 
     def get_candid_type(annotation) -> str:
         """Convert a Python type annotation to a Candid type string."""
         if annotation is None:
             return "null"
-        if isinstance(annotation, ast.Constant) and annotation.value is None:
+        if isinstance(annotation, ast.Constant):
+            if annotation.value is None:
+                return "null"
+            if isinstance(annotation.value, str):
+                # Forward reference as string: "User"
+                name = annotation.value
+                if name in _PRIMITIVE_TYPE_MAP:
+                    return _PRIMITIVE_TYPE_MAP[name]
+                if name in known_types:
+                    return name
+                return "text"
             return "null"
         if isinstance(annotation, ast.Name):
-            return type_map.get(annotation.id, "text")
+            name = annotation.id
+            if name in _PRIMITIVE_TYPE_MAP:
+                return _PRIMITIVE_TYPE_MAP[name]
+            if name in known_types:
+                return name
+            return "text"
         if isinstance(annotation, ast.Attribute):
-            # e.g., basilisk.nat64
-            return type_map.get(annotation.attr, "text")
+            return _PRIMITIVE_TYPE_MAP.get(annotation.attr, "text")
         if isinstance(annotation, ast.Subscript):
-            # e.g., list[int], Optional[str]
             if isinstance(annotation.value, ast.Name):
-                if annotation.value.id == "list":
+                outer = annotation.value.id
+                if outer in ("list", "Vec"):
                     inner = get_candid_type(annotation.slice)
                     return f"vec {inner}"
-                if annotation.value.id in ("Optional", "Opt"):
+                if outer in ("Optional", "Opt"):
                     inner = get_candid_type(annotation.slice)
                     return f"opt {inner}"
+                if outer == "Manual":
+                    return get_candid_type(annotation.slice)
+                if outer == "Async":
+                    return get_candid_type(annotation.slice)
+                if outer == "Tuple":
+                    elements = _extract_subscript_elements(annotation.slice)
+                    field_strs = []
+                    for i, elem in enumerate(elements):
+                        ct = get_candid_type(elem)
+                        field_strs.append(f"_{i}_ : {ct}")
+                    return "record { " + "; ".join(field_strs) + " }"
         return "text"  # fallback
 
     for node in ast.walk(tree):
@@ -679,23 +953,32 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
             continue
 
         method_type = None
+        guard_name = None
         for decorator in node.decorator_list:
+            dec_name = None
+            dec_kwargs = {}
             if isinstance(decorator, ast.Name):
-                if decorator.id == "query":
-                    method_type = "query"
-                elif decorator.id == "update":
-                    method_type = "update"
+                dec_name = decorator.id
             elif isinstance(decorator, ast.Call):
                 if isinstance(decorator.func, ast.Name):
-                    if decorator.func.id == "query":
-                        method_type = "query"
-                    elif decorator.func.id == "update":
-                        method_type = "update"
+                    dec_name = decorator.func.id
+                elif isinstance(decorator.func, ast.Attribute):
+                    dec_name = decorator.func.attr
+                # Extract keyword arguments (e.g. guard=my_guard)
+                for kw in decorator.keywords:
+                    if kw.arg == "guard" and isinstance(kw.value, ast.Name):
+                        dec_kwargs["guard"] = kw.value.id
             elif isinstance(decorator, ast.Attribute):
-                if decorator.attr == "query":
-                    method_type = "query"
-                elif decorator.attr == "update":
-                    method_type = "update"
+                dec_name = decorator.attr
+
+            if dec_name in ("query", "update", "init", "pre_upgrade",
+                            "post_upgrade", "heartbeat", "inspect_message",
+                            "composite_query"):
+                method_type = dec_name
+                if dec_name == "composite_query":
+                    method_type = "query"  # composite_query is a query variant
+                if "guard" in dec_kwargs:
+                    guard_name = dec_kwargs["guard"]
 
         if method_type is None:
             continue
@@ -708,30 +991,97 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
             candid_type = get_candid_type(arg.annotation)
             params.append({"name": param_name, "candid_type": candid_type})
 
-        return_type = get_candid_type(node.returns)
+        # Check for Manual[T], Async[T] return types, and yield in body
+        manual_reply = False
+        is_async = False
+        ret_annotation = node.returns
+        # Unwrap Async[T] -> T (or Async[Manual[T]] -> Manual[T])
+        if isinstance(ret_annotation, ast.Subscript):
+            if isinstance(ret_annotation.value, ast.Name) and ret_annotation.value.id == "Async":
+                is_async = True
+                ret_annotation = ret_annotation.slice
+        # Also detect yield in function body (generator without Async annotation)
+        if not is_async:
+            for child in ast.walk(node):
+                if isinstance(child, (ast.Yield, ast.YieldFrom)):
+                    is_async = True
+                    break
+        # Check for Manual[T]
+        if isinstance(ret_annotation, ast.Subscript):
+            if isinstance(ret_annotation.value, ast.Name) and ret_annotation.value.id == "Manual":
+                manual_reply = True
 
-        methods.append({
+        return_type = get_candid_type(ret_annotation)
+
+        entry = {
             "name": node.name,
             "method_type": method_type,
             "params": params,
             "returns": return_type,
-        })
+        }
+        if guard_name:
+            entry["guard"] = guard_name
+        if manual_reply:
+            entry["manual_reply"] = True
+        if is_async:
+            entry["is_async"] = True
 
-    return methods
+        if method_type in ("query", "update"):
+            methods.append(entry)
+        else:
+            lifecycle[method_type] = entry
+
+    # Store type_defs in the return for .did generation
+    return methods, type_defs, lifecycle
 
 
-def generate_candid_from_methods(methods: List[Dict]) -> str:
-    """Generate a .did file from method metadata."""
-    lines = []
+def generate_candid_from_methods(
+    methods: List[Dict],
+    type_defs: Optional[Dict[str, str]] = None,
+    lifecycle: Optional[Dict[str, Dict]] = None,
+) -> str:
+    """Generate a .did file from method metadata.
+
+    Handles complex types like record { ... }, variant { ... } with named type definitions.
+    If an @init hook with parameters is present, emits init args in the service declaration.
+    """
+    parts = []
+
+    # Emit named type definitions
+    if type_defs:
+        for name, definition in type_defs.items():
+            parts.append(f"type {name} = {definition};")
+        if type_defs:
+            parts.append("")
+
+    # Build init args string if @init has parameters
+    init_args = ""
+    if lifecycle and "init" in lifecycle:
+        init_info = lifecycle["init"]
+        if init_info.get("params"):
+            init_params = ", ".join(
+                p["candid_type"] for p in init_info["params"]
+            )
+            init_args = f"({init_params})"
+
+    # Emit service definition
+    svc_lines = []
     for method in methods:
         params = ", ".join(
             p["candid_type"] for p in method["params"]
         )
-        returns = method["returns"] if method["returns"] != "null" else ""
+        returns = method["returns"] if method["returns"] not in ("null", "") else ""
         mode = " query" if method["method_type"] == "query" else ""
-        lines.append(f'  "{method["name"]}" : ({params}) -> ({returns}){mode};')
+        svc_lines.append(f'  "{method["name"]}" : ({params}) -> ({returns}){mode};')
 
-    return "service : {\n" + "\n".join(lines) + "\n}\n"
+    if init_args:
+        parts.append(f"service : {init_args} -> {{")
+    else:
+        parts.append("service : {")
+    parts.extend(svc_lines)
+    parts.append("}")
+
+    return "\n".join(parts) + "\n"
 
 
 # ─── CLI entry point ────────────────────────────────────────────────────────
@@ -753,11 +1103,13 @@ if __name__ == "__main__":
     if len(sys.argv) > 4:
         with open(sys.argv[4], "r") as f:
             methods = json.load(f)
+        type_defs = {}
+        lifecycle = {}
     else:
-        methods = extract_methods_from_python(python_source)
+        methods, type_defs, lifecycle = extract_methods_from_python(python_source)
 
     print(f"Extracted {len(methods)} canister methods:")
     for m in methods:
         print(f"  @{m['method_type']} {m['name']}({', '.join(p['name'] + ': ' + p['candid_type'] for p in m['params'])}) -> {m['returns']}")
 
-    manipulate_wasm(template_path, output_path, python_source, methods)
+    manipulate_wasm(template_path, output_path, python_source, methods, type_defs, lifecycle)
