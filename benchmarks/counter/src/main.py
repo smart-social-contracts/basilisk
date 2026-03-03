@@ -1,4 +1,4 @@
-from kybra import ic, nat64, query, update, Record
+from basilisk import ic, nat64, query, update, Record
 
 
 class BenchmarkResult(Record):
