@@ -1139,5 +1139,5 @@ fn python_dict_to_variant(
         val: idl_val,
     };
 
-    Ok(candid::IDLValue::Variant(candid::types::value::VariantValue(Box::new(field), case_idx as u64)))
+    Ok(candid::IDLValue::Variant(candid::types::value::VariantValue(Box::new(field), 0u64)))
 }
