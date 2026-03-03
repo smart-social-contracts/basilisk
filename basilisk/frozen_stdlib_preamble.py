@@ -334,6 +334,907 @@ except ImportError:
 del _register_json
 
 
+# --- In-memory filesystem (memfs) ---
+# Provides builtins.open, os, os.path, tempfile, pathlib, and io backed by a
+# dict so that user code and stdlib modules that rely on file I/O work without
+# requiring an actual WASI filesystem.
+
+def _install_memfs():
+    _MEMFS = {}          # absolute path (str) -> bytes content
+    _MEMFS_DIRS = {"/"}  # set of directory paths
+
+    # ---- helpers ----
+    def _normpath(path):
+        """Normalize a path to an absolute POSIX string."""
+        if not isinstance(path, str):
+            path = str(path)
+        # Collapse consecutive slashes and resolve '.' / '..'
+        parts = []
+        for part in path.replace("\\", "/").split("/"):
+            if part == "" or part == ".":
+                continue
+            if part == "..":
+                if parts:
+                    parts.pop()
+            else:
+                parts.append(part)
+        result = "/" + "/".join(parts)
+        return result
+
+    def _dirname(path):
+        path = _normpath(path)
+        idx = path.rfind("/")
+        if idx == 0:
+            return "/"
+        return path[:idx] if idx > 0 else "/"
+
+    def _basename(path):
+        path = _normpath(path)
+        idx = path.rfind("/")
+        return path[idx + 1:] if idx >= 0 else path
+
+    def _join(*args):
+        result = ""
+        for part in args:
+            if not isinstance(part, str):
+                part = str(part)
+            if part.startswith("/"):
+                result = part
+            else:
+                result = (result.rstrip("/") + "/" + part) if result else part
+        return _normpath(result) if result else "/"
+
+    def _makedirs(path, exist_ok=False):
+        path = _normpath(path)
+        if path in _MEMFS_DIRS:
+            if not exist_ok:
+                raise FileExistsError(f"[Errno 17] File exists: '{path}'")
+            return
+        parts = path.lstrip("/").split("/")
+        current = ""
+        for part in parts:
+            current += "/" + part
+            if current in _MEMFS_DIRS:
+                continue
+            if current in _MEMFS:
+                raise OSError(f"[Errno 20] Not a directory: '{current}'")
+            _MEMFS_DIRS.add(current)
+
+    # ---- file-like objects ----
+    class _MemFile:
+        """In-memory file-like object backed by _MEMFS."""
+        def __init__(self, path, mode, binary):
+            self._path = path
+            self._mode = mode
+            self._binary = binary
+            self.closed = False
+            # Read existing content into buffer
+            if "r" in mode:
+                raw = _MEMFS.get(path)
+                if raw is None:
+                    raise FileNotFoundError(f"[Errno 2] No such file or directory: '{path}'")
+                self._data = bytearray(raw)
+            elif "a" in mode:
+                self._data = bytearray(_MEMFS.get(path, b""))
+            else:  # w
+                self._data = bytearray()
+            self._pos = len(self._data) if "a" in mode else 0
+
+        def read(self, size=-1):
+            if self.closed:
+                raise ValueError("I/O operation on closed file")
+            if size == -1:
+                chunk = self._data[self._pos:]
+                self._pos = len(self._data)
+            else:
+                chunk = self._data[self._pos:self._pos + size]
+                self._pos += len(chunk)
+            if self._binary:
+                return bytes(chunk)
+            return chunk.decode("utf-8", errors="replace")
+
+        def readline(self, size=-1):
+            if self.closed:
+                raise ValueError("I/O operation on closed file")
+            end = len(self._data)
+            start = self._pos
+            i = start
+            while i < end:
+                if self._data[i] == ord('\n'):
+                    i += 1
+                    break
+                i += 1
+            chunk = self._data[start:i]
+            self._pos = i
+            if self._binary:
+                return bytes(chunk)
+            return chunk.decode("utf-8", errors="replace")
+
+        def readlines(self):
+            lines = []
+            while True:
+                line = self.readline()
+                if not line:
+                    break
+                lines.append(line)
+            return lines
+
+        def write(self, data):
+            if self.closed:
+                raise ValueError("I/O operation on closed file")
+            if isinstance(data, str):
+                data = data.encode("utf-8")
+            elif not isinstance(data, (bytes, bytearray, memoryview)):
+                raise TypeError("write() argument must be str or bytes-like")
+            # Replace or extend at current position
+            data = bytes(data)
+            end = self._pos + len(data)
+            if end > len(self._data):
+                self._data.extend(b'\x00' * (end - len(self._data)))
+            self._data[self._pos:end] = data
+            self._pos = end
+            return len(data)
+
+        def writelines(self, lines):
+            for line in lines:
+                self.write(line)
+
+        def tell(self):
+            return self._pos
+
+        def seek(self, pos, whence=0):
+            if whence == 0:
+                self._pos = pos
+            elif whence == 1:
+                self._pos += pos
+            elif whence == 2:
+                self._pos = len(self._data) + pos
+            self._pos = max(0, min(self._pos, len(self._data)))
+            return self._pos
+
+        def truncate(self, size=None):
+            if size is None:
+                size = self._pos
+            del self._data[size:]
+            return size
+
+        def flush(self):
+            pass
+
+        def close(self):
+            if not self.closed:
+                _MEMFS[self._path] = bytes(self._data)
+                self.closed = True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            self.close()
+
+        def __iter__(self):
+            return iter(self.readlines())
+
+        @property
+        def name(self):
+            return self._path
+
+        def fileno(self):
+            raise OSError("memfs files have no real file descriptor")
+
+        def isatty(self):
+            return False
+
+        def readable(self):
+            return "r" in self._mode
+
+        def writable(self):
+            return "w" in self._mode or "a" in self._mode
+
+        def seekable(self):
+            return True
+
+    # ---- builtins.open ----
+    def _memfs_open(file, mode="r", buffering=-1, encoding=None,
+                    errors=None, newline=None, closefd=True, opener=None):
+        path = _normpath(str(file))
+        binary = "b" in mode
+        # Ensure parent directory exists (auto-create if writing)
+        parent = _dirname(path)
+        if parent not in _MEMFS_DIRS:
+            if "r" in mode:
+                raise FileNotFoundError(
+                    f"[Errno 2] No such file or directory: '{file}'")
+            _makedirs(parent, exist_ok=True)
+        if "r" in mode and path not in _MEMFS:
+            raise FileNotFoundError(
+                f"[Errno 2] No such file or directory: '{file}'")
+        if "x" in mode and path in _MEMFS:
+            raise FileExistsError(f"[Errno 17] File exists: '{file}'")
+        return _MemFile(path, mode, binary)
+
+    _builtins.open = _memfs_open
+
+    # ---- io module ----
+    def _register_io():
+        import sys as _s
+        m = type(_s)("io")
+        m.__file__ = "<frozen io>"
+
+        class StringIO:
+            def __init__(self, initial_value="", newline="\n"):
+                self._data = initial_value
+                self._pos = 0
+                self.closed = False
+            def read(self, size=-1):
+                if size == -1:
+                    chunk = self._data[self._pos:]
+                    self._pos = len(self._data)
+                else:
+                    chunk = self._data[self._pos:self._pos + size]
+                    self._pos += len(chunk)
+                return chunk
+            def readline(self, size=-1):
+                i = self._data.find('\n', self._pos)
+                if i == -1:
+                    chunk = self._data[self._pos:]
+                    self._pos = len(self._data)
+                else:
+                    chunk = self._data[self._pos:i + 1]
+                    self._pos = i + 1
+                return chunk
+            def readlines(self):
+                lines = []
+                while True:
+                    line = self.readline()
+                    if not line:
+                        break
+                    lines.append(line)
+                return lines
+            def write(self, s):
+                end = self._pos + len(s)
+                self._data = self._data[:self._pos] + s + self._data[end:]
+                self._pos = end
+                return len(s)
+            def writelines(self, lines):
+                for l in lines:
+                    self.write(l)
+            def getvalue(self):
+                return self._data
+            def tell(self):
+                return self._pos
+            def seek(self, pos, whence=0):
+                if whence == 0:
+                    self._pos = pos
+                elif whence == 1:
+                    self._pos += pos
+                elif whence == 2:
+                    self._pos = len(self._data) + pos
+                self._pos = max(0, min(self._pos, len(self._data)))
+                return self._pos
+            def truncate(self, size=None):
+                if size is None:
+                    size = self._pos
+                self._data = self._data[:size]
+                return size
+            def flush(self):
+                pass
+            def close(self):
+                self.closed = True
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                self.close()
+            def __iter__(self):
+                return iter(self.readlines())
+            def readable(self):
+                return True
+            def writable(self):
+                return True
+            def seekable(self):
+                return True
+
+        class BytesIO:
+            def __init__(self, initial_bytes=b""):
+                self._data = bytearray(initial_bytes)
+                self._pos = 0
+                self.closed = False
+            def read(self, size=-1):
+                if size == -1:
+                    chunk = bytes(self._data[self._pos:])
+                    self._pos = len(self._data)
+                else:
+                    chunk = bytes(self._data[self._pos:self._pos + size])
+                    self._pos += len(chunk)
+                return chunk
+            def readline(self, size=-1):
+                try:
+                    i = self._data.index(ord('\n'), self._pos)
+                    chunk = bytes(self._data[self._pos:i + 1])
+                    self._pos = i + 1
+                except ValueError:
+                    chunk = bytes(self._data[self._pos:])
+                    self._pos = len(self._data)
+                return chunk
+            def readlines(self):
+                lines = []
+                while True:
+                    line = self.readline()
+                    if not line:
+                        break
+                    lines.append(line)
+                return lines
+            def write(self, b):
+                if isinstance(b, memoryview):
+                    b = bytes(b)
+                end = self._pos + len(b)
+                if end > len(self._data):
+                    self._data.extend(b'\x00' * (end - len(self._data)))
+                self._data[self._pos:end] = b
+                self._pos = end
+                return len(b)
+            def writelines(self, lines):
+                for l in lines:
+                    self.write(l)
+            def getvalue(self):
+                return bytes(self._data)
+            def tell(self):
+                return self._pos
+            def seek(self, pos, whence=0):
+                if whence == 0:
+                    self._pos = pos
+                elif whence == 1:
+                    self._pos += pos
+                elif whence == 2:
+                    self._pos = len(self._data) + pos
+                self._pos = max(0, min(self._pos, len(self._data)))
+                return self._pos
+            def truncate(self, size=None):
+                if size is None:
+                    size = self._pos
+                del self._data[size:]
+                return size
+            def flush(self):
+                pass
+            def close(self):
+                self.closed = True
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                self.close()
+            def __iter__(self):
+                return iter(self.readlines())
+            def readable(self):
+                return True
+            def writable(self):
+                return True
+            def seekable(self):
+                return True
+
+        m.StringIO = StringIO
+        m.BytesIO = BytesIO
+        m.IOBase = object
+        m.RawIOBase = object
+        m.BufferedIOBase = object
+        m.TextIOBase = object
+        m.TextIOWrapper = StringIO
+        m.BufferedReader = BytesIO
+        m.BufferedWriter = BytesIO
+        m.DEFAULT_BUFFER_SIZE = 8192
+        m.SEEK_SET = 0
+        m.SEEK_CUR = 1
+        m.SEEK_END = 2
+        _s.modules["io"] = m
+
+    try:
+        import io
+        io.StringIO  # verify it's real
+    except (ImportError, AttributeError):
+        _register_io()
+
+    # ---- os module ----
+    def _register_os():
+        import sys as _s
+        m = type(_s)("os")
+        m.__file__ = "<frozen os>"
+        m.sep = "/"
+        m.linesep = "\n"
+        m.curdir = "."
+        m.pardir = ".."
+        m.devnull = "/dev/null"
+        m.environ = {}
+        m.name = "posix"
+
+        m.getcwd = lambda: "/"
+        m.getpid = lambda: 1
+        m.getenv = lambda key, default=None: None
+        m.cpu_count = lambda: 1
+        m.urandom = lambda n: bytes(n)
+
+        def _listdir(path="."):
+            path = _normpath(path)
+            if path not in _MEMFS_DIRS:
+                if path in _MEMFS:
+                    raise NotADirectoryError(
+                        f"[Errno 20] Not a directory: '{path}'")
+                raise FileNotFoundError(
+                    f"[Errno 2] No such file or directory: '{path}'")
+            prefix = path.rstrip("/") + "/"
+            seen = set()
+            for k in list(_MEMFS.keys()):
+                if k.startswith(prefix):
+                    rest = k[len(prefix):]
+                    name = rest.split("/")[0]
+                    seen.add(name)
+            for d in list(_MEMFS_DIRS):
+                if d.startswith(prefix) and d != path:
+                    rest = d[len(prefix):]
+                    name = rest.split("/")[0]
+                    if name:
+                        seen.add(name)
+            return list(seen)
+
+        def _remove(path):
+            path = _normpath(path)
+            if path not in _MEMFS:
+                raise FileNotFoundError(
+                    f"[Errno 2] No such file or directory: '{path}'")
+            del _MEMFS[path]
+
+        def _rmdir(path):
+            path = _normpath(path)
+            if path not in _MEMFS_DIRS:
+                raise FileNotFoundError(
+                    f"[Errno 2] No such file or directory: '{path}'")
+            prefix = path.rstrip("/") + "/"
+            for k in _MEMFS:
+                if k.startswith(prefix):
+                    raise OSError(
+                        f"[Errno 39] Directory not empty: '{path}'")
+            for d in _MEMFS_DIRS:
+                if d.startswith(prefix):
+                    raise OSError(
+                        f"[Errno 39] Directory not empty: '{path}'")
+            _MEMFS_DIRS.discard(path)
+
+        def _rename(src, dst):
+            src = _normpath(src)
+            dst = _normpath(dst)
+            if src not in _MEMFS:
+                raise FileNotFoundError(
+                    f"[Errno 2] No such file or directory: '{src}'")
+            _MEMFS[dst] = _MEMFS.pop(src)
+
+        def _stat(path):
+            path = _normpath(path)
+            if path in _MEMFS:
+                class _stat_result:
+                    st_mode = 0o100644
+                    st_size = len(_MEMFS[path])
+                    st_mtime = 0.0
+                    st_atime = 0.0
+                    st_ctime = 0.0
+                return _stat_result()
+            if path in _MEMFS_DIRS:
+                class _stat_result:
+                    st_mode = 0o040755
+                    st_size = 0
+                    st_mtime = 0.0
+                    st_atime = 0.0
+                    st_ctime = 0.0
+                return _stat_result()
+            raise FileNotFoundError(
+                f"[Errno 2] No such file or directory: '{path}'")
+
+        m.listdir = _listdir
+        m.remove = _remove
+        m.unlink = _remove
+        m.rmdir = _rmdir
+        m.rename = _rename
+        m.stat = _stat
+        m.makedirs = _makedirs
+
+        def _mkdir(path, mode=0o777):
+            path = _normpath(path)
+            if path in _MEMFS_DIRS or path in _MEMFS:
+                raise FileExistsError(
+                    f"[Errno 17] File exists: '{path}'")
+            parent = _dirname(path)
+            if parent != "/" and parent not in _MEMFS_DIRS:
+                raise FileNotFoundError(
+                    f"[Errno 2] No such file or directory: '{path}'")
+            _MEMFS_DIRS.add(path)
+
+        m.mkdir = _mkdir
+
+        # os.path submodule
+        _ospath = type(_s)("os.path")
+        _ospath.__file__ = "<frozen os.path>"
+
+        def _exists(path):
+            path = _normpath(path)
+            return path in _MEMFS or path in _MEMFS_DIRS
+
+        def _isfile(path):
+            return _normpath(path) in _MEMFS
+
+        def _isdir(path):
+            return _normpath(path) in _MEMFS_DIRS
+
+        def _splitext(path):
+            base = _basename(path)
+            idx = base.rfind(".")
+            if idx <= 0:
+                return (path, "")
+            return (path[:-(len(base) - idx)], base[idx:])
+
+        def _abspath(path):
+            return _normpath(path)
+
+        def _realpath(path, **kw):
+            return _normpath(path)
+
+        def _expanduser(path):
+            if isinstance(path, str) and path.startswith("~"):
+                return "/home" + path[1:]
+            return path
+
+        def _expandvars(path):
+            return path
+
+        def _relpath(path, start=None):
+            return _normpath(path)
+
+        _ospath.exists = _exists
+        _ospath.isfile = _isfile
+        _ospath.isdir = _isdir
+        _ospath.join = _join
+        _ospath.dirname = _dirname
+        _ospath.basename = _basename
+        _ospath.splitext = _splitext
+        _ospath.abspath = _abspath
+        _ospath.realpath = _realpath
+        _ospath.expanduser = _expanduser
+        _ospath.expandvars = _expandvars
+        _ospath.relpath = _relpath
+        _ospath.normpath = _normpath
+        _ospath.normcase = lambda p: p  # POSIX: case-sensitive, no transformation
+        _ospath.sep = "/"
+        _ospath.curdir = "."
+        _ospath.pardir = ".."
+        _ospath.split = lambda p: (_dirname(p), _basename(p))
+        _ospath.splitdrive = lambda p: ("", p)
+        _ospath.getsize = lambda p: len(_MEMFS.get(_normpath(p), b""))
+
+        m.path = _ospath
+        _s.modules["os"] = m
+        _s.modules["os.path"] = _ospath
+        return m
+
+    try:
+        import os
+        os.path.join  # verify it's real
+    except (ImportError, AttributeError):
+        _register_os()
+    else:
+        # os exists (real or prior stub) but may lack path operations;
+        # always install the memfs-backed os.path so open/exists work
+        _register_os()
+
+    # ---- tempfile module ----
+    def _register_tempfile():
+        import sys as _s
+        _counter = [0]
+
+        def _mktemp(suffix="", prefix="tmp", dir="/tmp"):
+            _makedirs(_normpath(dir), exist_ok=True)
+            _counter[0] += 1
+            name = _normpath(dir) + "/" + prefix + str(_counter[0]) + suffix
+            return name
+
+        class NamedTemporaryFile:
+            def __init__(self, mode="w+b", buffering=-1, encoding=None,
+                         suffix=None, prefix=None, dir=None, delete=True,
+                         **kw):
+                _dir = dir or "/tmp"
+                _suffix = suffix or ""
+                _prefix = prefix or "tmp"
+                self.name = _mktemp(suffix=_suffix, prefix=_prefix, dir=_dir)
+                binary = "b" in mode
+                _makedirs(_normpath(_dir), exist_ok=True)
+                self._file = _MemFile(self.name, mode, binary)
+                self._delete = delete
+            def read(self, *a):
+                return self._file.read(*a)
+            def write(self, *a):
+                return self._file.write(*a)
+            def seek(self, *a):
+                return self._file.seek(*a)
+            def tell(self):
+                return self._file.tell()
+            def flush(self):
+                self._file.flush()
+            def close(self):
+                self._file.close()
+                if self._delete and self.name in _MEMFS:
+                    del _MEMFS[self.name]
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                self.close()
+
+        def mkdtemp(suffix=None, prefix=None, dir=None):
+            _dir = dir or "/tmp"
+            _suffix = suffix or ""
+            _prefix = prefix or "tmp"
+            name = _mktemp(suffix=_suffix, prefix=_prefix, dir=_dir)
+            _MEMFS_DIRS.add(name)
+            return name
+
+        def mkstemp(suffix=None, prefix=None, dir=None, text=False):
+            _dir = dir or "/tmp"
+            _suffix = suffix or ""
+            _prefix = prefix or "tmp"
+            name = _mktemp(suffix=_suffix, prefix=_prefix, dir=_dir)
+            mode = "w+" if text else "w+b"
+            _MEMFS[name] = b""
+            return (None, name)
+
+        def gettempdir():
+            _makedirs("/tmp", exist_ok=True)
+            return "/tmp"
+
+        m = type(_s)("tempfile")
+        m.__file__ = "<frozen tempfile>"
+        m.NamedTemporaryFile = NamedTemporaryFile
+        m.mkdtemp = mkdtemp
+        m.mkstemp = mkstemp
+        m.gettempdir = gettempdir
+        m.tempdir = None
+        _s.modules["tempfile"] = m
+
+    try:
+        import tempfile
+        tempfile.gettempdir  # verify it's real
+    except (ImportError, AttributeError):
+        _register_tempfile()
+
+    # ---- pathlib module ----
+    def _register_pathlib():
+        import sys as _s
+        m = type(_s)("pathlib")
+        m.__file__ = "<frozen pathlib>"
+
+        class Path:
+            def __init__(self, *parts):
+                if not parts:
+                    self._path = "/"
+                else:
+                    self._path = _join(*[str(p) for p in parts])
+
+            def __str__(self):
+                return self._path
+
+            def __repr__(self):
+                return f"Path('{self._path}')"
+
+            def __eq__(self, other):
+                return str(self) == str(other)
+
+            def __hash__(self):
+                return hash(self._path)
+
+            def __truediv__(self, other):
+                return Path(_join(self._path, str(other)))
+
+            def __fspath__(self):
+                return self._path
+
+            @property
+            def name(self):
+                return _basename(self._path)
+
+            @property
+            def stem(self):
+                n = self.name
+                idx = n.rfind(".")
+                return n[:idx] if idx > 0 else n
+
+            @property
+            def suffix(self):
+                n = self.name
+                idx = n.rfind(".")
+                return n[idx:] if idx > 0 else ""
+
+            @property
+            def suffixes(self):
+                n = self.name
+                parts = n.split(".")
+                return ["." + p for p in parts[1:]] if len(parts) > 1 else []
+
+            @property
+            def parent(self):
+                return Path(_dirname(self._path))
+
+            @property
+            def parts(self):
+                return tuple(["/"] + [p for p in self._path.lstrip("/").split("/") if p])
+
+            def exists(self):
+                return _normpath(self._path) in _MEMFS or _normpath(self._path) in _MEMFS_DIRS
+
+            def is_file(self):
+                return _normpath(self._path) in _MEMFS
+
+            def is_dir(self):
+                return _normpath(self._path) in _MEMFS_DIRS
+
+            def read_text(self, encoding="utf-8", errors="strict"):
+                with _memfs_open(self._path, "r") as f:
+                    return f.read()
+
+            def read_bytes(self):
+                with _memfs_open(self._path, "rb") as f:
+                    return f.read()
+
+            def write_text(self, data, encoding="utf-8", errors="strict"):
+                with _memfs_open(self._path, "w") as f:
+                    f.write(data)
+                return len(data)
+
+            def write_bytes(self, data):
+                with _memfs_open(self._path, "wb") as f:
+                    f.write(data)
+                return len(data)
+
+            def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+                path = _normpath(self._path)
+                if path in _MEMFS_DIRS:
+                    if not exist_ok:
+                        raise FileExistsError(
+                            f"[Errno 17] File exists: '{path}'")
+                    return
+                if parents:
+                    _makedirs(path, exist_ok=exist_ok)
+                else:
+                    # Verify parent exists before creating
+                    parent = _dirname(path)
+                    if parent != "/" and parent not in _MEMFS_DIRS:
+                        raise FileNotFoundError(
+                            f"[Errno 2] No such file or directory: '{path}'")
+                    if path in _MEMFS:
+                        raise FileExistsError(
+                            f"[Errno 17] File exists: '{path}'")
+                    _MEMFS_DIRS.add(path)
+
+            def unlink(self, missing_ok=False):
+                path = _normpath(self._path)
+                if path not in _MEMFS:
+                    if not missing_ok:
+                        raise FileNotFoundError(
+                            f"[Errno 2] No such file or directory: '{path}'")
+                    return
+                del _MEMFS[path]
+
+            def rmdir(self):
+                path = _normpath(self._path)
+                if path not in _MEMFS_DIRS:
+                    raise FileNotFoundError(
+                        f"[Errno 2] No such file or directory: '{path}'")
+                prefix = path.rstrip("/") + "/"
+                for k in _MEMFS:
+                    if k.startswith(prefix):
+                        raise OSError(
+                            f"[Errno 39] Directory not empty: '{path}'")
+                for d in _MEMFS_DIRS:
+                    if d.startswith(prefix):
+                        raise OSError(
+                            f"[Errno 39] Directory not empty: '{path}'")
+                _MEMFS_DIRS.discard(path)
+
+            def iterdir(self):
+                path = _normpath(self._path)
+                if path not in _MEMFS_DIRS:
+                    raise NotADirectoryError(
+                        f"[Errno 20] Not a directory: '{path}'")
+                prefix = path.rstrip("/") + "/"
+                seen = set()
+                for k in list(_MEMFS.keys()):
+                    if k.startswith(prefix):
+                        rest = k[len(prefix):]
+                        name = rest.split("/")[0]
+                        seen.add(name)
+                for d in list(_MEMFS_DIRS):
+                    if d.startswith(prefix) and d != path:
+                        rest = d[len(prefix):]
+                        name = rest.split("/")[0]
+                        if name:
+                            seen.add(name)
+                return iter([Path(_join(path, name)) for name in seen])
+
+            def open(self, mode="r", buffering=-1, encoding=None,
+                     errors=None, newline=None):
+                return _memfs_open(self._path, mode)
+
+            def stat(self):
+                import os as _o
+                return _o.stat(self._path)
+
+            def rename(self, target):
+                src = _normpath(self._path)
+                dst = _normpath(str(target))
+                if src in _MEMFS:
+                    _MEMFS[dst] = _MEMFS.pop(src)
+                elif src in _MEMFS_DIRS:
+                    _MEMFS_DIRS.discard(src)
+                    _MEMFS_DIRS.add(dst)
+                else:
+                    raise FileNotFoundError(
+                        f"[Errno 2] No such file or directory: '{src}'")
+                return Path(dst)
+
+            def with_name(self, name):
+                return Path(_join(_dirname(self._path), name))
+
+            def with_suffix(self, suffix):
+                stem = self.stem
+                return self.parent / (stem + suffix)
+
+            def resolve(self):
+                return Path(_normpath(self._path))
+
+            def absolute(self):
+                return self.resolve()
+
+            def relative_to(self, other):
+                other_str = _normpath(str(other))
+                self_str = _normpath(self._path)
+                if not self_str.startswith(other_str):
+                    raise ValueError(
+                        f"'{self_str}' is not relative to '{other_str}'")
+                rel = self_str[len(other_str):].lstrip("/")
+                return Path(rel) if rel else Path(".")
+
+            def glob(self, pattern):
+                import fnmatch as _fnmatch
+                path = _normpath(self._path)
+                prefix = path.rstrip("/") + "/"
+                results = []
+                full_pattern = prefix + pattern
+                for k in list(_MEMFS.keys()) + [d for d in _MEMFS_DIRS if d != "/"]:
+                    if k.startswith(prefix) and _fnmatch.fnmatch(k, full_pattern):
+                        results.append(Path(k))
+                return iter(results)
+
+        class PurePosixPath(Path):
+            pass
+
+        class PureWindowsPath(Path):
+            pass
+
+        class PosixPath(Path):
+            pass
+
+        class WindowsPath(Path):
+            pass
+
+        m.Path = Path
+        m.PurePosixPath = PurePosixPath
+        m.PureWindowsPath = PureWindowsPath
+        m.PosixPath = PosixPath
+        m.WindowsPath = WindowsPath
+        _s.modules["pathlib"] = m
+
+    try:
+        import pathlib
+        pathlib.Path  # verify it's real
+    except (ImportError, AttributeError):
+        _register_pathlib()
+
+_install_memfs()
+del _install_memfs
+
+
 # --- frozen stdlib: random module (pure Python, no C extensions) ---
 # The CPython canister template seeds Python's random module with IC consensus
 # randomness (raw_rand) at init. On WASI there is no filesystem so stdlib
