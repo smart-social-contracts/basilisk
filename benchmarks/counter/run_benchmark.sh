@@ -50,42 +50,22 @@ if [ "$SKIP_BUILD" = false ]; then
 
     if [ "$BACKEND" = "cpython" ]; then
         export BASILISK_PYTHON_BACKEND=cpython
-        sed 's/from kybra import/from basilisk import/g' src/main.py > src/_bench.py
-        CANISTER_CANDID_PATH=benchmark_counter.did python -m basilisk benchmark_counter src/_bench.py
+        CANISTER_CANDID_PATH=benchmark_counter.did python -m basilisk benchmark_counter src/main.py
         cp .basilisk/benchmark_counter/benchmark_counter.wasm benchmark_counter.wasm
-        cp .basilisk/benchmark_counter/benchmark_counter.did benchmark_counter.did
+        cp .basilisk/benchmark_counter/benchmark_counter.did benchmark_counter.did 2>/dev/null || true
         # Convert WASI imports to IC-compatible imports (needed for local dev template)
         if command -v wasi2ic &>/dev/null; then
             wasi2ic benchmark_counter.wasm benchmark_counter.wasm
         fi
     else
-        # Kybra (RustPython) build
-        cat > dfx.json << 'KYBRA_DFX'
-{
-    "canisters": {
-        "benchmark_counter": {
-            "type": "kybra",
-            "main": "src/main.py"
-        }
-    }
-}
-KYBRA_DFX
-        dfx build benchmark_counter 2>&1
-        cp .dfx/local/canisters/benchmark_counter/benchmark_counter.wasm benchmark_counter.wasm || true
-        cp .dfx/local/canisters/benchmark_counter/benchmark_counter.did benchmark_counter.did || true
-        # Restore custom dfx.json for deploy
-        cat > dfx.json << 'CUSTOM_DFX'
-{
-    "canisters": {
-        "benchmark_counter": {
-            "type": "custom",
-            "candid": "benchmark_counter.did",
-            "wasm": "benchmark_counter.wasm",
-            "build": "echo done"
-        }
-    }
-}
-CUSTOM_DFX
+        # RustPython build via basilisk
+        export BASILISK_PYTHON_BACKEND=rustpython
+        CANISTER_CANDID_PATH=benchmark_counter.did python -m basilisk benchmark_counter src/main.py
+        cp .basilisk/benchmark_counter/benchmark_counter.wasm benchmark_counter.wasm
+        # Generate .did from the build output if available
+        if [ -f benchmark_counter.did ]; then
+            echo "Using existing benchmark_counter.did"
+        fi
     fi
 
     BUILD_END=$(date +%s%N)

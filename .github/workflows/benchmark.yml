@@ -70,23 +70,22 @@ jobs:
                   tar xzf /tmp/binaryen.tar.gz -C /tmp
                   sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
 
-            - name: Pre-download CPython wasm
-              if: matrix.backend == 'cpython'
-              run: |
-                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
-                  CPYTHON_DIR="$HOME/.config/basilisk/${VERSION}/cpython_wasm"
-                  if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ]; then
-                    mkdir -p "${CPYTHON_DIR}"
-                    curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
-                    tar -xzf /tmp/cpython-wasm.tar.gz -C "${CPYTHON_DIR}"
-                  fi
-
             - name: Cache basilisk cargo
               if: matrix.backend == 'cpython'
               uses: actions/cache@v4
               with:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-cpython-bench-${{ hashFiles('basilisk/cargotoml.py') }}
+
+            - name: Download CPython canister template
+              if: matrix.backend == 'cpython'
+              run: |
+                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+                  TEMPLATE_DIR="$HOME/.config/basilisk/${VERSION}"
+                  mkdir -p "${TEMPLATE_DIR}"
+                  curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm \
+                    -o "${TEMPLATE_DIR}/cpython_canister_template.wasm"
+                  echo "Template wasm: $(wc -c < "${TEMPLATE_DIR}/cpython_canister_template.wasm") bytes"
 
             - name: Install Basilisk (CPython)
               if: matrix.backend == 'cpython'
@@ -100,16 +99,16 @@ jobs:
               run: source venv/bin/activate && python -m basilisk install-dfx-extension
 
             # ─── RustPython-specific setup ───────────────────────────────
-            - name: Install Kybra (RustPython)
+            - name: Install Basilisk (RustPython)
               if: matrix.backend == 'rustpython'
               shell: bash -l {0}
               working-directory: benchmarks/counter
-              run: source venv/bin/activate && pip install kybra
+              run: source venv/bin/activate && pip install ../..
 
             - name: Install dfx extension (RustPython)
               if: matrix.backend == 'rustpython'
               working-directory: benchmarks/counter
-              run: source venv/bin/activate && python -m kybra install-dfx-extension 2>/dev/null || true
+              run: source venv/bin/activate && python -m basilisk install-dfx-extension
 
             # ─── Network setup ───────────────────────────────────────────
             - name: Configure system subnet (local)
