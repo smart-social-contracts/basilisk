@@ -645,6 +645,21 @@ _PRIMITIVE_TYPE_MAP = {
     "reserved": "reserved",
 }
 
+# Candid reserved words — field names matching these must be quoted
+_CANDID_RESERVED = {
+    "bool", "nat", "nat8", "nat16", "nat32", "nat64",
+    "int", "int8", "int16", "int32", "int64",
+    "float32", "float64", "text", "null", "reserved", "empty",
+    "blob", "principal", "opt", "vec", "record", "variant",
+    "func", "service", "oneway", "query", "composite_query",
+    "type", "import",
+}
+
+
+def _quote_field(name: str) -> str:
+    """Quote a record/variant field name if it is a Candid reserved word."""
+    return f'"{name}"' if name in _CANDID_RESERVED else name
+
 
 def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
     """
@@ -818,14 +833,14 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
             field_strs = []
             for field_name, ann in fields:
                 ct = resolve_annotation(ann)
-                field_strs.append(f"{field_name} : {ct}")
+                field_strs.append(f"{_quote_field(field_name)} : {ct}")
             type_defs[name] = "record { " + "; ".join(field_strs) + " }"
         elif name in raw_variants:
             cases = raw_variants[name]
             case_strs = []
             for case_name, ann in cases:
                 ct = resolve_annotation(ann)
-                case_strs.append(f"{case_name} : {ct}")
+                case_strs.append(f"{_quote_field(case_name)} : {ct}")
             type_defs[name] = "variant { " + "; ".join(case_strs) + " }"
         elif name in raw_tuples:
             elements = raw_tuples[name]
