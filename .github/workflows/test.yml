@@ -311,7 +311,7 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.config/basilisk
-                  key: basilisk-cargo-cpython-v3-${{ hashFiles('basilisk/cargotoml.py') }}
+                  key: basilisk-cargo-cpython-v4-${{ hashFiles('basilisk/cargotoml.py') }}
 
             - name: Cache dfx
               uses: actions/cache@v4
@@ -351,6 +351,16 @@ jobs:
                   else
                     echo "CPython wasm already cached at ${CPYTHON_DIR}"
                   fi
+
+            - name: Pre-download canister template
+              run: |
+                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+                  TEMPLATE_PATH="$HOME/.config/basilisk/${VERSION}/cpython_canister_template.wasm"
+                  echo "Downloading canister template from release..."
+                  mkdir -p "$(dirname $TEMPLATE_PATH)"
+                  curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm -o "$TEMPLATE_PATH"
+                  echo "Template installed: $(du -sh $TEMPLATE_PATH | cut -f1)"
+                  ls -la "$TEMPLATE_PATH"
 
             - working-directory: ${{ matrix.example_directories }}
               run: curl https://pyenv.run | bash
@@ -406,7 +416,7 @@ jobs:
               uses: actions/cache@v4
               with:
                   path: ~/.config/basilisk
-                  key: basilisk-cargo-cpython-v3-${{ hashFiles('basilisk/cargotoml.py') }}
+                  key: basilisk-cargo-cpython-v4-${{ hashFiles('basilisk/cargotoml.py') }}
 
             - name: Install dfx
               run: |

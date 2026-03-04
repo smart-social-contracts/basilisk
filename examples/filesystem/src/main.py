@@ -1,6 +1,67 @@
 import os
+import sys
 
 from basilisk import query, update, Vec
+
+
+@update
+def test_fs_diagnostics() -> Vec[str]:
+    """Probe what's available - always passes, returns diagnostic info."""
+    results = []
+    results.append(f"python={sys.version}")
+    results.append(f"has_mkdir={hasattr(os, 'mkdir')}")
+    results.append(f"has_makedirs={hasattr(os, 'makedirs')}")
+    results.append(f"has_listdir={hasattr(os, 'listdir')}")
+    results.append(f"has_stat={hasattr(os, 'stat')}")
+    results.append(f"has_remove={hasattr(os, 'remove')}")
+    results.append(f"has_rename={hasattr(os, 'rename')}")
+    results.append(f"has_path_exists={hasattr(os.path, 'exists')}")
+
+    try:
+        os.mkdir("/diag_test")
+        results.append("mkdir=/diag_test OK")
+    except Exception as e:
+        results.append(f"mkdir=/diag_test ERR: {e}")
+
+    try:
+        entries = os.listdir("/")
+        results.append(f"listdir=/: {entries}")
+    except Exception as e:
+        results.append(f"listdir=/ ERR: {e}")
+
+    try:
+        entries = os.listdir("/diag_test")
+        results.append(f"listdir=/diag_test: {entries}")
+    except Exception as e:
+        results.append(f"listdir=/diag_test ERR: {e}")
+
+    try:
+        st = os.stat("/diag_test")
+        results.append(f"stat=/diag_test: mode={st.st_mode}")
+    except Exception as e:
+        results.append(f"stat=/diag_test ERR: {e}")
+
+    try:
+        with open("/diag_test/file.txt", "w") as f:
+            f.write("hello")
+        results.append("write=/diag_test/file.txt OK")
+    except Exception as e:
+        results.append(f"write ERR: {e}")
+
+    try:
+        with open("/diag_test/file.txt", "r") as f:
+            content = f.read()
+        results.append(f"read=/diag_test/file.txt: '{content}'")
+    except Exception as e:
+        results.append(f"read ERR: {e}")
+
+    try:
+        exists = os.path.exists("/diag_test/file.txt")
+        results.append(f"path.exists=/diag_test/file.txt: {exists}")
+    except Exception as e:
+        results.append(f"path.exists ERR: {e}")
+
+    return results
 
 
 @update
