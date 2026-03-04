@@ -130,8 +130,14 @@ _mod.null = None
 _mod.void = None
 _mod.Opt = _Sub
 _mod.Vec = list
-_mod.Record = dict
-_mod.Variant = dict
+class _Record(dict):
+    def __class_getitem__(cls, params): return cls
+    def __init_subclass__(cls, **kw): pass
+class _Variant(dict):
+    def __class_getitem__(cls, params): return cls
+    def __init_subclass__(cls, **kw): pass
+_mod.Record = _Record
+_mod.Variant = _Variant
 _mod.Tuple = tuple
 _mod.reserved = _Sub
 _mod.empty = _Sub
@@ -560,6 +566,80 @@ _mod.candid_decode = _basilisk_ic.candid_decode
 _mod.candid_encode = _basilisk_ic.candid_encode
 
 _sys.modules["basilisk"] = _mod
+
+# === Stub: basilisk.canisters.management ===
+_M = type(_sys)
+_canisters = _M('basilisk.canisters')
+_canisters.__file__ = '<frozen basilisk.canisters>'
+_canisters.__path__ = []
+_canisters.__package__ = 'basilisk.canisters'
+_mgmt = _M('basilisk.canisters.management')
+_mgmt.__file__ = '<frozen basilisk.canisters.management>'
+_mgmt.__path__ = []
+_mgmt.__package__ = 'basilisk.canisters.management'
+_mgmt_type_names = [
+    'CanisterSettings', 'CanisterStatus', 'CanisterStatusArgs',
+    'CanisterStatusResult', 'CreateCanisterArgs', 'CreateCanisterResult',
+    'DefiniteCanisterSettings', 'DeleteCanisterArgs', 'DepositCyclesArgs',
+    'InstallCodeArgs', 'InstallCodeMode',
+    'ProvisionalCreateCanisterWithCyclesArgs',
+    'ProvisionalCreateCanisterWithCyclesResult',
+    'ProvisionalTopUpCanisterArgs', 'StartCanisterArgs',
+    'StopCanisterArgs', 'UninstallCodeArgs', 'UpdateSettingsArgs',
+    'ChunkHash', 'UploadChunkArgs', 'UploadChunkResult',
+    'ClearChunkStoreArgs', 'StoredChunksArgs', 'StoredChunksResult',
+    'InstallChunkedCodeArgs',
+    'EcdsaCurve', 'EcdsaPublicKeyArgs', 'EcdsaPublicKeyResult',
+    'KeyId', 'SignWithEcdsaArgs', 'SignWithEcdsaResult',
+    'HttpHeader', 'HttpMethod', 'HttpRequestArgs', 'HttpResponse',
+    'HttpTransform', 'HttpTransformArgs', 'HttpTransformFunc',
+    'BitcoinAddress', 'BitcoinNetwork', 'BlockHash',
+    'GetBalanceArgs', 'GetCurrentFeePercentilesArgs',
+    'GetUtxosArgs', 'GetUtxosResult', 'Page',
+    'MillisatoshiPerByte', 'Outpoint', 'Satoshi',
+    'SendTransactionArgs', 'SendTransactionError', 'Utxo', 'UtxosFilter',
+]
+for _n in _mgmt_type_names:
+    setattr(_mgmt, _n, dict)
+class _MgmtService:
+    def __init__(self, principal):
+        self.canister_id = principal
+    def __getattr__(self, name):
+        async def _stub(*a, **kw):
+            raise RuntimeError(f"management_canister.{name}() not available in CPython template")
+        return _stub
+_mgmt.management_canister = _MgmtService(Principal.from_str('aaaaa-aa'))
+_mgmt.ManagementCanister = _MgmtService
+_canisters.management = _mgmt
+_mod.canisters = _canisters
+_sys.modules['basilisk.canisters'] = _canisters
+_sys.modules['basilisk.canisters.management'] = _mgmt
+for _sub in ('basic', 'tecdsa', 'http', 'bitcoin'):
+    _submod = _M(f'basilisk.canisters.management.{_sub}')
+    _submod.__file__ = f'<frozen basilisk.canisters.management.{_sub}>'
+    for _n in _mgmt_type_names:
+        setattr(_submod, _n, dict)
+    _sys.modules[f'basilisk.canisters.management.{_sub}'] = _submod
+
+# === Stub: basilisk.canisters.ledger ===
+_ledger_mod = _M('basilisk.canisters.ledger')
+_ledger_mod.__file__ = '<frozen basilisk.canisters.ledger>'
+_ledger_mod.__path__ = []
+_ledger_mod.__package__ = 'basilisk.canisters.ledger'
+for _n in ['Address', 'Archives', 'DecimalsResult', 'GetBlocksArgs',
+           'NameResult', 'QueryBlocksResponse', 'SymbolResult',
+           'Tokens', 'TransferFee', 'TransferResult']:
+    setattr(_ledger_mod, _n, dict)
+class _LedgerService:
+    def __init__(self, principal):
+        self.canister_id = principal
+    def __getattr__(self, name):
+        async def _stub(*a, **kw):
+            raise RuntimeError(f"Ledger.{name}() not available in CPython template")
+        return _stub
+_ledger_mod.Ledger = _LedgerService
+_canisters.ledger = _ledger_mod
+_sys.modules['basilisk.canisters.ledger'] = _ledger_mod
 
 # Make key classes available at top level for user code
 Principal = _mod.Principal

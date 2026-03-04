@@ -126,8 +126,14 @@ _mod.null = None
 _mod.void = None
 _mod.Opt = None
 _mod.Vec = list
-_mod.Record = dict
-_mod.Variant = dict
+class _Record(dict):
+    def __class_getitem__(cls, params): return cls
+    def __init_subclass__(cls, **kw): pass
+class _Variant(dict):
+    def __class_getitem__(cls, params): return cls
+    def __init_subclass__(cls, **kw): pass
+_mod.Record = _Record
+_mod.Variant = _Variant
 _mod.Tuple = tuple
 _mod.reserved = object
 _mod.empty = object
