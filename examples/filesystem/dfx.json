@@ -1,0 +1,12 @@
+{
+    "canisters": {
+        "filesystem": {
+            "type": "basilisk",
+            "main": "src/main.py",
+            "declarations": {
+                "output": "test/dfx_generated/filesystem",
+                "node_compatibility": true
+            }
+        }
+    }
+}

@@ -252,6 +252,7 @@ jobs:
                     - "examples/cycles"
                     - "examples/date"
                     - "examples/ethereum_json_rpc"
+                    - "examples/filesystem"
                     - "examples/func_types"
                     - "examples/generators"
                     - "examples/guard_functions"
