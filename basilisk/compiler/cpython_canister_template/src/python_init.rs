@@ -309,8 +309,7 @@ def _basilisk_save_stable_maps():
     if pages_needed > current_pages:
         _basilisk_ic.stable_grow(pages_needed - current_pages)
     # Write header + payload
-    import struct as _struct
-    header = _STABLE_MAP_MAGIC + _struct.pack("<Q", len(payload))
+    header = _STABLE_MAP_MAGIC + len(payload).to_bytes(8, 'little')
     _basilisk_ic.stable_write(0, header + payload)
 
 def _basilisk_load_stable_maps():
@@ -322,8 +321,7 @@ def _basilisk_load_stable_maps():
     header = _basilisk_ic.stable_read(0, 16)
     if header[:8] != _STABLE_MAP_MAGIC:
         return  # No saved maps
-    import struct as _struct
-    payload_len = _struct.unpack("<Q", header[8:16])[0]
+    payload_len = int.from_bytes(header[8:16], 'little')
     if payload_len == 0:
         return
     payload = _basilisk_ic.stable_read(16, payload_len)
