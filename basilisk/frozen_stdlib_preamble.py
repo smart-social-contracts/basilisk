@@ -131,8 +131,23 @@ if _bmod:
             raise Exception("No matching case found")
         _bmod.match = _match
 
+    # Fix Variant/Record: dict.__init_subclass__() doesn't accept keyword
+    # arguments like total=False.  Replace with subclasses that do.
+    class _Record(dict):
+        def __class_getitem__(cls, params):
+            return cls
+        def __init_subclass__(cls, **kw):
+            pass
+    class _Variant(dict):
+        def __class_getitem__(cls, params):
+            return cls
+        def __init_subclass__(cls, **kw):
+            pass
+    _bmod.Record = _Record
+    _bmod.Variant = _Variant
+
     try:
-        del _bic, _StableBTreeMap
+        del _bic, _StableBTreeMap, _Record, _Variant
     except NameError:
         pass
     try:
@@ -162,6 +177,121 @@ try:
     del _bmod
 except NameError:
     pass
+
+# --- Stub: basilisk.canisters.management ---
+# Many examples import types from this subpackage.  In the CPython template
+# these are just dict subclasses (Record/Variant).  Provide stubs so the
+# imports succeed.
+def _register_management_canister_stubs():
+    _bmod = _sys.modules.get('basilisk')
+    if not _bmod:
+        return
+    _M = type(_sys)
+    # All type names are simply dict (Record/Variant stand-ins)
+    _type_names = [
+        'CanisterSettings', 'CanisterStatus', 'CanisterStatusArgs',
+        'CanisterStatusResult', 'CreateCanisterArgs', 'CreateCanisterResult',
+        'DefiniteCanisterSettings', 'DeleteCanisterArgs', 'DepositCyclesArgs',
+        'InstallCodeArgs', 'InstallCodeMode',
+        'ProvisionalCreateCanisterWithCyclesArgs',
+        'ProvisionalCreateCanisterWithCyclesResult',
+        'ProvisionalTopUpCanisterArgs', 'StartCanisterArgs',
+        'StopCanisterArgs', 'UninstallCodeArgs', 'UpdateSettingsArgs',
+        'ChunkHash', 'UploadChunkArgs', 'UploadChunkResult',
+        'ClearChunkStoreArgs', 'StoredChunksArgs', 'StoredChunksResult',
+        'InstallChunkedCodeArgs',
+        'EcdsaCurve', 'EcdsaPublicKeyArgs', 'EcdsaPublicKeyResult',
+        'KeyId', 'SignWithEcdsaArgs', 'SignWithEcdsaResult',
+        'HttpHeader', 'HttpMethod', 'HttpRequestArgs', 'HttpResponse',
+        'HttpTransform', 'HttpTransformArgs', 'HttpTransformFunc',
+        'BitcoinAddress', 'BitcoinNetwork', 'BlockHash',
+        'GetBalanceArgs', 'GetCurrentFeePercentilesArgs',
+        'GetUtxosArgs', 'GetUtxosResult', 'Page',
+        'MillisatoshiPerByte', 'Outpoint', 'Satoshi',
+        'SendTransactionArgs', 'SendTransactionError', 'Utxo', 'UtxosFilter',
+    ]
+    # Create the module hierarchy
+    _canisters = _M('basilisk.canisters')
+    _canisters.__file__ = '<frozen basilisk.canisters>'
+    _canisters.__path__ = []
+    _canisters.__package__ = 'basilisk.canisters'
+    _mgmt = _M('basilisk.canisters.management')
+    _mgmt.__file__ = '<frozen basilisk.canisters.management>'
+    _mgmt.__path__ = []
+    _mgmt.__package__ = 'basilisk.canisters.management'
+    for _n in _type_names:
+        setattr(_mgmt, _n, dict)
+    # management_canister singleton (Service stub)
+    class _MgmtService:
+        def __init__(self, principal):
+            self.canister_id = principal
+        def __getattr__(self, name):
+            async def _stub(*a, **kw):
+                raise RuntimeError(f"management_canister.{name}() not available in CPython template")
+            return _stub
+    _P = getattr(_bmod, 'Principal', None)
+    if _P:
+        _mgmt.management_canister = _MgmtService(_P.from_str('aaaaa-aa'))
+        _mgmt.ManagementCanister = _MgmtService
+    else:
+        _mgmt.management_canister = _MgmtService('aaaaa-aa')
+    _canisters.management = _mgmt
+    if not hasattr(_bmod, 'canisters'):
+        _bmod.canisters = _canisters
+    _sys.modules['basilisk.canisters'] = _canisters
+    _sys.modules['basilisk.canisters.management'] = _mgmt
+    # Also register sub-modules so `from basilisk.canisters.management.http import ...` works
+    for _sub in ('basic', 'tecdsa', 'http', 'bitcoin'):
+        _submod = _M(f'basilisk.canisters.management.{_sub}')
+        _submod.__file__ = f'<frozen basilisk.canisters.management.{_sub}>'
+        # Copy all type names into each submodule
+        for _n in _type_names:
+            setattr(_submod, _n, dict)
+        _sys.modules[f'basilisk.canisters.management.{_sub}'] = _submod
+
+if 'basilisk.canisters.management' not in _sys.modules:
+    _register_management_canister_stubs()
+del _register_management_canister_stubs
+
+# --- Stub: basilisk.canisters.ledger ---
+def _register_ledger_canister_stubs():
+    _bmod = _sys.modules.get('basilisk')
+    if not _bmod:
+        return
+    _M = type(_sys)
+    _type_names = [
+        'Address', 'Archives', 'DecimalsResult', 'GetBlocksArgs',
+        'NameResult', 'QueryBlocksResponse', 'SymbolResult',
+        'Tokens', 'TransferFee', 'TransferResult',
+    ]
+    _ledger_mod = _M('basilisk.canisters.ledger')
+    _ledger_mod.__file__ = '<frozen basilisk.canisters.ledger>'
+    _ledger_mod.__path__ = []
+    _ledger_mod.__package__ = 'basilisk.canisters.ledger'
+    for _n in _type_names:
+        setattr(_ledger_mod, _n, dict)
+    # Ledger service stub
+    class _LedgerService:
+        def __init__(self, principal):
+            self.canister_id = principal
+        def __getattr__(self, name):
+            async def _stub(*a, **kw):
+                raise RuntimeError(f"Ledger.{name}() not available in CPython template")
+            return _stub
+    _ledger_mod.Ledger = _LedgerService
+    # Ensure basilisk.canisters exists
+    if 'basilisk.canisters' not in _sys.modules:
+        _canisters = _M('basilisk.canisters')
+        _canisters.__file__ = '<frozen basilisk.canisters>'
+        _canisters.__path__ = []
+        _canisters.__package__ = 'basilisk.canisters'
+        _sys.modules['basilisk.canisters'] = _canisters
+    _sys.modules['basilisk.canisters'].ledger = _ledger_mod
+    _sys.modules['basilisk.canisters.ledger'] = _ledger_mod
+
+if 'basilisk.canisters.ledger' not in _sys.modules:
+    _register_ledger_canister_stubs()
+del _register_ledger_canister_stubs
 
 # --- builtins.open: not available in WASI (no filesystem) ---
 if not hasattr(_builtins, 'open'):
@@ -924,7 +1054,7 @@ def _install_memfs():
     try:
         import os
         os.path.join  # verify it's real
-    except (ImportError, AttributeError):
+    except (ImportError, AttributeError, NameError):
         _register_os()
     else:
         # os exists (real or prior stub) but may lack path operations;
@@ -1416,12 +1546,34 @@ def _register_datetime():
             return datetime()
         @staticmethod
         def fromtimestamp(ts):
-            # Minimal: just store ts, return stub
             d = datetime()
             d._ts = ts
             return d
+        @staticmethod
+        def fromisoformat(s):
+            # Parse "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS" (minimal)
+            s = s.replace('T', ' ').replace('Z', '')
+            parts = s.split(' ')
+            date_part = parts[0].split('-')
+            yr = int(date_part[0])
+            mo = int(date_part[1]) if len(date_part) > 1 else 1
+            dy = int(date_part[2]) if len(date_part) > 2 else 1
+            hr = mi = se = us = 0
+            if len(parts) > 1:
+                time_parts = parts[1].split(':')
+                hr = int(time_parts[0]) if len(time_parts) > 0 else 0
+                mi = int(time_parts[1]) if len(time_parts) > 1 else 0
+                if len(time_parts) > 2:
+                    sec_parts = time_parts[2].split('.')
+                    se = int(sec_parts[0])
+                    if len(sec_parts) > 1:
+                        frac = sec_parts[1][:6].ljust(6, '0')
+                        us = int(frac)
+            return datetime(yr, mo, dy, hr, mi, se, us)
         def strftime(self, fmt):
             return f"{self.year:04d}-{self.month:02d}-{self.day:02d} {self.hour:02d}:{self.minute:02d}:{self.second:02d}.{self.microsecond:06d}"
+        def isoformat(self, sep='T'):
+            return f"{self.year:04d}-{self.month:02d}-{self.day:02d}{sep}{self.hour:02d}:{self.minute:02d}:{self.second:02d}"
         def __repr__(self):
             return self.strftime("%Y-%m-%d %H:%M:%S.%f")
 
@@ -1620,7 +1772,29 @@ def _register_collections():
     m.OrderedDict = dict
     m.defaultdict = _defaultdict
     m.Counter = dict
-    m.namedtuple = lambda name, fields: type(name, (tuple,), {})
+    def _namedtuple(name, fields, **kw):
+        if isinstance(fields, str):
+            fields = fields.replace(',', ' ').split()
+        fields = list(fields)
+        def _new(cls, *args, **kwargs):
+            if kwargs:
+                args = list(args)
+                for i, f in enumerate(fields):
+                    if f in kwargs and i >= len(args):
+                        args.append(kwargs[f])
+                args = tuple(args)
+            return tuple.__new__(cls, args)
+        ns = {'__new__': _new, '_fields': tuple(fields), '__slots__': ()}
+        for i, f in enumerate(fields):
+            ns[f] = property(lambda self, _i=i: self[_i])
+        def _repr(self):
+            pairs = ', '.join(f'{f}={self[i]!r}' for i, f in enumerate(fields))
+            return f'{name}({pairs})'
+        ns['__repr__'] = _repr
+        ns['_asdict'] = lambda self: dict(zip(fields, self))
+        ns['_replace'] = lambda self, **kw: type(self)(*[kw.get(f, self[i]) for i, f in enumerate(fields)])
+        return type(name, (tuple,), ns)
+    m.namedtuple = _namedtuple
     m.ChainMap = dict
     _sys.modules["collections"] = m
 
@@ -2109,10 +2283,37 @@ def _register_hashlib():
     def sha256(data=b''):
         return _Sha256(data)
 
+    class _Sha224:
+        """SHA-224: same as SHA-256 but with different IV and truncated output."""
+        _IV = [0xc1059ed8,0x367cd507,0x3070dd17,0xf70e5939,0xffc00b31,0x68581511,0x64f98fa7,0xbefa4fa4]
+        def __init__(self, data=b''):
+            self._inner = _Sha256.__new__(_Sha256)
+            self._inner._h = list(self._IV)
+            self._inner._buf = b''
+            self._inner._count = 0
+            if data:
+                self.update(data)
+        def update(self, data):
+            self._inner.update(data)
+            return self
+        def digest(self):
+            return self._inner.digest()[:28]
+        def hexdigest(self):
+            return self.digest().hex()
+        def copy(self):
+            c = _Sha224.__new__(_Sha224)
+            c._inner = self._inner.copy()
+            return c
+
+    def sha224(data=b''):
+        return _Sha224(data)
+
+    _algorithms = {'sha256': sha256, 'sha224': sha224}
     m = type(_sys)("hashlib")
     m.__file__ = "<frozen hashlib>"
     m.sha256 = sha256
-    m.new = lambda name, data=b'': sha256(data) if name == 'sha256' else None
+    m.sha224 = sha224
+    m.new = lambda name, data=b'': _algorithms.get(name, lambda d=b'': None)(data)
     _sys.modules["hashlib"] = m
 
 try:
