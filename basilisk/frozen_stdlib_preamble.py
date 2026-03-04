@@ -946,6 +946,10 @@ del _register_functools
 # --- frozen stdlib: os / os.path module ---
 # os.py crashes in WASI because it tries to import posix/nt C extensions.
 # Register a stub BEFORE _wasi_safe_import so the real os.py never loads.
+#
+# The enhanced posix C stub (cpython_config.c) provides real filesystem
+# operations via ic-wasi-polyfill: stat, mkdir, rmdir, rename, unlink, etc.
+# We forward these to the os module and build os.path on top of os.stat.
 def _register_os():
     _os = _sys.modules.get('os')
     if _os is None or not hasattr(_os, 'path') or not hasattr(getattr(_os, 'path', None) or _os, 'exists'):
@@ -955,14 +959,24 @@ def _register_os():
             _os.__path__ = []
             _os.__package__ = 'os'
             _sys.modules['os'] = _os
-        class _FakePath:
+
+        # Forward all public functions from the posix C module to os
+        try:
+            import posix as _posix
+            for _name in dir(_posix):
+                if not _name.startswith('_') and not hasattr(_os, _name):
+                    setattr(_os, _name, getattr(_posix, _name))
+        except ImportError:
+            pass
+
+        # Build os.path with real stat-based functions when posix.stat is available
+        _has_stat = hasattr(_os, 'stat')
+
+        class _Path:
             sep = '/'
-            def exists(self, p): return False
             def join(self, *a): return '/'.join(a)
             def dirname(self, p): return p.rsplit('/', 1)[0] if '/' in p else ''
             def basename(self, p): return p.rsplit('/', 1)[-1]
-            def isfile(self, p): return False
-            def isdir(self, p): return False
             def abspath(self, p): return p
             def expanduser(self, p): return p
             def normpath(self, p): return p
@@ -970,7 +984,43 @@ def _register_os():
             def splitext(self, p):
                 i = p.rfind('.')
                 return (p[:i], p[i:]) if i > 0 else (p, '')
-        _os.path = _FakePath()
+            def split(self, p):
+                i = p.rfind('/')
+                if i < 0:
+                    return ('', p)
+                return (p[:i] or '/', p[i+1:])
+
+        if _has_stat:
+            import stat as _stat_mod
+            def _exists(p):
+                try:
+                    _os.stat(p)
+                    return True
+                except OSError:
+                    return False
+            def _isdir(p):
+                try:
+                    return _stat_mod.S_ISDIR(_os.stat(p).st_mode)
+                except OSError:
+                    return False
+            def _isfile(p):
+                try:
+                    return _stat_mod.S_ISREG(_os.stat(p).st_mode)
+                except OSError:
+                    return False
+            _Path.exists = staticmethod(_exists)
+            _Path.isdir = staticmethod(_isdir)
+            _Path.isfile = staticmethod(_isfile)
+        else:
+            def _exists(p): return False
+            def _isdir(p): return False
+            def _isfile(p): return False
+            _Path.exists = staticmethod(_exists)
+            _Path.isdir = staticmethod(_isdir)
+            _Path.isfile = staticmethod(_isfile)
+
+        _os.path = _Path()
+
         if not hasattr(_os, 'sep'):
             _os.sep = '/'
         if not hasattr(_os, 'getcwd'):
@@ -979,13 +1029,31 @@ def _register_os():
             _os.environ = {}
         if not hasattr(_os, 'listdir'):
             _os.listdir = lambda p='/': []
-        if not hasattr(_os, 'makedirs'):
-            _os.makedirs = lambda p, exist_ok=False: None
         if not hasattr(_os, 'remove'):
             _os.remove = lambda p: None
         if not hasattr(_os, 'urandom'):
             import random as _rnd
             _os.urandom = lambda n: bytes(_rnd.getrandbits(8) for _ in range(n))
+
+        # Real makedirs using os.mkdir + os.path.exists
+        if hasattr(_os, 'mkdir'):
+            def _makedirs(name, mode=0o777, exist_ok=False):
+                head, tail = _os.path.split(name)
+                if not tail:
+                    head, tail = _os.path.split(head)
+                if head and tail and not _os.path.exists(head):
+                    try:
+                        _makedirs(head, mode, exist_ok)
+                    except FileExistsError:
+                        pass
+                try:
+                    _os.mkdir(name, mode)
+                except OSError:
+                    if not exist_ok or not _os.path.isdir(name):
+                        raise
+            _os.makedirs = _makedirs
+        elif not hasattr(_os, 'makedirs'):
+            _os.makedirs = lambda p, mode=0o777, exist_ok=False: None
 
 _register_os()
 del _register_os

@@ -1,65 +1,6 @@
 import os
 import sys
 
-# --- Runtime patches: the frozen_stdlib_preamble registers a fake os module
-# that doesn't expose all posix C functions. Forward them manually. ---
-try:
-    import posix as _posix
-    for _name in dir(_posix):
-        if not _name.startswith('_') and not hasattr(os, _name):
-            setattr(os, _name, getattr(_posix, _name))
-except ImportError:
-    pass
-
-# Patch os.path.exists/isdir/isfile — the preamble's _FakePath always returns False.
-# Use os.stat (our enhanced posix stub) for real answers.
-import stat as _stat_mod
-def _real_exists(p):
-    try:
-        os.stat(p)
-        return True
-    except OSError:
-        return False
-def _real_isdir(p):
-    try:
-        return _stat_mod.S_ISDIR(os.stat(p).st_mode)
-    except OSError:
-        return False
-def _real_isfile(p):
-    try:
-        return _stat_mod.S_ISREG(os.stat(p).st_mode)
-    except OSError:
-        return False
-os.path.exists = _real_exists
-os.path.isdir = _real_isdir
-os.path.isfile = _real_isfile
-
-def _real_split(p):
-    i = p.rfind('/')
-    if i < 0:
-        return ('', p)
-    head = p[:i] or '/'
-    tail = p[i+1:]
-    return (head, tail)
-os.path.split = _real_split
-
-# Patch os.makedirs — preamble stubs it as a no-op lambda
-def _real_makedirs(name, mode=0o777, exist_ok=False):
-    head, tail = os.path.split(name)
-    if not tail:
-        head, tail = os.path.split(head)
-    if head and tail and not os.path.exists(head):
-        try:
-            _real_makedirs(head, mode, exist_ok)
-        except FileExistsError:
-            pass
-    try:
-        os.mkdir(name, mode)
-    except OSError:
-        if not exist_ok or not os.path.isdir(name):
-            raise
-os.makedirs = _real_makedirs
-
 from basilisk import query, update, Vec
 
 

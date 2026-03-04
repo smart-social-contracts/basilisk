@@ -13,6 +13,7 @@ on:
             - 'basilisk/compiler/cpython/**'
             - 'basilisk/compiler/basilisk_cpython/**'
             - 'basilisk/compiler/cpython_canister_template/**'
+            - 'basilisk/frozen_stdlib_preamble.py'
 
 permissions:
     contents: write # Required for creating GitHub releases
