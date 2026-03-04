@@ -88,7 +88,9 @@ pub fn call_python_function(func_name: &str) {
         Err(_) => return, // Function not found, silently skip
     };
     let empty = basilisk_cpython::PyTuple::new(Vec::new()).unwrap();
-    let _ = py_func.call(&empty.into_object(), None);
+    if let Err(e) = py_func.call(&empty.into_object(), None) {
+        ic_cdk::println!("Warning: {}() failed: {}", func_name, e.to_rust_err_string());
+    }
 }
 
 /// Execute a guard function before the main method.
