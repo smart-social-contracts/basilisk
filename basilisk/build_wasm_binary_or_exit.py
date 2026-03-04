@@ -127,8 +127,10 @@ def build_template_from_source(
     """Build the CPython canister template WASM from source and cache it.
 
     This is the fallback when no pre-built template is found. It compiles the
-    template from its own Cargo.toml, runs wasi2ic + wasm-opt, and caches the
-    result at ~/.config/basilisk/<version>/cpython_canister_template.wasm.
+    template from its own Cargo.toml and caches the result at
+    ~/.config/basilisk/<version>/cpython_canister_template.wasm.
+
+    The template uses ic-wasi-polyfill so wasi2ic is not needed.
     """
     compiler_dir = os.path.dirname(basilisk.__file__) + "/compiler"
     template_cargo_toml = f"{compiler_dir}/cpython_canister_template/Cargo.toml"
@@ -158,37 +160,14 @@ def build_template_from_source(
         verbose,
     )
 
-    # 3. Post-process: copy raw wasm, run wasi2ic, then wasm-opt
+    # 3. Cache the built template
+    # Note: Do NOT run wasi2ic or wasm-opt on the template.
+    # The template uses ic-wasi-polyfill which handles WASI→IC at compile time,
+    # so wasi2ic would corrupt it. Cargo already optimizes with opt-level='z' + lto.
     raw_wasm = f"{paths['global_basilisk_target_dir']}/wasm32-wasip1/release/cpython_canister_template.wasm"
     cached_path = f"{paths['global_basilisk_version_dir']}/cpython_canister_template.wasm"
     os.makedirs(os.path.dirname(cached_path), exist_ok=True)
     shutil.copy(raw_wasm, cached_path)
-
-    # wasi2ic
-    run_subprocess(
-        [
-            f"{paths['global_basilisk_rust_bin_dir']}/wasi2ic",
-            cached_path,
-            cached_path,
-        ],
-        cargo_env,
-        verbose,
-    )
-
-    # wasm-opt
-    wasm_opt = shutil.which("wasm-opt")
-    if wasm_opt is None:
-        candidate = os.path.expanduser("~/.cargo/bin/wasm-opt")
-        if os.path.exists(candidate):
-            wasm_opt = candidate
-    if wasm_opt:
-        run_subprocess(
-            [wasm_opt, "-Oz", "--closed-world", "--converge", cached_path, "-o", cached_path],
-            cargo_env,
-            verbose,
-        )
-    else:
-        print("Warning: wasm-opt not found, skipping template optimization")
 
     print(f"Template WASM built and cached at {cached_path}")
     return cached_path
