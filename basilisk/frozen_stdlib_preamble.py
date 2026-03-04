@@ -163,6 +163,16 @@ try:
 except NameError:
     pass
 
+# --- builtins.open: not available in WASI (no filesystem) ---
+if not hasattr(_builtins, 'open'):
+    def _stub_open(*a, **kw):
+        raise OSError("open() not available in WASI (no filesystem)")
+    _builtins.open = _stub_open
+    try:
+        del _stub_open
+    except NameError:
+        pass
+
 # --- frozen stdlib: json module (pure Python, no C extensions) ---
 # On WASI/IC there is no filesystem, so stdlib packages like `json`
 # aren't importable. This registers a minimal pure-Python json module
@@ -723,22 +733,178 @@ del _register_collections
 
 # --- frozen stdlib: dataclasses module ---
 def _register_dataclasses():
-    def dataclass(cls=None, **kw):
-        if cls is None:
-            return lambda c: c
+    _MISSING = object()
+    _FIELD_TAG = '__dataclass_fields__'
+
+    class Field:
+        __slots__ = ('name', 'type', 'default', 'default_factory', 'repr', 'init', 'compare', 'hash', 'metadata')
+        def __init__(self, default=_MISSING, default_factory=_MISSING, repr=True,
+                     init=True, compare=True, hash=None, metadata=None):
+            self.name = None
+            self.type = None
+            self.default = default
+            self.default_factory = default_factory
+            self.repr = repr
+            self.init = init
+            self.compare = compare
+            self.hash = hash
+            self.metadata = metadata or {}
+
+    def field(default=_MISSING, default_factory=_MISSING, repr=True,
+              init=True, compare=True, hash=None, metadata=None):
+        return Field(default=default, default_factory=default_factory, repr=repr,
+                     init=init, compare=compare, hash=hash, metadata=metadata)
+
+    def _process_class(cls, init, repr_, eq, order, frozen):
+        all_fields = {}
+        for base in reversed(cls.__mro__):
+            if base is object:
+                continue
+            ann = base.__dict__.get('__annotations__', {})
+            for name, tp in ann.items():
+                if name.startswith('_'):
+                    continue
+                f = cls.__dict__.get(name, _MISSING)
+                if isinstance(f, Field):
+                    f.name = name
+                    f.type = tp
+                    all_fields[name] = f
+                else:
+                    fld = Field()
+                    fld.name = name
+                    fld.type = tp
+                    if f is not _MISSING:
+                        fld.default = f
+                    all_fields[name] = fld
+
+        setattr(cls, _FIELD_TAG, all_fields)
+
+        if init and '__init__' not in cls.__dict__:
+            fields_no_default = []
+            fields_with_default = []
+            for fld in all_fields.values():
+                if not fld.init:
+                    continue
+                if fld.default is not _MISSING or fld.default_factory is not _MISSING:
+                    fields_with_default.append(fld)
+                else:
+                    fields_no_default.append(fld)
+            ordered_fields = fields_no_default + fields_with_default
+
+            args = ['self']
+            body_lines = []
+            globs = {'_MISSING': _MISSING}
+            for fld in ordered_fields:
+                if fld.default is not _MISSING:
+                    default_name = f'_dflt_{fld.name}'
+                    globs[default_name] = fld.default
+                    args.append(f'{fld.name}={default_name}')
+                elif fld.default_factory is not _MISSING:
+                    factory_name = f'_factory_{fld.name}'
+                    globs[factory_name] = fld.default_factory
+                    args.append(f'{fld.name}=_MISSING')
+                    body_lines.append(f'  if {fld.name} is _MISSING: {fld.name} = {factory_name}()')
+                else:
+                    args.append(fld.name)
+                if frozen:
+                    body_lines.append(f'  object.__setattr__(self, {fld.name!r}, {fld.name})')
+                else:
+                    body_lines.append(f'  self.{fld.name} = {fld.name}')
+
+            if not body_lines:
+                body_lines.append('  pass')
+            func_def = f"def __init__({', '.join(args)}):\n" + '\n'.join(body_lines)
+            ns = {}
+            exec(func_def, globs, ns)
+            cls.__init__ = ns['__init__']
+
+        if repr_ and '__repr__' not in cls.__dict__:
+            repr_fields = [fld for fld in all_fields.values() if fld.repr]
+            def __repr__(self, _fields=repr_fields, _cls_name=cls.__name__):
+                parts = ', '.join(f'{f.name}={getattr(self, f.name)!r}' for f in _fields)
+                return f'{_cls_name}({parts})'
+            cls.__repr__ = __repr__
+
+        if eq and '__eq__' not in cls.__dict__:
+            cmp_fields = [fld for fld in all_fields.values() if fld.compare]
+            def __eq__(self, other, _fields=cmp_fields):
+                if self.__class__ is not other.__class__:
+                    return NotImplemented
+                return all(getattr(self, f.name) == getattr(other, f.name) for f in _fields)
+            cls.__eq__ = __eq__
+
+        if frozen:
+            def __setattr__(self, name, value):
+                raise FrozenInstanceError('cannot assign to field ' + name)
+            def __delattr__(self, name):
+                raise FrozenInstanceError('cannot delete field ' + name)
+            cls.__setattr__ = __setattr__
+            cls.__delattr__ = __delattr__
+
+        for name in all_fields:
+            if name in cls.__dict__ and not isinstance(cls.__dict__[name], (classmethod, staticmethod, property)):
+                try:
+                    delattr(cls, name)
+                except (AttributeError, TypeError):
+                    pass
+
+        cls.__dataclass_params__ = {'init': init, 'repr': repr_, 'eq': eq, 'order': order, 'frozen': frozen}
         return cls
-    def field(**kw):
-        return kw.get('default', kw.get('default_factory', lambda: None)())
+
+    def dataclass(cls=None, /, *, init=True, repr=True, eq=True,
+                  order=False, unsafe_hash=False, frozen=False, **kw):
+        def wrap(cls):
+            return _process_class(cls, init=init, repr_=repr, eq=eq, order=order, frozen=frozen)
+        if cls is None:
+            return wrap
+        return wrap(cls)
+
+    def fields(cls_or_instance):
+        f = getattr(cls_or_instance, _FIELD_TAG, None)
+        if f is None:
+            cls = cls_or_instance if isinstance(cls_or_instance, type) else type(cls_or_instance)
+            f = getattr(cls, _FIELD_TAG, {})
+        return list(f.values())
+
+    def asdict(obj):
+        result = {}
+        for fld in fields(obj):
+            val = getattr(obj, fld.name)
+            if hasattr(val, '__dataclass_fields__'):
+                val = asdict(val)
+            elif isinstance(val, list):
+                val = [asdict(v) if hasattr(v, '__dataclass_fields__') else v for v in val]
+            elif isinstance(val, dict):
+                val = {k: asdict(v) if hasattr(v, '__dataclass_fields__') else v for k, v in val.items()}
+            result[fld.name] = val
+        return result
+
+    def astuple(obj):
+        return tuple(getattr(obj, fld.name) for fld in fields(obj))
+
+    def _replace(obj, **changes):
+        d = {fld.name: getattr(obj, fld.name) for fld in fields(obj)}
+        d.update(changes)
+        return type(obj)(**d)
+
+    def is_dataclass(obj):
+        cls = obj if isinstance(obj, type) else type(obj)
+        return hasattr(cls, _FIELD_TAG)
+
+    FrozenInstanceError = type('FrozenInstanceError', (AttributeError,), {})
+
     m = type(_sys)("dataclasses")
     m.__file__ = "<frozen dataclasses>"
     m.dataclass = dataclass
     m.field = field
-    m.fields = lambda cls: []
-    m.asdict = lambda obj: {}
-    m.astuple = lambda obj: ()
-    m.replace = lambda obj, **kw: obj
-    m.is_dataclass = lambda obj: False
-    m.FrozenInstanceError = type('FrozenInstanceError', (AttributeError,), {})
+    m.Field = Field
+    m.fields = fields
+    m.asdict = asdict
+    m.astuple = astuple
+    m.replace = _replace
+    m.is_dataclass = is_dataclass
+    m.FrozenInstanceError = FrozenInstanceError
+    m.MISSING = _MISSING
     _sys.modules["dataclasses"] = m
 
 try:
@@ -775,6 +941,304 @@ try:
 except (ImportError, AttributeError):
     _register_functools()
 del _register_functools
+
+
+# --- frozen stdlib: os / os.path module ---
+# os.py crashes in WASI because it tries to import posix/nt C extensions.
+# Register a stub BEFORE _wasi_safe_import so the real os.py never loads.
+def _register_os():
+    _os = _sys.modules.get('os')
+    if _os is None or not hasattr(_os, 'path') or not hasattr(getattr(_os, 'path', None) or _os, 'exists'):
+        if _os is None:
+            _os = type(_sys)('os')
+            _os.__file__ = '<frozen os>'
+            _os.__path__ = []
+            _os.__package__ = 'os'
+            _sys.modules['os'] = _os
+        class _FakePath:
+            sep = '/'
+            def exists(self, p): return False
+            def join(self, *a): return '/'.join(a)
+            def dirname(self, p): return p.rsplit('/', 1)[0] if '/' in p else ''
+            def basename(self, p): return p.rsplit('/', 1)[-1]
+            def isfile(self, p): return False
+            def isdir(self, p): return False
+            def abspath(self, p): return p
+            def expanduser(self, p): return p
+            def normpath(self, p): return p
+            def realpath(self, p): return p
+            def splitext(self, p):
+                i = p.rfind('.')
+                return (p[:i], p[i:]) if i > 0 else (p, '')
+        _os.path = _FakePath()
+        if not hasattr(_os, 'sep'):
+            _os.sep = '/'
+        if not hasattr(_os, 'getcwd'):
+            _os.getcwd = lambda: '/'
+        if not hasattr(_os, 'environ'):
+            _os.environ = {}
+        if not hasattr(_os, 'listdir'):
+            _os.listdir = lambda p='/': []
+        if not hasattr(_os, 'makedirs'):
+            _os.makedirs = lambda p, exist_ok=False: None
+        if not hasattr(_os, 'remove'):
+            _os.remove = lambda p: None
+        if not hasattr(_os, 'urandom'):
+            import random as _rnd
+            _os.urandom = lambda n: bytes(_rnd.getrandbits(8) for _ in range(n))
+
+_register_os()
+del _register_os
+# Also register os.path as its own module entry
+if 'os' in _sys.modules and hasattr(_sys.modules['os'], 'path'):
+    _sys.modules['os.path'] = _sys.modules['os'].path
+
+
+# --- frozen stdlib: traceback module ---
+def _register_traceback():
+    def _format_exc(limit=None, chain=True):
+        ei = _sys.exc_info()
+        if ei[1] is None:
+            return ''
+        parts = [f'{type(ei[1]).__name__}: {ei[1]}']
+        tb = ei[2]
+        frames = []
+        while tb:
+            f = tb.tb_frame
+            frames.append(f'  File "{f.f_code.co_filename}", line {tb.tb_lineno}, in {f.f_code.co_name}')
+            tb = tb.tb_next
+        if frames:
+            parts.insert(0, 'Traceback (most recent call last):')
+            for fr in frames:
+                parts.insert(-1, fr)
+        return '\n'.join(parts)
+
+    m = type(_sys)("traceback")
+    m.__file__ = "<frozen traceback>"
+    m.format_exc = _format_exc
+    m.format_exception = lambda tp, val, tb, **kw: [_format_exc()]
+    m.print_exc = lambda **kw: print(_format_exc())
+    _sys.modules["traceback"] = m
+
+try:
+    import traceback
+    traceback.format_exc  # verify it's real
+except (ImportError, AttributeError):
+    _register_traceback()
+del _register_traceback
+
+
+# --- frozen stdlib: uuid module ---
+def _register_uuid():
+    import random as _rnd
+
+    class UUID:
+        __slots__ = ('int',)
+        def __init__(self, hex=None, int=None):
+            if int is not None:
+                object.__setattr__(self, 'int', int)
+            elif hex is not None:
+                object.__setattr__(self, 'int', _builtins.int(hex.replace('-', ''), 16) if isinstance(hex, str) else 0)
+            else:
+                object.__setattr__(self, 'int', 0)
+        @property
+        def hex(self):
+            return format(self.int, '032x')
+        def __str__(self):
+            h = self.hex
+            return f'{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}'
+        def __repr__(self):
+            return f"UUID('{self}')"
+        def __eq__(self, other):
+            return isinstance(other, UUID) and self.int == other.int
+        def __hash__(self):
+            return hash(self.int)
+
+    def uuid4():
+        bits = _rnd.getrandbits(128)
+        bits = (bits & ~(0xf << 76)) | (4 << 76)
+        bits = (bits & ~(0x3 << 62)) | (0x2 << 62)
+        return UUID(int=bits)
+
+    m = type(_sys)("uuid")
+    m.__file__ = "<frozen uuid>"
+    m.UUID = UUID
+    m.uuid4 = uuid4
+    _sys.modules["uuid"] = m
+
+try:
+    import uuid
+    uuid.uuid4  # verify it's real
+except (ImportError, AttributeError):
+    _register_uuid()
+del _register_uuid
+
+
+# --- frozen stdlib: hashlib module (pure Python SHA-256) ---
+def _register_hashlib():
+    _K256 = [
+        0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+        0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+        0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+        0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+        0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+        0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+        0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+        0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2,
+    ]
+    class _Sha256:
+        def __init__(self, data=b''):
+            self._h = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]
+            self._buf = b''
+            self._count = 0
+            if data:
+                self.update(data)
+        def _rr(self, x, n):
+            return ((x >> n) | (x << (32 - n))) & 0xffffffff
+        def _compress(self, block):
+            w = [int.from_bytes(block[i:i+4], 'big') for i in range(0, 64, 4)]
+            for i in range(16, 64):
+                s0 = self._rr(w[i-15], 7) ^ self._rr(w[i-15], 18) ^ (w[i-15] >> 3)
+                s1 = self._rr(w[i-2], 17) ^ self._rr(w[i-2], 19) ^ (w[i-2] >> 10)
+                w.append((w[i-16] + s0 + w[i-7] + s1) & 0xffffffff)
+            a,b,c,d,e,f,g,h = self._h
+            for i in range(64):
+                S1 = self._rr(e,6) ^ self._rr(e,11) ^ self._rr(e,25)
+                ch = (e & f) ^ ((~e) & g)
+                t1 = (h + S1 + ch + _K256[i] + w[i]) & 0xffffffff
+                S0 = self._rr(a,2) ^ self._rr(a,13) ^ self._rr(a,22)
+                mj = (a & b) ^ (a & c) ^ (b & c)
+                t2 = (S0 + mj) & 0xffffffff
+                h,g,f,e,d,c,b,a = g,f,e,(d+t1)&0xffffffff,c,b,a,(t1+t2)&0xffffffff
+            for i,v in enumerate([a,b,c,d,e,f,g,h]):
+                self._h[i] = (self._h[i] + v) & 0xffffffff
+        def update(self, data):
+            if isinstance(data, str):
+                data = data.encode('utf-8')
+            self._buf += data
+            self._count += len(data)
+            while len(self._buf) >= 64:
+                self._compress(self._buf[:64])
+                self._buf = self._buf[64:]
+        def digest(self):
+            buf = self._buf + b'\x80'
+            buf += b'\x00' * ((55 - len(self._buf)) % 64)
+            buf += (self._count * 8).to_bytes(8, 'big')
+            h = list(self._h)
+            _tmp = _Sha256.__new__(_Sha256)
+            _tmp._h = h; _tmp._buf = b''; _tmp._count = 0
+            for i in range(0, len(buf), 64):
+                _tmp._compress(buf[i:i+64])
+            return b''.join(v.to_bytes(4, 'big') for v in _tmp._h)
+        def hexdigest(self):
+            return self.digest().hex()
+        def copy(self):
+            c = _Sha256.__new__(_Sha256)
+            c._h = list(self._h); c._buf = self._buf; c._count = self._count
+            return c
+
+    def sha256(data=b''):
+        return _Sha256(data)
+
+    m = type(_sys)("hashlib")
+    m.__file__ = "<frozen hashlib>"
+    m.sha256 = sha256
+    m.new = lambda name, data=b'': sha256(data) if name == 'sha256' else None
+    _sys.modules["hashlib"] = m
+
+try:
+    import hashlib
+    hashlib.sha256  # verify it's real
+except (ImportError, AttributeError):
+    _register_hashlib()
+del _register_hashlib
+
+
+# --- frozen stdlib: base64 module ---
+def _register_base64():
+    _B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    _B64D = {c: i for i, c in enumerate(_B64)}
+    _B64D['='] = 0
+
+    def b64encode(s):
+        if isinstance(s, str): s = s.encode('utf-8')
+        r = bytearray()
+        for i in range(0, len(s), 3):
+            chunk = s[i:i+3]
+            n = (chunk[0] << 16) | (chunk[1] << 8 if len(chunk) > 1 else 0) | (chunk[2] if len(chunk) > 2 else 0)
+            r.append(ord(_B64[(n >> 18) & 63]))
+            r.append(ord(_B64[(n >> 12) & 63]))
+            r.append(ord(_B64[(n >> 6) & 63]) if len(chunk) > 1 else ord('='))
+            r.append(ord(_B64[n & 63]) if len(chunk) > 2 else ord('='))
+        return bytes(r)
+
+    def b64decode(s):
+        if isinstance(s, (bytes, bytearray)): s = s.decode('ascii')
+        s = s.rstrip('=')
+        r = bytearray()
+        for i in range(0, len(s), 4):
+            chunk = s[i:i+4]
+            n = 0
+            for c in chunk:
+                n = (n << 6) | _B64D.get(c, 0)
+            n <<= (4 - len(chunk)) * 6
+            r.append((n >> 16) & 0xff)
+            if len(chunk) > 2: r.append((n >> 8) & 0xff)
+            if len(chunk) > 3: r.append(n & 0xff)
+        return bytes(r)
+
+    m = type(_sys)("base64")
+    m.__file__ = "<frozen base64>"
+    m.b64encode = b64encode
+    m.b64decode = b64decode
+    m.encodebytes = lambda s: b64encode(s) + b'\n'
+    m.decodebytes = b64decode
+    _sys.modules["base64"] = m
+
+try:
+    import base64
+    base64.b64encode  # verify it's real
+except (ImportError, AttributeError):
+    _register_base64()
+del _register_base64
+
+
+# --- frozen stdlib: math module ---
+def _register_math():
+    def _ln(x):
+        if x <= 0: raise ValueError("math domain error")
+        if x == 1: return 0.0
+        r = 0.0
+        while x > 2: x /= 2.718281828459045; r += 1.0
+        while x < 0.5: x *= 2.718281828459045; r -= 1.0
+        x -= 1; t = x; s = x
+        for n in range(2, 50):
+            t *= -x * (n - 1) / n
+            s += t / n if n % 2 else -t / n
+        return r + s
+
+    m = type(_sys)("math")
+    m.__file__ = "<frozen math>"
+    m.ceil = lambda x: int(x) if x == int(x) else int(x) + (1 if x > 0 else 0)
+    m.floor = lambda x: int(x) if x >= 0 or x == int(x) else int(x) - 1
+    m.fabs = lambda x: x if x >= 0 else -x
+    m.sqrt = lambda x: x ** 0.5
+    m.pow = lambda x, y: x ** y
+    m.log = lambda x, base=2.718281828459045: _ln(x) / _ln(base) if base != 2.718281828459045 else _ln(x)
+    m.pi = 3.141592653589793
+    m.e = 2.718281828459045
+    m.inf = float('inf')
+    m.nan = float('nan')
+    m._ln = _ln
+    _sys.modules["math"] = m
+
+try:
+    import math
+    math.ceil  # verify it's real
+except (ImportError, AttributeError):
+    _register_math()
+del _register_math
+
 
 # --- Install the universal fallback import wrapper ---
 # This MUST be after all rich stdlib stubs above, so that try/except import
