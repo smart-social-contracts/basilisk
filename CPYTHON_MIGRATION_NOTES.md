@@ -707,6 +707,152 @@ The full pipeline works: template build → wasm manipulation → wasi2ic → de
 - **`random` module** — panics in rng_seed timer (`ModuleNotFoundError: No module named 'random'`);
   non-fatal but noisy. The `random` module requires `_random` C extension which was stripped.
 
+## 9. In-Memory Filesystem via `ic-wasi-polyfill` (Issue #12)
+
+### Problem
+
+Many Python standard library modules (`os.path`, `tempfile`, `pathlib`, `importlib`) require
+filesystem access. The WASI environment on the IC has no native filesystem, so these modules
+either fail to import or return incorrect results. This has led to extensive stubbing in both
+`frozen_stdlib_preamble.py` (basilisk) and downstream projects like `realms_basilisk`.
+
+### Discovery: `ic-wasi-polyfill` is already integrated
+
+Investigation revealed that **`ic-wasi-polyfill` is already a dependency** of the CPython
+canister template:
+
+```toml
+# basilisk/compiler/cpython_canister_template/Cargo.toml
+ic-wasi-polyfill = { version = "0.6.1", features = ["transient"] }
+```
+
+And it is **already initialized** in both lifecycle hooks:
+
+```rust
+// basilisk/compiler/cpython_canister_template/src/lib.rs
+#[ic_cdk_macros::init]
+fn init() {
+    ic_wasi_polyfill::init(&[], &[]);
+    // ...
+}
+
+#[ic_cdk_macros::post_upgrade]
+fn post_upgrade() {
+    ic_wasi_polyfill::init(&[], &[]);
+    // ...
+}
+```
+
+The polyfill intercepts all WASI syscalls (`path_open`, `fd_read`, `fd_write`, `fd_seek`,
+`path_filestat_get`, `fd_readdir`, `path_create_directory`, `path_unlink_file`,
+`path_rename`, `path_remove_directory`, `random_get`, `clock_time_get`, etc.) and provides
+a complete virtual filesystem backed by `TransientStorage` (heap memory).
+
+### Architecture — three layers
+
+```
+Python code:  open(), os.stat(), os.listdir(), os.path.exists()
+     ↓
+C extensions: _io module (REAL) + posix module (STUBBED — this is the blocker)
+     ↓
+WASI syscalls: fd_read, fd_write, path_open, path_filestat_get, ...
+     ↓
+ic-wasi-polyfill: intercepts all WASI calls → virtual in-memory filesystem
+```
+
+### Root cause: the posix C stub blocks filesystem access
+
+The `_io` C extension module is **real** (not removed, not stubbed) and uses WASI syscalls
+for file I/O. This means `builtins.open()` can already read/write files through the polyfill.
+
+However, the `posix` module was replaced with a minimal C stub in `cpython_config.c` to save
+~457K of wasm size (see section 7). The stub was written under the assumption that the IC has
+no filesystem:
+
+```c
+// cpython_config.c — current posix stub
+static PyObject* _posix_stat(PyObject *self, PyObject *args, PyObject *kwargs) {
+    errno = ENOENT;
+    PyErr_SetFromErrnoWithFilename(PyExc_OSError, "");  // always "file not found"
+    return NULL;
+}
+static PyObject* _posix_listdir(PyObject *self, PyObject *args) {
+    return PyList_New(0);  // always empty
+}
+```
+
+This means:
+- `os.path.exists()` → always `False` (stat always returns ENOENT)
+- `os.listdir()` → always `[]`
+- `os.stat()` → always raises `OSError`
+- `os.makedirs()` → not available
+- `os.remove()` → not available
+
+These stubs **completely bypass** the polyfill's virtual filesystem, even though the
+underlying WASI syscalls would work correctly.
+
+### Solution: enhanced posix C stub (Option B)
+
+Restoring the full `posixmodule.o` would add ~457K to the wasm binary, which is problematic
+given the IC's wasm size constraints and past compilation time issues (see section 8).
+
+Instead, the plan is to **enhance the existing C stub** in `cpython_config.c` to forward
+critical calls to standard C library functions that map to WASI syscalls:
+
+| Python call | C stub function needed | WASI syscall (intercepted by polyfill) |
+|---|---|---|
+| `os.path.exists(p)` / `os.stat(p)` | `stat()` → `__wasi_path_filestat_get` | `path_filestat_get` |
+| `os.listdir(p)` | `opendir()`/`readdir()` → `__wasi_fd_readdir` | `fd_readdir` |
+| `os.makedirs(p)` | `mkdir()` → `__wasi_path_create_directory` | `path_create_directory` |
+| `os.remove(p)` | `unlink()` → `__wasi_path_unlink_file` | `path_unlink_file` |
+| `os.rmdir(p)` | `rmdir()` → `__wasi_path_remove_directory` | `path_remove_directory` |
+| `os.rename(a, b)` | `rename()` → `__wasi_path_rename` | `path_rename` |
+| `os.getcwd()` | already returns `"/"` | — |
+
+The WASI SDK provides standard C headers (`<sys/stat.h>`, `<dirent.h>`, `<unistd.h>`) that
+map to these WASI syscalls. The enhanced stub uses these directly.
+
+### Size impact
+
+- Full `posixmodule.o`: **+457K** (hundreds of unused POSIX functions)
+- Enhanced C stub: **+2–4K** (only the functions listed above)
+- Compilation time impact: negligible
+
+### Storage modes
+
+`ic-wasi-polyfill` supports two storage backends:
+
+| Mode | Cargo feature | Backing | Persistence |
+|---|---|---|---|
+| **Transient** (current) | `features = ["transient"]` | `TransientStorage` (heap) | Lost on upgrade/reinstall |
+| **Stable** | default (no feature flag) | `StableStorage` (IC stable memory) | Survives upgrades |
+
+The current configuration uses `transient`. Files exist only for the lifetime of the canister
+instance. Switching to stable storage for persistence is a future enhancement.
+
+### Expected impact
+
+Once the enhanced posix stub is implemented:
+1. `builtins.open()` — already works via `_io` + WASI polyfill
+2. `os.path.exists()`, `os.stat()` — will query the polyfill's virtual filesystem
+3. `os.listdir()` — will list files/dirs in the virtual filesystem
+4. `os.makedirs()`, `os.remove()`, `os.rename()` — will modify the virtual filesystem
+5. Many `frozen_stdlib_preamble.py` stubs can be removed (os.path fake, open stub, etc.)
+6. Downstream workarounds in `realms_basilisk/main.py` can be removed
+
+### Files to modify
+
+- `basilisk/compiler/basilisk_cpython/src/cpython_config.c` — enhance posix stub
+- `basilisk/frozen_stdlib_preamble.py` — remove os/open stubs that are no longer needed
+- `basilisk/compiler/cpython_canister_template/Cargo.toml` — consider updating polyfill version
+
+### References
+
+- GitHub issue: https://github.com/smart-social-contracts/basilisk/issues/12
+- `ic-wasi-polyfill`: https://github.com/wasm-forge/ic-wasi-polyfill
+- `stable-fs`: https://github.com/wasm-forge/stable-fs
+- Polyfill source (local): `~/.cargo/registry/src/index.crates.io-*/ic-wasi-polyfill-0.6.4/src/lib.rs`
+
 ## Open items
 
 1. ~~Rebuild CPython with modules disabled~~ → replaced by custom `config.c` approach
@@ -722,3 +868,5 @@ The full pipeline works: template build → wasm manipulation → wasi2ic → de
 10. **Template: download artifact in install script** — auto-download template wasm from GitHub releases
 11. **Template: fix `random` module panic** — either restore `_random` module or skip rng seeding
 12. **Template: clean up debug logging** — remove diagnostic `fprintf`/`ic_cdk::println!` from init
+13. **Filesystem: enhanced posix stub** — implement Option B from section 9 to enable `os.stat`,
+    `os.listdir`, `os.makedirs`, `os.remove`, `os.rename` via `ic-wasi-polyfill` virtual FS

@@ -305,7 +305,7 @@ fn build_trimmed_libpython(lib_dir: &std::path::Path, include_dir: &std::path::P
         "_statisticsmodule.o",  // _statistics (C accelerator for statistics module)
         "dup2.o",               // dup2 emulation (not needed on WASI)
         // --- Module .o removals with stubs in cpython_config.c ---
-        "posixmodule.o",        // posix/os module (457K, stubbed — IC has no POSIX)
+        "posixmodule.o",        // posix/os module (457K, enhanced stub in cpython_config.c forwards to WASI polyfill)
         "_operator.o",          // _operator C accelerator (256K, pure Python fallback)
         "_collectionsmodule.o", // _collections C accelerator (265K, pure Python fallback)
         "sre.o",                // _sre regex engine (334K, stubbed)
