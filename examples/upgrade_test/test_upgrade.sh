@@ -9,9 +9,20 @@ dfx stop 2>/dev/null || true
 dfx start --clean --background
 sleep 3
 
-# 2. Deploy all canisters
-echo "Deploying canisters..."
-dfx deploy
+# 2. Create all canisters
+echo "Creating canisters..."
+dfx canister create --all
+
+# 3. Build and deploy with per-canister backends
+# Controller needs RustPython (uses basilisk.canisters.management, async/yield)
+# Target canisters use CPython template mode (default) for StableBTreeMap persistence
+echo ""
+echo "=== Building controller (rustpython backend) ==="
+BASILISK_PYTHON_BACKEND=rustpython BASILISK_COMPILE_RUST_PYTHON_STDLIB=true dfx build controller
+echo "=== Building target (cpython backend) ==="
+dfx build target
+echo "=== Deploying canisters ==="
+dfx canister install --all
 
 # 3. Get canister IDs
 CONTROLLER_ID=$(dfx canister id controller)

@@ -55,16 +55,8 @@ def build_with_template(
     # 1. Locate the pre-built template wasm
     template_wasm_path = find_template_wasm(paths)
     if template_wasm_path is None:
-        print(red("Template wasm not found. Building from source instead..."))
-        # Fall back to full build
-        install_cpython_wasm(paths, cargo_env, verbose)
-        copy_cpython_to_canister_staging(paths, cargo_env)
-        compile_generated_rust_code(paths, canister_name, cargo_env, verbose)
-        copy_wasm_to_dev_location(paths, canister_name)
-        run_wasi2ic_on_wasm(paths, canister_name, cargo_env, verbose)
-        optimize_wasm(paths, canister_name, cargo_env, verbose)
-        generate_candid_file_from_source(paths, verbose)
-        return
+        print(red("Template wasm not found. Building from source..."))
+        template_wasm_path = build_template_from_source(paths, cargo_env, verbose)
 
     # 2. Read the user's Python source
     python_source = read_python_source(paths)
@@ -127,6 +119,79 @@ def find_template_wasm(paths: Paths) -> str | None:
         return local_path
 
     return None
+
+
+def build_template_from_source(
+    paths: Paths, cargo_env: dict[str, str], verbose: bool
+) -> str:
+    """Build the CPython canister template WASM from source and cache it.
+
+    This is the fallback when no pre-built template is found. It compiles the
+    template from its own Cargo.toml, runs wasi2ic + wasm-opt, and caches the
+    result at ~/.config/basilisk/<version>/cpython_canister_template.wasm.
+    """
+    compiler_dir = os.path.dirname(basilisk.__file__) + "/compiler"
+    template_cargo_toml = f"{compiler_dir}/cpython_canister_template/Cargo.toml"
+
+    if not os.path.exists(template_cargo_toml):
+        print(red(f"Template Cargo.toml not found at {template_cargo_toml}"))
+        sys.exit(1)
+
+    # 1. Install CPython WASM (needed by basilisk_cpython's build.rs)
+    install_cpython_wasm(paths, cargo_env, verbose)
+    cpython_wasm_dir = f"{paths['global_basilisk_version_dir']}/cpython_wasm"
+    cargo_env["CPYTHON_WASM_DIR"] = cpython_wasm_dir
+    os.environ["CPYTHON_WASM_DIR"] = cpython_wasm_dir
+
+    # 2. Build the template
+    print("Building CPython canister template from source (this may take several minutes)...")
+    run_subprocess(
+        [
+            f"{paths['global_basilisk_rust_bin_dir']}/cargo",
+            "build",
+            f"--manifest-path={template_cargo_toml}",
+            "--target=wasm32-wasip1",
+            "--package=cpython_canister_template",
+            "--release",
+        ],
+        cargo_env,
+        verbose,
+    )
+
+    # 3. Post-process: copy raw wasm, run wasi2ic, then wasm-opt
+    raw_wasm = f"{paths['global_basilisk_target_dir']}/wasm32-wasip1/release/cpython_canister_template.wasm"
+    cached_path = f"{paths['global_basilisk_version_dir']}/cpython_canister_template.wasm"
+    os.makedirs(os.path.dirname(cached_path), exist_ok=True)
+    shutil.copy(raw_wasm, cached_path)
+
+    # wasi2ic
+    run_subprocess(
+        [
+            f"{paths['global_basilisk_rust_bin_dir']}/wasi2ic",
+            cached_path,
+            cached_path,
+        ],
+        cargo_env,
+        verbose,
+    )
+
+    # wasm-opt
+    wasm_opt = shutil.which("wasm-opt")
+    if wasm_opt is None:
+        candidate = os.path.expanduser("~/.cargo/bin/wasm-opt")
+        if os.path.exists(candidate):
+            wasm_opt = candidate
+    if wasm_opt:
+        run_subprocess(
+            [wasm_opt, "-Oz", "--closed-world", "--converge", cached_path, "-o", cached_path],
+            cargo_env,
+            verbose,
+        )
+    else:
+        print("Warning: wasm-opt not found, skipping template optimization")
+
+    print(f"Template WASM built and cached at {cached_path}")
+    return cached_path
 
 
 def read_python_source(paths: Paths) -> str:
