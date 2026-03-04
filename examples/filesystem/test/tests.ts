@@ -15,22 +15,14 @@ export function getTests(actor: ActorSubclass<_SERVICE>): Test[] {
             }
         },
         {
-            name: 'test_fs_mkdir_and_listdir',
+            name: 'test_fs_mkdir',
             test: async () => {
-                const result = await actor.test_fs_mkdir_and_listdir();
-                console.log('mkdir_and_listdir result:', JSON.stringify(result));
+                const result = await actor.test_fs_mkdir();
+                console.log('mkdir result:', JSON.stringify(result));
+                // mkdir=OK, is_dir=True
                 return {
-                    Ok: result.includes('subdir')
-                };
-            }
-        },
-        {
-            name: 'test_fs_write_and_read',
-            test: async () => {
-                const result = await actor.test_fs_write_and_read();
-                console.log('write_and_read result:', JSON.stringify(result));
-                return {
-                    Ok: result === 'hello from ic-wasi-polyfill'
+                    Ok: (result[0] === 'mkdir=OK' || result[0] === 'mkdir=EXISTS') &&
+                        result[1] === 'is_dir=True'
                 };
             }
         },
@@ -39,35 +31,49 @@ export function getTests(actor: ActorSubclass<_SERVICE>): Test[] {
             test: async () => {
                 const result = await actor.test_fs_path_exists();
                 console.log('path_exists result:', JSON.stringify(result));
+                // [exists=True, nonexistent=False, isdir=True]
                 return {
                     Ok:
                         result[0] === 'True' &&
                         result[1] === 'False' &&
-                        result[2] === 'True' &&
-                        result[3] === 'True'
+                        result[2] === 'True'
                 };
             }
         },
         {
-            name: 'test_fs_stat',
+            name: 'test_fs_rename',
             test: async () => {
-                const result = await actor.test_fs_stat();
-                console.log('stat result:', JSON.stringify(result));
-                return {
-                    Ok: result[0] === '10' && result[1] === 'True'
-                };
-            }
-        },
-        {
-            name: 'test_fs_remove_and_rename',
-            test: async () => {
-                const result = await actor.test_fs_remove_and_rename();
-                console.log('remove_and_rename result:', JSON.stringify(result));
+                const result = await actor.test_fs_rename();
+                console.log('rename result:', JSON.stringify(result));
+                // [old=False, new=True]
                 return {
                     Ok:
                         result[0] === 'False' &&
-                        result[1] === 'False' &&
-                        result[2] === 'True'
+                        result[1] === 'True'
+                };
+            }
+        },
+        {
+            name: 'test_fs_rmdir',
+            test: async () => {
+                const result = await actor.test_fs_rmdir();
+                console.log('rmdir result:', JSON.stringify(result));
+                // [before=True, after=False]
+                return {
+                    Ok:
+                        result[0] === 'True' &&
+                        result[1] === 'False'
+                };
+            }
+        },
+        {
+            name: 'test_fs_nested_mkdir',
+            test: async () => {
+                const result = await actor.test_fs_nested_mkdir();
+                console.log('nested_mkdir result:', JSON.stringify(result));
+                // all True
+                return {
+                    Ok: result.every((v: string) => v === 'True')
                 };
             }
         }

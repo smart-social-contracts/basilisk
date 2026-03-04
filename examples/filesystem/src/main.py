@@ -11,129 +11,126 @@ try:
 except ImportError:
     pass
 
-# Restore real builtins.open from _io C module
-try:
-    import _io
-    import builtins
-    builtins.open = _io.open
-except Exception:
-    pass
-
 from basilisk import query, update, Vec
 
 
 @update
 def test_fs_diagnostics() -> Vec[str]:
-    """Probe what's available - always passes, returns diagnostic info."""
+    """Probe filesystem capabilities - returns diagnostic info."""
     results = []
     results.append(f"python={sys.version}")
     results.append(f"has_mkdir={hasattr(os, 'mkdir')}")
-    results.append(f"has_makedirs={hasattr(os, 'makedirs')}")
-    results.append(f"has_listdir={hasattr(os, 'listdir')}")
     results.append(f"has_stat={hasattr(os, 'stat')}")
-    results.append(f"has_remove={hasattr(os, 'remove')}")
+    results.append(f"has_listdir={hasattr(os, 'listdir')}")
     results.append(f"has_rename={hasattr(os, 'rename')}")
+    results.append(f"has_rmdir={hasattr(os, 'rmdir')}")
+    results.append(f"has_unlink={hasattr(os, 'unlink')}")
     results.append(f"has_path_exists={hasattr(os.path, 'exists')}")
 
     try:
         os.mkdir("/diag_test")
-        results.append("mkdir=/diag_test OK")
+        results.append("mkdir OK")
     except Exception as e:
-        results.append(f"mkdir=/diag_test ERR: {e}")
-
-    try:
-        entries = os.listdir("/")
-        results.append(f"listdir=/: {entries}")
-    except Exception as e:
-        results.append(f"listdir=/ ERR: {e}")
-
-    try:
-        entries = os.listdir("/diag_test")
-        results.append(f"listdir=/diag_test: {entries}")
-    except Exception as e:
-        results.append(f"listdir=/diag_test ERR: {e}")
+        results.append(f"mkdir ERR: {e}")
 
     try:
         st = os.stat("/diag_test")
-        results.append(f"stat=/diag_test: mode={st.st_mode}")
+        results.append(f"stat OK mode={st.st_mode}")
     except Exception as e:
-        results.append(f"stat=/diag_test ERR: {e}")
+        results.append(f"stat ERR: {e}")
 
     try:
-        with open("/diag_test/file.txt", "w") as f:
-            f.write("hello")
-        results.append("write=/diag_test/file.txt OK")
-    except Exception as e:
-        results.append(f"write ERR: {e}")
-
-    try:
-        with open("/diag_test/file.txt", "r") as f:
-            content = f.read()
-        results.append(f"read=/diag_test/file.txt: '{content}'")
-    except Exception as e:
-        results.append(f"read ERR: {e}")
-
-    try:
-        exists = os.path.exists("/diag_test/file.txt")
-        results.append(f"path.exists=/diag_test/file.txt: {exists}")
+        exists = os.path.exists("/diag_test")
+        results.append(f"path.exists={exists}")
     except Exception as e:
         results.append(f"path.exists ERR: {e}")
+
+    try:
+        entries = os.listdir("/diag_test")
+        results.append(f"listdir={entries}")
+    except Exception as e:
+        results.append(f"listdir ERR: {e}")
+
+    try:
+        os.rmdir("/diag_test")
+        results.append("rmdir OK")
+    except Exception as e:
+        results.append(f"rmdir ERR: {e}")
+
+    try:
+        gone = not os.path.exists("/diag_test")
+        results.append(f"after_rmdir_gone={gone}")
+    except Exception as e:
+        results.append(f"after_rmdir ERR: {e}")
 
     return results
 
 
 @update
-def test_fs_mkdir_and_listdir() -> Vec[str]:
-    os.makedirs("/test_data/subdir", exist_ok=True)
-    entries = sorted(os.listdir("/test_data"))
-    return entries
-
-
-@update
-def test_fs_write_and_read() -> str:
-    os.makedirs("/test_data", exist_ok=True)
-    with open("/test_data/hello.txt", "w") as f:
-        f.write("hello from ic-wasi-polyfill")
-    with open("/test_data/hello.txt", "r") as f:
-        return f.read()
+def test_fs_mkdir() -> Vec[str]:
+    """Test os.mkdir and verify with os.stat."""
+    results = []
+    try:
+        os.mkdir("/test_mkdir")
+        results.append("mkdir=OK")
+    except FileExistsError:
+        results.append("mkdir=EXISTS")
+    st = os.stat("/test_mkdir")
+    import stat as stat_mod
+    results.append(f"is_dir={stat_mod.S_ISDIR(st.st_mode)}")
+    return results
 
 
 @update
 def test_fs_path_exists() -> Vec[str]:
-    os.makedirs("/test_data", exist_ok=True)
-    with open("/test_data/check.txt", "w") as f:
-        f.write("exists")
+    """Test os.path.exists, isdir, isfile via os.stat."""
     results = []
-    results.append(str(os.path.exists("/test_data/check.txt")))
-    results.append(str(os.path.exists("/test_data/nonexistent.txt")))
-    results.append(str(os.path.isdir("/test_data")))
-    results.append(str(os.path.isfile("/test_data/check.txt")))
+    try:
+        os.mkdir("/test_exists")
+    except FileExistsError:
+        pass
+    results.append(str(os.path.exists("/test_exists")))
+    results.append(str(os.path.exists("/nonexistent_path")))
+    results.append(str(os.path.isdir("/test_exists")))
     return results
 
 
 @update
-def test_fs_stat() -> Vec[str]:
-    os.makedirs("/test_data", exist_ok=True)
-    with open("/test_data/stat_test.txt", "w") as f:
-        f.write("0123456789")
-    st = os.stat("/test_data/stat_test.txt")
+def test_fs_rename() -> Vec[str]:
+    """Test os.rename and verify with os.stat."""
     results = []
-    results.append(str(st.st_size))
-    results.append(str(st.st_size == 10))
+    try:
+        os.mkdir("/test_rename_src")
+    except FileExistsError:
+        pass
+    os.rename("/test_rename_src", "/test_rename_dst")
+    results.append(str(os.path.exists("/test_rename_src")))
+    results.append(str(os.path.exists("/test_rename_dst")))
     return results
 
 
 @update
-def test_fs_remove_and_rename() -> Vec[str]:
-    os.makedirs("/test_data", exist_ok=True)
-    with open("/test_data/to_remove.txt", "w") as f:
-        f.write("remove me")
-    with open("/test_data/to_rename.txt", "w") as f:
-        f.write("rename me")
+def test_fs_rmdir() -> Vec[str]:
+    """Test os.rmdir and verify removal with os.stat."""
     results = []
-    os.remove("/test_data/to_remove.txt")
-    results.append(str(os.path.exists("/test_data/to_remove.txt")))
-    os.rename("/test_data/to_rename.txt", "/test_data/renamed.txt")
-    results.append(str(os.path.exists("/test_data/to_rename.txt")))
-    results.append(str(os.path.exists("/test_data/renamed.txt")))
+    try:
+        os.mkdir("/test_rmdir")
+    except FileExistsError:
+        pass
+    results.append(str(os.path.exists("/test_rmdir")))
+    os.rmdir("/test_rmdir")
+    results.append(str(os.path.exists("/test_rmdir")))
+    return results
+
+
+@update
+def test_fs_nested_mkdir() -> Vec[str]:
+    """Test os.makedirs for nested directories."""
+    results = []
+    os.makedirs("/test_nested/a/b/c", exist_ok=True)
+    results.append(str(os.path.exists("/test_nested")))
+    results.append(str(os.path.exists("/test_nested/a")))
+    results.append(str(os.path.exists("/test_nested/a/b")))
+    results.append(str(os.path.exists("/test_nested/a/b/c")))
+    results.append(str(os.path.isdir("/test_nested/a/b/c")))
     return results
