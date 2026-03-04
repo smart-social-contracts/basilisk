@@ -1,6 +1,24 @@
 import os
 import sys
 
+# --- Runtime patches: the frozen_stdlib_preamble registers a fake os module
+# that doesn't expose all posix C functions. Forward them manually. ---
+try:
+    import posix as _posix
+    for _name in dir(_posix):
+        if not _name.startswith('_') and not hasattr(os, _name):
+            setattr(os, _name, getattr(_posix, _name))
+except ImportError:
+    pass
+
+# Restore real builtins.open from _io C module
+try:
+    import _io
+    import builtins
+    builtins.open = _io.open
+except Exception:
+    pass
+
 from basilisk import query, update, Vec
 
 
