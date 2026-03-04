@@ -11,6 +11,29 @@ try:
 except ImportError:
     pass
 
+# Patch os.path.exists/isdir/isfile — the preamble's _FakePath always returns False.
+# Use os.stat (our enhanced posix stub) for real answers.
+import stat as _stat_mod
+def _real_exists(p):
+    try:
+        os.stat(p)
+        return True
+    except OSError:
+        return False
+def _real_isdir(p):
+    try:
+        return _stat_mod.S_ISDIR(os.stat(p).st_mode)
+    except OSError:
+        return False
+def _real_isfile(p):
+    try:
+        return _stat_mod.S_ISREG(os.stat(p).st_mode)
+    except OSError:
+        return False
+os.path.exists = _real_exists
+os.path.isdir = _real_isdir
+os.path.isfile = _real_isfile
+
 from basilisk import query, update, Vec
 
 
