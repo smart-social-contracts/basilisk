@@ -61,37 +61,281 @@ int _PyPerfTrampoline_Init(int activate) { return 0; }
 int _PyPerfTrampoline_Fini(void) { return 0; }
 void _PyPerfTrampoline_FreeArenas(void) {}
 
-/* Minimal posix stub — posixmodule.o removed to save ~457K.
- * IC/WASI has no POSIX filesystem. Provides stubs that importlib's
- * _bootstrap_external needs (stat, getcwd, listdir) so PathFinder
- * gracefully skips all filesystem paths. */
+/* Enhanced posix stub — posixmodule.o removed to save ~457K.
+ * Provides real filesystem access via ic-wasi-polyfill's virtual filesystem.
+ *
+ * ic-wasi-polyfill (already a dependency) intercepts all WASI syscalls and
+ * provides a virtual in-memory filesystem. This stub forwards key posix
+ * operations to standard C library functions, which the WASI SDK maps to
+ * WASI syscalls intercepted by the polyfill.
+ *
+ * Only commonly-needed operations are implemented. The full posixmodule.o
+ * (~457K) contains hundreds of functions (fork, exec, pipe, chmod, etc.)
+ * that are irrelevant on the IC.
+ *
+ * See CPYTHON_MIGRATION_NOTES.md section 9 for details.
+ */
 
 #include <errno.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
 
+/* --- stat_result type (PyStructSequence matching CPython's os.stat_result) --- */
+
+static PyTypeObject *StatResultType = NULL;
+
+static PyStructSequence_Field stat_result_fields[] = {
+    {"st_mode",  "protection bits"},
+    {"st_ino",   "inode"},
+    {"st_dev",   "device"},
+    {"st_nlink", "number of hard links"},
+    {"st_uid",   "user ID of owner"},
+    {"st_gid",   "group ID of owner"},
+    {"st_size",  "total size, in bytes"},
+    {"st_atime", "time of last access"},
+    {"st_mtime", "time of last modification"},
+    {"st_ctime", "time of last change"},
+    {0}
+};
+
+static PyStructSequence_Desc stat_result_desc = {
+    "posix.stat_result",
+    NULL,
+    stat_result_fields,
+    10
+};
+
+static PyObject* _make_stat_result(const struct stat *st) {
+    PyObject *v = PyStructSequence_New(StatResultType);
+    if (!v) return NULL;
+    PyStructSequence_SET_ITEM(v, 0, PyLong_FromLong(st->st_mode));
+    PyStructSequence_SET_ITEM(v, 1, PyLong_FromUnsignedLongLong(st->st_ino));
+    PyStructSequence_SET_ITEM(v, 2, PyLong_FromUnsignedLongLong(st->st_dev));
+    PyStructSequence_SET_ITEM(v, 3, PyLong_FromLong(st->st_nlink));
+    PyStructSequence_SET_ITEM(v, 4, PyLong_FromLong(st->st_uid));
+    PyStructSequence_SET_ITEM(v, 5, PyLong_FromLong(st->st_gid));
+    PyStructSequence_SET_ITEM(v, 6, PyLong_FromLongLong(st->st_size));
+    PyStructSequence_SET_ITEM(v, 7, PyFloat_FromDouble(
+        (double)st->st_atim.tv_sec + (double)st->st_atim.tv_nsec * 1e-9));
+    PyStructSequence_SET_ITEM(v, 8, PyFloat_FromDouble(
+        (double)st->st_mtim.tv_sec + (double)st->st_mtim.tv_nsec * 1e-9));
+    PyStructSequence_SET_ITEM(v, 9, PyFloat_FromDouble(
+        (double)st->st_ctim.tv_sec + (double)st->st_ctim.tv_nsec * 1e-9));
+    if (PyErr_Occurred()) {
+        Py_DECREF(v);
+        return NULL;
+    }
+    return v;
+}
+
+/* --- posix.stat(path, *, dir_fd=None, follow_symlinks=True) --- */
 static PyObject* _posix_stat(PyObject *self, PyObject *args, PyObject *kwargs) {
-    errno = ENOENT;
-    PyErr_SetFromErrnoWithFilename(PyExc_OSError, "");
-    return NULL;
+    static char *kwlist[] = {"path", "dir_fd", "follow_symlinks", NULL};
+    PyObject *path_obj;
+    PyObject *dir_fd = Py_None;
+    int follow_symlinks = 1;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|Op", kwlist,
+                                      &path_obj, &dir_fd, &follow_symlinks))
+        return NULL;
+
+    const char *path;
+    if (PyUnicode_Check(path_obj)) {
+        path = PyUnicode_AsUTF8(path_obj);
+        if (!path) return NULL;
+    } else {
+        PyErr_SetString(PyExc_TypeError, "stat: path should be string");
+        return NULL;
+    }
+
+    struct stat st;
+    int ret;
+    if (follow_symlinks) {
+        ret = stat(path, &st);
+    } else {
+        ret = lstat(path, &st);
+    }
+
+    if (ret != 0) {
+        PyErr_SetFromErrnoWithFilename(PyExc_OSError, path);
+        return NULL;
+    }
+
+    return _make_stat_result(&st);
 }
+
+/* --- posix.lstat(path, *, dir_fd=None) --- */
 static PyObject* _posix_lstat(PyObject *self, PyObject *args, PyObject *kwargs) {
-    return _posix_stat(self, args, kwargs);
+    static char *kwlist[] = {"path", "dir_fd", NULL};
+    PyObject *path_obj;
+    PyObject *dir_fd = Py_None;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|O", kwlist,
+                                      &path_obj, &dir_fd))
+        return NULL;
+
+    const char *path;
+    if (PyUnicode_Check(path_obj)) {
+        path = PyUnicode_AsUTF8(path_obj);
+        if (!path) return NULL;
+    } else {
+        PyErr_SetString(PyExc_TypeError, "lstat: path should be string");
+        return NULL;
+    }
+
+    struct stat st;
+    if (lstat(path, &st) != 0) {
+        PyErr_SetFromErrnoWithFilename(PyExc_OSError, path);
+        return NULL;
+    }
+
+    return _make_stat_result(&st);
 }
+
+/* --- posix.getcwd() --- */
 static PyObject* _posix_getcwd(PyObject *self, PyObject *args) {
+    char buf[4096];
+    if (getcwd(buf, sizeof(buf)) != NULL) {
+        return PyUnicode_FromString(buf);
+    }
     return PyUnicode_FromString("/");
 }
+
+/* --- posix.listdir(path='.') --- */
 static PyObject* _posix_listdir(PyObject *self, PyObject *args) {
-    return PyList_New(0);
+    const char *path = ".";
+    if (!PyArg_ParseTuple(args, "|s", &path))
+        return NULL;
+
+    DIR *dir = opendir(path);
+    if (!dir) {
+        PyErr_SetFromErrnoWithFilename(PyExc_OSError, path);
+        return NULL;
+    }
+
+    PyObject *list = PyList_New(0);
+    if (!list) {
+        closedir(dir);
+        return NULL;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+        PyObject *name = PyUnicode_FromString(entry->d_name);
+        if (!name) {
+            Py_DECREF(list);
+            closedir(dir);
+            return NULL;
+        }
+        if (PyList_Append(list, name) < 0) {
+            Py_DECREF(name);
+            Py_DECREF(list);
+            closedir(dir);
+            return NULL;
+        }
+        Py_DECREF(name);
+    }
+
+    closedir(dir);
+    return list;
 }
+
+/* --- posix.mkdir(path, mode=0o777, *, dir_fd=None) --- */
+static PyObject* _posix_mkdir(PyObject *self, PyObject *args, PyObject *kwargs) {
+    static char *kwlist[] = {"path", "mode", "dir_fd", NULL};
+    const char *path;
+    int mode = 0777;
+    PyObject *dir_fd = Py_None;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|iO", kwlist,
+                                      &path, &mode, &dir_fd))
+        return NULL;
+
+    if (mkdir(path, (mode_t)mode) != 0) {
+        PyErr_SetFromErrnoWithFilename(PyExc_OSError, path);
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+/* --- posix.unlink(path, *, dir_fd=None) --- */
+static PyObject* _posix_unlink(PyObject *self, PyObject *args, PyObject *kwargs) {
+    static char *kwlist[] = {"path", "dir_fd", NULL};
+    const char *path;
+    PyObject *dir_fd = Py_None;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|O", kwlist,
+                                      &path, &dir_fd))
+        return NULL;
+
+    if (unlink(path) != 0) {
+        PyErr_SetFromErrnoWithFilename(PyExc_OSError, path);
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+/* --- posix.rmdir(path, *, dir_fd=None) --- */
+static PyObject* _posix_rmdir(PyObject *self, PyObject *args, PyObject *kwargs) {
+    static char *kwlist[] = {"path", "dir_fd", NULL};
+    const char *path;
+    PyObject *dir_fd = Py_None;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|O", kwlist,
+                                      &path, &dir_fd))
+        return NULL;
+
+    if (rmdir(path) != 0) {
+        PyErr_SetFromErrnoWithFilename(PyExc_OSError, path);
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+/* --- posix.rename(src, dst, *, src_dir_fd=None, dst_dir_fd=None) --- */
+static PyObject* _posix_rename(PyObject *self, PyObject *args, PyObject *kwargs) {
+    static char *kwlist[] = {"src", "dst", "src_dir_fd", "dst_dir_fd", NULL};
+    const char *src;
+    const char *dst;
+    PyObject *src_dir_fd = Py_None;
+    PyObject *dst_dir_fd = Py_None;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "ss|OO", kwlist,
+                                      &src, &dst, &src_dir_fd, &dst_dir_fd))
+        return NULL;
+
+    if (rename(src, dst) != 0) {
+        PyErr_SetFromErrnoWithFilename(PyExc_OSError, src);
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+/* --- posix.fspath(path) --- */
 static PyObject* _posix_fspath(PyObject *self, PyObject *args) {
     PyObject *path;
     if (!PyArg_ParseTuple(args, "O", &path)) return NULL;
     return PyOS_FSPath(path);
 }
+
 static PyMethodDef _posix_stub_methods[] = {
     {"stat",    (PyCFunction)_posix_stat,    METH_VARARGS | METH_KEYWORDS, NULL},
     {"lstat",   (PyCFunction)_posix_lstat,   METH_VARARGS | METH_KEYWORDS, NULL},
     {"getcwd",  _posix_getcwd,               METH_NOARGS, NULL},
     {"listdir", _posix_listdir,              METH_VARARGS, NULL},
+    {"mkdir",   (PyCFunction)_posix_mkdir,   METH_VARARGS | METH_KEYWORDS, NULL},
+    {"unlink",  (PyCFunction)_posix_unlink,  METH_VARARGS | METH_KEYWORDS, NULL},
+    {"rmdir",   (PyCFunction)_posix_rmdir,   METH_VARARGS | METH_KEYWORDS, NULL},
+    {"rename",  (PyCFunction)_posix_rename,  METH_VARARGS | METH_KEYWORDS, NULL},
     {"fspath",  _posix_fspath,               METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}
 };
@@ -99,11 +343,26 @@ static struct PyModuleDef _posix_stub_module = {
     PyModuleDef_HEAD_INIT, "posix", NULL, -1, _posix_stub_methods
 };
 static PyObject* PyInit_posix(void) {
-    return PyModule_Create(&_posix_stub_module);
+    /* Create stat_result type */
+    StatResultType = PyStructSequence_NewType(&stat_result_desc);
+    if (StatResultType == NULL)
+        return NULL;
+
+    PyObject *module = PyModule_Create(&_posix_stub_module);
+    if (!module) return NULL;
+
+    /* Add stat_result type to module (needed by os.stat) */
+    Py_INCREF(StatResultType);
+    if (PyModule_AddObject(module, "stat_result", (PyObject *)StatResultType) < 0) {
+        Py_DECREF(StatResultType);
+        Py_DECREF(module);
+        return NULL;
+    }
+
+    return module;
 }
 
-/* PyOS_FSPath — converts path-like object to string/bytes.
- * On IC, just return the argument if it's already a string. */
+/* PyOS_FSPath — converts path-like object to string/bytes. */
 PyObject* PyOS_FSPath(PyObject *path) {
     if (PyUnicode_Check(path)) {
         Py_INCREF(path);
@@ -113,7 +372,17 @@ PyObject* PyOS_FSPath(PyObject *path) {
         Py_INCREF(path);
         return path;
     }
-    PyErr_SetString(PyExc_TypeError, "expected str or bytes path on IC");
+    /* Check for __fspath__ method */
+    PyObject *func = PyObject_GetAttrString(path, "__fspath__");
+    if (func) {
+        PyObject *result = PyObject_CallNoArgs(func);
+        Py_DECREF(func);
+        return result;
+    }
+    PyErr_Clear();
+    PyErr_Format(PyExc_TypeError,
+                 "expected str, bytes or os.PathLike object, not %.200s",
+                 Py_TYPE(path)->tp_name);
     return NULL;
 }
 
