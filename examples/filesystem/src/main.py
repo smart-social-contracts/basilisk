@@ -34,6 +34,32 @@ os.path.exists = _real_exists
 os.path.isdir = _real_isdir
 os.path.isfile = _real_isfile
 
+def _real_split(p):
+    i = p.rfind('/')
+    if i < 0:
+        return ('', p)
+    head = p[:i] or '/'
+    tail = p[i+1:]
+    return (head, tail)
+os.path.split = _real_split
+
+# Patch os.makedirs — preamble stubs it as a no-op lambda
+def _real_makedirs(name, mode=0o777, exist_ok=False):
+    head, tail = os.path.split(name)
+    if not tail:
+        head, tail = os.path.split(head)
+    if head and tail and not os.path.exists(head):
+        try:
+            _real_makedirs(head, mode, exist_ok)
+        except FileExistsError:
+            pass
+    try:
+        os.mkdir(name, mode)
+    except OSError:
+        if not exist_ok or not os.path.isdir(name):
+            raise
+os.makedirs = _real_makedirs
+
 from basilisk import query, update, Vec
 
 
