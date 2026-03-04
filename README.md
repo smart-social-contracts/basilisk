@@ -53,27 +53,31 @@ my_project/
 ### The generated canister code
 
 ```python
-from basilisk import query, update, text, nat64, ic
+from basilisk import query, update, text, nat64, ic, StableBTreeMap, Opt
+
+# StableBTreeMap persists across canister upgrades (uses IC stable memory)
+db = StableBTreeMap[str, str](memory_id=0, max_key_size=100, max_value_size=100)
 
 counter = 0
+
+@update
+def db_set(key: text, value: text) -> text:
+    old = db.insert(key, value)
+    return f"set {key}={value} (old={old})"
+
+@query
+def db_get(key: text) -> Opt[text]:
+    return db.get(key)
 
 @query
 def greet(name: text) -> text:
     return f"Hello, {name}! The counter is at {counter}."
-
-@query
-def get_counter() -> nat64:
-    return counter
 
 @update
 def increment() -> nat64:
     global counter
     counter += 1
     return counter
-
-@query
-def get_time() -> nat64:
-    return ic.time()
 
 @query
 def whoami() -> text:
@@ -89,11 +93,26 @@ dfx deploy
 dfx canister call my_project greet '("World")'
 # ("Hello, World! The counter is at 0.")
 
-dfx canister call my_project increment
-# (1 : nat64)
+dfx canister call my_project db_set '("name", "Alice")'
+# ("set name=Alice (old=None)")
 
-dfx canister call my_project whoami
-# ("2vxsx-fae")
+dfx canister call my_project db_get '("name")'
+# (opt "Alice")
+```
+
+### Data persists across upgrades
+
+```bash
+# Upgrade the canister (redeploy with new code)
+dfx deploy my_project --upgrade-unchanged
+
+# StableBTreeMap data survives the upgrade
+dfx canister call my_project db_get '("name")'
+# (opt "Alice")  ← still there!
+
+# Global variables reset on upgrade (normal Python memory)
+dfx canister call my_project greet '("World")'
+# ("Hello, World! The counter is at 0.")
 ```
 
 ## Python Backends
