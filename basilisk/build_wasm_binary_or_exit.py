@@ -127,10 +127,11 @@ def build_template_from_source(
     """Build the CPython canister template WASM from source and cache it.
 
     This is the fallback when no pre-built template is found. It compiles the
-    template from its own Cargo.toml and caches the result at
+    template from its own Cargo.toml, runs wasi2ic, and caches the result at
     ~/.config/basilisk/<version>/cpython_canister_template.wasm.
 
-    The template uses ic-wasi-polyfill so wasi2ic is not needed.
+    wasi2ic is needed to convert WASI entry points to IC canister format.
+    wasm-opt is NOT run here as it can corrupt the binary.
     """
     compiler_dir = os.path.dirname(basilisk.__file__) + "/compiler"
     template_cargo_toml = f"{compiler_dir}/cpython_canister_template/Cargo.toml"
@@ -160,14 +161,24 @@ def build_template_from_source(
         verbose,
     )
 
-    # 3. Cache the built template
-    # Note: Do NOT run wasi2ic or wasm-opt on the template.
-    # The template uses ic-wasi-polyfill which handles WASI→IC at compile time,
-    # so wasi2ic would corrupt it. Cargo already optimizes with opt-level='z' + lto.
+    # 3. Post-process: copy raw wasm and run wasi2ic
+    # wasi2ic converts WASI entry points (_start, etc.) to IC canister format.
+    # Do NOT run wasm-opt — it corrupts the binary for IC deployment.
     raw_wasm = f"{paths['global_basilisk_target_dir']}/wasm32-wasip1/release/cpython_canister_template.wasm"
     cached_path = f"{paths['global_basilisk_version_dir']}/cpython_canister_template.wasm"
     os.makedirs(os.path.dirname(cached_path), exist_ok=True)
     shutil.copy(raw_wasm, cached_path)
+
+    # wasi2ic
+    run_subprocess(
+        [
+            f"{paths['global_basilisk_rust_bin_dir']}/wasi2ic",
+            cached_path,
+            cached_path,
+        ],
+        cargo_env,
+        verbose,
+    )
 
     print(f"Template WASM built and cached at {cached_path}")
     return cached_path
