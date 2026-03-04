@@ -1,5 +1,6 @@
 import os
 import sys
+import stat as stat_mod
 
 from basilisk import query, update, Vec
 
