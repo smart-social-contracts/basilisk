@@ -21,8 +21,9 @@ echo "=== Building controller (rustpython backend) ==="
 BASILISK_PYTHON_BACKEND=rustpython BASILISK_COMPILE_RUST_PYTHON_STDLIB=true dfx build controller
 echo "=== Building target (cpython backend) ==="
 dfx build target
-echo "=== Deploying canisters ==="
-dfx canister install --all
+echo "=== Installing controller and target canisters ==="
+dfx canister install controller
+dfx canister install target
 
 # 3. Get canister IDs
 CONTROLLER_ID=$(dfx canister id controller)
