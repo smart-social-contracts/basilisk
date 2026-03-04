@@ -804,7 +804,7 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
                     field_strs = []
                     for i, elem in enumerate(elements):
                         ct = resolve_annotation(elem)
-                        field_strs.append(f"_{i}_ : {ct}")
+                        field_strs.append(f"{i} : {ct}")
                     return "record { " + "; ".join(field_strs) + " }"
         return "text"  # fallback
 
@@ -847,7 +847,7 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
             field_strs = []
             for i, elem in enumerate(elements):
                 ct = resolve_annotation(elem)
-                field_strs.append(f"_{i}_ : {ct}")
+                field_strs.append(f"{i} : {ct}")
             type_defs[name] = "record { " + "; ".join(field_strs) + " }"
         elif name in raw_funcs:
             mode, param_anns, ret_node = raw_funcs[name]
@@ -959,7 +959,7 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
                     field_strs = []
                     for i, elem in enumerate(elements):
                         ct = get_candid_type(elem)
-                        field_strs.append(f"_{i}_ : {ct}")
+                        field_strs.append(f"{i} : {ct}")
                     return "record { " + "; ".join(field_strs) + " }"
         return "text"  # fallback
 
