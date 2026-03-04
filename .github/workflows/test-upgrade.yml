@@ -14,6 +14,7 @@ jobs:
         env:
             # Controller canister uses Async/yield/management canister calls
             # which require the RustPython code generator
+            BASILISK_PYTHON_BACKEND: rustpython
             BASILISK_COMPILE_RUST_PYTHON_STDLIB: true
         steps:
             - uses: actions/checkout@v4
