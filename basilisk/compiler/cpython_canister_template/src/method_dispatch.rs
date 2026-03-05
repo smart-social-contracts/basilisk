@@ -640,11 +640,12 @@ fn idl_value_to_python_typed(
                         candid::types::Label::Named(name) => {
                             let ft = hash_to_field.get(&candid_field_hash(name))
                                 .map(|(_, t)| t.as_str());
-                            (name.clone(), ft)
+                            // Add back keyword underscore for Python dict key
+                            (add_keyword_underscore(name), ft)
                         }
                         candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => {
                             if let Some((name, typ)) = hash_to_field.get(id) {
-                                (name.clone(), Some(typ.as_str()))
+                                (add_keyword_underscore(name), Some(typ.as_str()))
                             } else {
                                 (format!("_{}", id), None)
                             }
@@ -676,11 +677,12 @@ fn idl_value_to_python_typed(
                 candid::types::Label::Named(name) => {
                     let ct = hash_to_case.get(&candid_field_hash(name))
                         .map(|(_, t)| t.clone());
-                    (name.clone(), ct)
+                    // Add back keyword underscore for Python dict key
+                    (add_keyword_underscore(name), ct)
                 }
                 candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => {
                     if let Some((name, typ)) = hash_to_case.get(id) {
-                        (name.clone(), Some(typ.clone()))
+                        (add_keyword_underscore(name), Some(typ.clone()))
                     } else {
                         (format!("_{}", id), None)
                     }
@@ -857,8 +859,39 @@ fn strip_compound_wrapper<'a>(type_str: &'a str, keyword: &str) -> Option<&'a st
     }
 }
 
+const PY_KEYWORDS: &[&str] = &[
+    "False", "None", "True", "and", "as", "assert", "async", "await",
+    "break", "class", "continue", "def", "del", "elif", "else",
+    "except", "finally", "for", "from", "global", "if", "import",
+    "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise",
+    "return", "try", "while", "with", "yield",
+];
+
+/// Strip trailing underscore from Python keyword-escaped field names.
+/// E.g. "False_" → "False", "from_" → "from", but "my_field_" stays unchanged.
+fn strip_keyword_underscore(name: &str) -> &str {
+    if name.ends_with('_') && name.len() > 1 {
+        let base = &name[..name.len() - 1];
+        if PY_KEYWORDS.contains(&base) {
+            return base;
+        }
+    }
+    name
+}
+
+/// Add trailing underscore to Python keywords for use as Python dict keys.
+/// E.g. "False" → "False_", "from" → "from_", but "name" stays unchanged.
+fn add_keyword_underscore(name: &str) -> String {
+    if PY_KEYWORDS.contains(&name) {
+        format!("{}_", name)
+    } else {
+        name.to_string()
+    }
+}
+
 /// Convert a field name to a Candid Label.
 /// Names matching `_N_` pattern or plain numeric names become numeric Label::Id(N).
+/// Trailing underscores on Python keywords are stripped (e.g. "False_" → "False").
 fn field_name_to_label(name: &str) -> candid::types::Label {
     if name.starts_with('_') && name.ends_with('_') && name.len() > 2 {
         if let Ok(id) = name[1..name.len() - 1].parse::<u32>() {
@@ -869,7 +902,8 @@ fn field_name_to_label(name: &str) -> candid::types::Label {
     if let Ok(id) = name.parse::<u32>() {
         return candid::types::Label::Id(id);
     }
-    candid::types::Label::Named(name.to_string())
+    let clean = strip_keyword_underscore(name);
+    candid::types::Label::Named(clean.to_string())
 }
 
 /// Check if a record type string represents a tuple (all fields are positional: _0_, _1_, ...).
@@ -1126,16 +1160,28 @@ fn python_dict_to_record(
     let mut idl_fields = Vec::with_capacity(fields.len());
 
     for (field_name, field_type) in fields {
-        let key = basilisk_cpython::PyObjectRef::from_str(field_name)
+        // Try the Candid field name first, then the Python keyword-escaped version
+        let py_key = add_keyword_underscore(field_name);
+        let key = basilisk_cpython::PyObjectRef::from_str(&py_key)
             .map_err(|e| e.to_rust_err_string())?;
         let value = unsafe {
             let item = basilisk_cpython::ffi::PyObject_GetItem(obj.as_ptr(), key.as_ptr());
             if item.is_null() {
                 basilisk_cpython::ffi::PyErr_Clear();
-                return Err(format!("Record field '{}' not found in Python dict", field_name));
+                // Fallback: try the original Candid field name
+                let key2 = basilisk_cpython::PyObjectRef::from_str(field_name)
+                    .map_err(|e| e.to_rust_err_string())?;
+                let item2 = basilisk_cpython::ffi::PyObject_GetItem(obj.as_ptr(), key2.as_ptr());
+                if item2.is_null() {
+                    basilisk_cpython::ffi::PyErr_Clear();
+                    return Err(format!("Record field '{}' not found in Python dict", field_name));
+                }
+                basilisk_cpython::PyObjectRef::from_owned(item2)
+                    .ok_or_else(|| format!("null value for field '{}'", field_name))?
+            } else {
+                basilisk_cpython::PyObjectRef::from_owned(item)
+                    .ok_or_else(|| format!("null value for field '{}'", field_name))?
             }
-            basilisk_cpython::PyObjectRef::from_owned(item)
-                .ok_or_else(|| format!("null value for field '{}'", field_name))?
         };
 
         let idl_val = python_to_idl_value_inner(&value, field_type, type_defs)?;
@@ -1215,10 +1261,12 @@ fn python_dict_to_variant(
     };
 
     // Find the matching case and its type
+    // Strip keyword underscore from Python key (e.g. "False_" -> "False")
+    let clean_key = strip_keyword_underscore(&keys);
     let (case_idx, case_type) = cases
         .iter()
         .enumerate()
-        .find(|(_, (name, _))| *name == keys)
+        .find(|(_, (name, _))| *name == clean_key || *name == keys)
         .map(|(i, (_, t))| (i, t.as_str()))
         .ok_or_else(|| format!("Unknown variant case '{}'", keys))?;
 

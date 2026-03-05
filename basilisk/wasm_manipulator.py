@@ -656,8 +656,29 @@ _CANDID_RESERVED = {
 }
 
 
+_PY_KEYWORDS = {
+    "False", "None", "True", "and", "as", "assert", "async", "await",
+    "break", "class", "continue", "def", "del", "elif", "else",
+    "except", "finally", "for", "from", "global", "if", "import",
+    "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise",
+    "return", "try", "while", "with", "yield",
+}
+
+
+def _strip_keyword_underscore(name: str) -> str:
+    """Strip trailing underscore from Python keyword-escaped field names.
+    E.g. 'False_' -> 'False', 'from_' -> 'from', but 'my_field_' stays unchanged."""
+    if name.endswith('_') and len(name) > 1:
+        base = name[:-1]
+        if base in _PY_KEYWORDS:
+            return base
+    return name
+
+
 def _quote_field(name: str) -> str:
-    """Quote a record/variant field name if it is a Candid reserved word."""
+    """Quote a record/variant field name if it is a Candid reserved word.
+    Also strips trailing underscore from Python keyword-escaped names."""
+    name = _strip_keyword_underscore(name)
     return f'"{name}"' if name in _CANDID_RESERVED else name
 
 
