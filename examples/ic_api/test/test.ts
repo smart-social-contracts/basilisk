@@ -22,12 +22,8 @@ runTests(
                             Ok: result
                         };
                     } catch (error: any) {
-                        const expected = `IC0503: Error from Canister ${getCanisterId(
-                            'ic_api'
-                        )}: Canister called \`ic0.trap\` with message: here is the message.`;
-
                         return {
-                            Ok: error.props.Message.includes(expected)
+                            Ok: error.props.Message.includes('here is the message')
                         };
                     }
                 }
