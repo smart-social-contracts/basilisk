@@ -1143,7 +1143,7 @@ def generate_candid_from_methods(
         params = ", ".join(
             p["candid_type"] for p in method["params"]
         )
-        returns = method["returns"] if method["returns"] not in ("null", "") else ""
+        returns = method["returns"] if method["returns"] not in ("",) else ""
         mode = " query" if method["method_type"] == "query" else ""
         svc_lines.append(f'  "{method["name"]}" : ({params}) -> ({returns}){mode};')
 

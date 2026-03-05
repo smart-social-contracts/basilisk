@@ -1579,7 +1579,7 @@ def _register_datetime():
             y, m, d = self.year, self.month, self.day
             if m < 3:
                 m += 12; y -= 1
-            return (d + (13*(m+1))//5 + y + y//4 - y//100 + y//400 + 6) % 7
+            return (d + (13*(m+1))//5 + y + y//4 - y//100 + y//400 + 5) % 7
         def date(self):
             return self
         def __repr__(self):
@@ -1787,7 +1787,46 @@ def _register_collections():
     m.deque = _deque
     m.OrderedDict = dict
     m.defaultdict = _defaultdict
-    m.Counter = dict
+    class _Counter(dict):
+        """Minimal Counter implementation for WASI."""
+        def __init__(self, iterable=None, **kwargs):
+            super().__init__()
+            if iterable is not None:
+                if isinstance(iterable, dict):
+                    self.update(iterable)
+                else:
+                    for item in iterable:
+                        self[item] = self.get(item, 0) + 1
+            if kwargs:
+                self.update(kwargs)
+        def most_common(self, n=None):
+            items = sorted(self.items(), key=lambda x: x[1], reverse=True)
+            if n is not None:
+                return items[:n]
+            return items
+        def elements(self):
+            for k, v in self.items():
+                for _ in range(v):
+                    yield k
+        def subtract(self, iterable=None, **kwargs):
+            if isinstance(iterable, dict):
+                for k, v in iterable.items():
+                    self[k] = self.get(k, 0) - v
+            elif iterable is not None:
+                for item in iterable:
+                    self[item] = self.get(item, 0) - 1
+            for k, v in kwargs.items():
+                self[k] = self.get(k, 0) - v
+        def __missing__(self, key):
+            return 0
+        def __add__(self, other):
+            result = _Counter()
+            for k in set(self) | set(other):
+                val = self[k] + other[k]
+                if val > 0:
+                    result[k] = val
+            return result
+    m.Counter = _Counter
     def _namedtuple(name, fields, **kw):
         if isinstance(fields, str):
             fields = fields.replace(',', ' ').split()
