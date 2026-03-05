@@ -172,3 +172,9 @@ jobs:
                   draft: false
                   prerelease: false
                   make_latest: false
+
+            - name: Trigger Basilisk Tests after rebuild
+              if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[rebuild]')
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: gh workflow run test.yml --ref main
