@@ -640,7 +640,7 @@ _PRIMITIVE_TYPE_MAP = {
     "blob": "blob",
     "Principal": "principal",
     "null": "null",
-    "void": "",
+    "void": "null",
     "empty": "empty",
     "reserved": "reserved",
     "Duration": "nat64",
