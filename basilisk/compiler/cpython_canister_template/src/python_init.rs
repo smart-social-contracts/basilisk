@@ -717,6 +717,7 @@ def _ic_call_raw(canister_id, method, args_raw, cycles=0):
     call.payment = int(cycles)
     call.args[3] = int(cycles)
     call._payment = int(cycles)
+    call._return_raw = True
     return call
 
 @staticmethod
@@ -727,6 +728,7 @@ def _ic_call_raw128(canister_id, method, args_raw, cycles=0):
     call.args[2] = raw
     call.payment = int(cycles)
     call.args[3] = int(cycles)
+    call._return_raw = True
     call._payment = int(cycles)
     call.name = "call_raw128"
     return call

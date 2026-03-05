@@ -61,7 +61,7 @@ pub fn call_lifecycle_hook(hook_name: &str) {
         ));
     });
 
-    py_func
+    let py_result = py_func
         .call(&args_tuple.into_object(), None)
         .unwrap_or_else(|e| {
             ic_cdk::trap(&format!(
@@ -70,6 +70,14 @@ pub fn call_lifecycle_hook(hook_name: &str) {
                 e.to_rust_err_string()
             ));
         });
+
+    // If the lifecycle hook returns a generator (async with yield), drive it
+    if py_result.has_attr("send") {
+        let func_name = function_name.clone();
+        ic_cdk::spawn(async move {
+            drive_generator(py_result, &func_name).await;
+        });
+    }
 }
 
 /// Call a Python function by name with no arguments.
@@ -316,10 +324,17 @@ fn drive_generator(
                     // Check if yielded value is a _ServiceCall (has canister_principal attr)
                     if yielded.has_attr("canister_principal") {
                         // It's a _ServiceCall — make the IC inter-canister call
+                        let return_raw = yielded.has_attr("_return_raw");
                         let call_result = perform_service_call(&yielded).await;
                         send_value = match call_result {
                             Ok(raw_bytes) => {
-                                let py_val = decode_candid_response_to_python(&raw_bytes);
+                                let py_val = if return_raw {
+                                    // call_raw: return raw bytes, Python decodes with ic.candid_decode()
+                                    basilisk_cpython::PyObjectRef::from_bytes(&raw_bytes)
+                                        .unwrap_or_else(|_| basilisk_cpython::PyObjectRef::none())
+                                } else {
+                                    decode_candid_response_to_python(&raw_bytes)
+                                };
                                 make_python_dict_result("Ok", py_val)
                             }
                             Err((rejection_code, msg)) => {
