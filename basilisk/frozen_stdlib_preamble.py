@@ -2468,8 +2468,9 @@ def _register_future():
     _sys.modules["__future__"] = m
 
 try:
-    from __future__ import division
-except ImportError:
+    import __future__
+    __future__.division
+except (ImportError, AttributeError):
     _register_future()
 del _register_future
 
