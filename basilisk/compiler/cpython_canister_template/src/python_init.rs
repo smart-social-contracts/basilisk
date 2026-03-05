@@ -175,43 +175,156 @@ _mod.service_update = lambda f: f
 
 # === Principal class ===
 class Principal:
-    def __init__(self, text="aaaaa-aa"):
-        self._text = text
+    _CRC_TABLE = None
+    _B32 = 'abcdefghijklmnopqrstuvwxyz234567'
+    _B32_REV = None
+
+    @staticmethod
+    def _crc32(data):
+        if Principal._CRC_TABLE is None:
+            tbl = []
+            for i in range(256):
+                c = i
+                for _ in range(8):
+                    c = (c >> 1) ^ 0xEDB88320 if c & 1 else c >> 1
+                tbl.append(c)
+            Principal._CRC_TABLE = tbl
+        crc = 0xFFFFFFFF
+        for b in data:
+            crc = Principal._CRC_TABLE[(crc ^ b) & 0xFF] ^ (crc >> 8)
+        return crc ^ 0xFFFFFFFF
+
+    @staticmethod
+    def _b32encode(data):
+        a = Principal._B32
+        out = []
+        buf = 0
+        bits = 0
+        for byte in data:
+            buf = (buf << 8) | byte
+            bits += 8
+            while bits >= 5:
+                bits -= 5
+                out.append(a[(buf >> bits) & 0x1F])
+        if bits > 0:
+            out.append(a[(buf << (5 - bits)) & 0x1F])
+        return ''.join(out)
+
+    @staticmethod
+    def _b32decode(s):
+        if Principal._B32_REV is None:
+            Principal._B32_REV = {c: i for i, c in enumerate(Principal._B32)}
+        rev = Principal._B32_REV
+        buf = 0
+        bits = 0
+        out = []
+        for c in s:
+            if c == '=':
+                break
+            buf = (buf << 5) | rev[c]
+            bits += 5
+            while bits >= 8:
+                bits -= 8
+                out.append((buf >> bits) & 0xFF)
+        return bytes(out)
+
+    def __init__(self, arg=None):
         self._isPrincipal = True
+        if arg is None:
+            self._bytes = b""
+            self._text = None
+        elif isinstance(arg, bytes):
+            self._bytes = arg
+            self._text = None
+        elif isinstance(arg, str):
+            self._text = arg
+            self._bytes = None
+        else:
+            self._text = str(arg)
+            self._bytes = None
+
     @staticmethod
     def management_canister():
-        return Principal("aaaaa-aa")
+        return Principal(b"")
+
     @staticmethod
     def anonymous():
-        return Principal("2vxsx-fae")
+        return Principal(b"\x04")
+
     @staticmethod
     def from_str(s):
-        return Principal(s)
+        p = Principal.__new__(Principal)
+        p._isPrincipal = True
+        p._text = s
+        p._bytes = None
+        return p
+
     @staticmethod
     def from_hex(s):
-        p = Principal.__new__(Principal)
-        p._text = s
-        p._isPrincipal = True
-        return p
+        return Principal(bytes.fromhex(s.lower()))
+
+    @staticmethod
+    def self_authenticating(pubkey):
+        if isinstance(pubkey, str):
+            pubkey = bytes.fromhex(pubkey)
+        try:
+            import hashlib
+            h = hashlib.sha224(pubkey).digest()
+        except ImportError:
+            import _basilisk_hashlib_sha224
+            h = _basilisk_hashlib_sha224.digest(pubkey)
+        return Principal(h + b"\x02")
+
+    def _ensure_text(self):
+        if self._text is None:
+            raw = self._bytes if self._bytes is not None else b""
+            cksum = Principal._crc32(raw)
+            blob = cksum.to_bytes(4, byteorder='big') + raw
+            s = Principal._b32encode(blob)
+            parts = []
+            while len(s) > 5:
+                parts.append(s[:5])
+                s = s[5:]
+            parts.append(s)
+            self._text = '-'.join(parts)
+
+    def _ensure_bytes(self):
+        if self._bytes is None:
+            s = self._text.replace('-', '')
+            raw = Principal._b32decode(s)
+            self._bytes = raw[4:]  # skip 4-byte CRC
+
     def to_str(self):
+        self._ensure_text()
         return self._text
+
     @property
     def isPrincipal(self):
         return True
-    def __eq__(self, other):
-        if isinstance(other, Principal):
-            return self._text == other._text
-        return NotImplemented
-    def __hash__(self):
-        return hash(self._text)
-    def __repr__(self):
-        return f"Principal({self._text!r})"
-    def __str__(self):
-        return self._text
+
     @property
     def bytes(self):
-        # Return raw bytes of the principal text (used by threshold_ecdsa example)
-        return self._text.encode('utf-8') if isinstance(self._text, str) else self._text
+        self._ensure_bytes()
+        return self._bytes
+
+    @property
+    def hex(self):
+        self._ensure_bytes()
+        return self._bytes.hex().upper()
+
+    def __eq__(self, other):
+        if isinstance(other, Principal):
+            return self.to_str() == other.to_str()
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.to_str())
+
+    def __repr__(self):
+        return f"Principal({self.to_str()!r})"
+
+    def __str__(self):
+        return self.to_str()
 
 _mod.Principal = Principal
 

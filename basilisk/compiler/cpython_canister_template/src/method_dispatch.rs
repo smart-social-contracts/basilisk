@@ -708,6 +708,22 @@ fn idl_value_to_python_typed(
                 .call(&args.into_object(), None)
                 .map_err(|e| e.to_rust_err_string())
         }
+        IDLValue::Service(p) => {
+            // Service → Python Principal object
+            let text = p.to_text();
+            let principal_class = unsafe { crate::PRINCIPAL_CLASS_OPTION.as_ref() }
+                .ok_or_else(|| "Principal class not cached".to_string())?;
+            let from_str = principal_class
+                .get_attr("from_str")
+                .map_err(|e| e.to_rust_err_string())?;
+            let text_obj = basilisk_cpython::PyObjectRef::from_str(&text)
+                .map_err(|e| e.to_rust_err_string())?;
+            let args = basilisk_cpython::PyTuple::new(vec![text_obj])
+                .map_err(|e| e.to_rust_err_string())?;
+            from_str
+                .call(&args.into_object(), None)
+                .map_err(|e| e.to_rust_err_string())
+        }
         IDLValue::Func(p, method) => {
             // Func → Python tuple (Principal, method_name_str)
             let text = p.to_text();
@@ -1066,15 +1082,27 @@ fn python_to_idl_value_inner(
             }
         }
         other if other.starts_with("service ") => {
-            // Service type: extract principal via to_str()
-            let to_str = obj.get_attr("to_str")
-                .or_else(|_| obj.get_attr("_principal").and_then(|p| p.get_attr("to_str")))
-                .map_err(|e| e.to_rust_err_string())?;
-            let empty_args = basilisk_cpython::PyTuple::empty()
-                .map_err(|e| e.to_rust_err_string())?;
-            let result = to_str.call(&empty_args.into_object(), None)
-                .map_err(|e| e.to_rust_err_string())?;
-            let text = result.extract_str().map_err(|e| e.to_rust_err_string())?;
+            // Service type: extract principal via to_str(), _principal attr, or plain string
+            let text = if let Ok(to_str) = obj.get_attr("to_str") {
+                let empty_args = basilisk_cpython::PyTuple::empty()
+                    .map_err(|e| e.to_rust_err_string())?;
+                let result = to_str.call(&empty_args.into_object(), None)
+                    .map_err(|e| e.to_rust_err_string())?;
+                result.extract_str().map_err(|e| e.to_rust_err_string())?
+            } else if let Ok(principal_attr) = obj.get_attr("_principal") {
+                let to_str = principal_attr.get_attr("to_str")
+                    .map_err(|e| e.to_rust_err_string())?;
+                let empty_args = basilisk_cpython::PyTuple::empty()
+                    .map_err(|e| e.to_rust_err_string())?;
+                let result = to_str.call(&empty_args.into_object(), None)
+                    .map_err(|e| e.to_rust_err_string())?;
+                result.extract_str().map_err(|e| e.to_rust_err_string())?
+            } else {
+                // Fallback: try as plain string (principal text)
+                obj.extract_str().map_err(|e| {
+                    format!("service: expected Principal object or string, got: {}", e.to_rust_err_string())
+                })?
+            };
             let p = candid::Principal::from_text(&text)
                 .map_err(|e| format!("service principal: {}", e))?;
             Ok(candid::IDLValue::Service(p))

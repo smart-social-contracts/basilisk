@@ -689,6 +689,7 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
     raw_tuples: Dict[str, list] = {}      # name -> [annotation_node, ...]
     raw_funcs: Dict[str, tuple] = {}      # name -> (mode, param_nodes, return_node)
     raw_services: Dict[str, list] = {}    # name -> [(method_name, mode, param_nodes, return_node), ...]
+    raw_aliases: Dict[str, object] = {}   # name -> annotation_node (for Alias[X])
 
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, ast.ClassDef):
@@ -750,6 +751,11 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
                     if value.value.id == "Tuple":
                         elements = _extract_subscript_elements(value.slice)
                         raw_tuples[alias_name] = elements
+                        known_types.add(alias_name)
+                    # Alias type: SuperheroId = Alias[nat32]
+                    if value.value.id == "Alias":
+                        raw_tuples.pop(alias_name, None)  # not a tuple
+                        raw_aliases[alias_name] = value.slice
                         known_types.add(alias_name)
                 # Func type: BasicFunc = Func(Query[[str], str])
                 if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
@@ -866,11 +872,14 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
                 mmode_suffix = " query" if mmode == "query" else ""
                 method_strs.append(f"{mname} : ({mparams}) ->{mret_part}{mmode_suffix}")
             type_defs[name] = "service { " + "; ".join(method_strs) + " }"
+        elif name in raw_aliases:
+            # Alias[X] — resolve the inner type
+            type_defs[name] = resolve_annotation(raw_aliases[name])
 
         resolving.discard(name)
 
     # Resolve all types
-    for name in list(raw_records.keys()) + list(raw_variants.keys()) + list(raw_tuples.keys()) + list(raw_funcs.keys()) + list(raw_services.keys()):
+    for name in list(raw_records.keys()) + list(raw_variants.keys()) + list(raw_tuples.keys()) + list(raw_funcs.keys()) + list(raw_services.keys()) + list(raw_aliases.keys()):
         ensure_type_resolved(name)
 
     return dict.fromkeys(known_types, ""), type_defs
@@ -916,6 +925,23 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
     # Build type registry from class definitions
     known_types, type_defs = _build_type_registry(tree)
 
+    # Inject basilisk built-in types that users import but don't redefine
+    _BUILTIN_BASILISK_TYPES = {
+        "StableMemoryError": "variant { OutOfMemory : null; OutOfBounds : null }",
+        "StableGrowResult": "variant { Ok : nat32; Err : variant { OutOfMemory : null; OutOfBounds : null } }",
+        "Stable64GrowResult": "variant { Ok : nat64; Err : variant { OutOfMemory : null; OutOfBounds : null } }",
+        "RejectionCode": "variant { NoError : null; SysFatal : null; SysTransient : null; DestinationInvalid : null; CanisterReject : null; CanisterError : null }",
+        "NotifyResult": "variant { Ok : null; Err : variant { NoError : null; SysFatal : null; SysTransient : null; DestinationInvalid : null; CanisterReject : null; CanisterError : null } }",
+        "GuardResult": "variant { Ok : null; Err : text }",
+        "KeyTooLarge": "record { given : nat32; max : nat32 }",
+        "ValueTooLarge": "record { given : nat32; max : nat32 }",
+        "InsertError": "variant { KeyTooLarge : record { given : nat32; max : nat32 }; ValueTooLarge : record { given : nat32; max : nat32 } }",
+    }
+    for name, definition in _BUILTIN_BASILISK_TYPES.items():
+        if name not in type_defs:
+            type_defs[name] = definition
+            known_types.add(name)
+
     def get_candid_type(annotation) -> str:
         """Convert a Python type annotation to a Candid type string."""
         if annotation is None:
@@ -954,6 +980,11 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
                     return get_candid_type(annotation.slice)
                 if outer == "Async":
                     return get_candid_type(annotation.slice)
+                if outer == "Alias":
+                    return get_candid_type(annotation.slice)
+                if outer == "CallResult":
+                    inner = get_candid_type(annotation.slice)
+                    return f"variant {{ Ok : {inner}; Err : text }}"
                 if outer == "Tuple":
                     elements = _extract_subscript_elements(annotation.slice)
                     field_strs = []
