@@ -68,17 +68,11 @@ def build_with_template(
     # For multi-file projects, the bundled python_source wraps imported modules
     # as lazy-loaded string literals, so we need to extract methods from the raw
     # individual .py files instead. Walk the ORIGINAL user source directory
-    # (derived from py_entry_file) to avoid picking up basilisk internal modules
-    # that are copied into the python_source bundle directory.
+    # (the entry file's parent directory) to avoid picking up:
+    #   - basilisk internal modules (from python_source bundle)
+    #   - methods from other canisters (in multi-canister projects)
     py_entry_file = paths.get("py_entry_file", "")
-    user_src_dir = ""
-    if py_entry_file:
-        # Find the top-level 'src/' directory from the entry file path
-        # e.g. "src/main.py" -> "src/", "src/canister1/index.py" -> "src/"
-        entry_parts = os.path.normpath(py_entry_file).split(os.sep)
-        if "src" in entry_parts:
-            src_idx = entry_parts.index("src")
-            user_src_dir = os.sep.join(entry_parts[: src_idx + 1])
+    user_src_dir = os.path.dirname(py_entry_file) if py_entry_file else ""
     if user_src_dir and os.path.isdir(user_src_dir):
         raw_sources = []
         for root, _dirs, files in os.walk(user_src_dir):
