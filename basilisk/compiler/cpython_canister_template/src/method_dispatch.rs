@@ -131,32 +131,58 @@ fn execute_guard(guard_name: &str) {
         }
     };
 
-    // Guard returns a dict: {"Ok": None} or {"Err": "message"}
-    // Use PyObjectRef::get_item_str which works on any mapping-like object
+    // Guard must return a dict with {"Ok": None} or {"Err": "message"}.
+    // Validate the result type and structure, producing Kybra-compatible error messages.
+
+    // Get the Python type name of the result
+    let type_name = result.type_name();
+
+    // Check if the result is a dict-like object (has get_item_str capability)
+    let has_ok = result.get_item_str("Ok");
+    let has_err = result.get_item_str("Err");
+
+    if has_ok.is_err() && has_err.is_err() {
+        // Not a dict or doesn't have Ok/Err keys
+        ic_cdk::trap(&format!(
+            "TypeError: expected Result but received {}",
+            type_name
+        ));
+    }
 
     // Check for "Err" key first
-    if let Ok(err_val) = result.get_item_str("Err") {
+    if let Ok(err_val) = has_err {
         if !err_val.is_none() {
-            let err_msg = match err_val.extract_str() {
-                Ok(s) => s,
-                Err(_) => match err_val.str_repr() {
-                    Ok(s) => s,
-                    Err(_) => "Guard rejected with non-string error".to_string(),
-                },
-            };
-            ic_cdk::trap(&err_msg);
+            // Validate that err value is a string
+            match err_val.extract_str() {
+                Ok(s) => ic_cdk::trap(&s),
+                Err(_) => {
+                    let err_type = err_val.type_name();
+                    ic_cdk::trap(&format!(
+                        "TypeError: Expected type 'str' but '{}' found",
+                        err_type
+                    ));
+                }
+            }
         }
     }
 
-    // Check for "Ok" key — if present, allow the call
-    if result.get_item_str("Ok").is_ok() {
-        return; // Guard passed
+    // Check for "Ok" key — if present, validate it's None, then allow the call
+    if let Ok(ok_val) = has_ok {
+        if ok_val.is_none() {
+            return; // Guard passed
+        }
+        // Ok value must be None
+        let ok_type = ok_val.type_name();
+        ic_cdk::trap(&format!(
+            "TypeError: expected NoneType but received {}",
+            ok_type
+        ));
     }
 
-    // Neither "Ok" nor "Err" key found
+    // Neither "Ok" nor "Err" key found in the dict
     ic_cdk::trap(&format!(
-        "Guard function '{}' returned invalid GuardResult (missing 'Ok' or 'Err' key)",
-        guard_name
+        "TypeError: expected Result but received {}",
+        type_name
     ));
 }
 
