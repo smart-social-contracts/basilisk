@@ -882,7 +882,7 @@ fn type_str_to_candid_type(
                 let fields = parse_fields(inner);
                 let mut candid_fields: Vec<Field> = fields.iter().map(|(name, ty)| {
                     Field {
-                        id: std::rc::Rc::new(field_name_to_label(name)),
+                        id: std::rc::Rc::new(candid_name_to_label(name)),
                         ty: type_str_to_candid_type(ty, type_defs)
                             .unwrap_or_else(|| TypeInner::Reserved.into()),
                     }
@@ -893,7 +893,7 @@ fn type_str_to_candid_type(
                 let cases = parse_fields(inner);
                 let mut candid_fields: Vec<Field> = cases.iter().map(|(name, ty)| {
                     Field {
-                        id: std::rc::Rc::new(field_name_to_label(name)),
+                        id: std::rc::Rc::new(candid_name_to_label(name)),
                         ty: type_str_to_candid_type(ty, type_defs)
                             .unwrap_or_else(|| TypeInner::Null.into()),
                     }
@@ -1050,6 +1050,21 @@ fn field_name_to_label(name: &str) -> candid::types::Label {
     }
     let clean = strip_keyword_underscore(name);
     candid::types::Label::Named(clean.to_string())
+}
+
+/// Convert a Candid field name (already in Candid form) to a Label.
+/// Unlike field_name_to_label, this does NOT strip keyword underscores because
+/// the name has already been converted from Python form to Candid form.
+fn candid_name_to_label(name: &str) -> candid::types::Label {
+    if name.starts_with('_') && name.ends_with('_') && name.len() > 2 {
+        if let Ok(id) = name[1..name.len() - 1].parse::<u32>() {
+            return candid::types::Label::Id(id);
+        }
+    }
+    if let Ok(id) = name.parse::<u32>() {
+        return candid::types::Label::Id(id);
+    }
+    candid::types::Label::Named(name.to_string())
 }
 
 /// Check if a record type string represents a tuple (all fields are positional: _0_, _1_, ...).
