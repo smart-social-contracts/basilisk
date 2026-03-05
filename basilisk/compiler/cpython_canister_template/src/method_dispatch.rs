@@ -708,6 +708,27 @@ fn idl_value_to_python_typed(
                 .call(&args.into_object(), None)
                 .map_err(|e| e.to_rust_err_string())
         }
+        IDLValue::Func(p, method) => {
+            // Func → Python tuple (Principal, method_name_str)
+            let text = p.to_text();
+            let principal_class = unsafe { crate::PRINCIPAL_CLASS_OPTION.as_ref() }
+                .ok_or_else(|| "Principal class not cached".to_string())?;
+            let from_str = principal_class
+                .get_attr("from_str")
+                .map_err(|e| e.to_rust_err_string())?;
+            let text_obj = basilisk_cpython::PyObjectRef::from_str(&text)
+                .map_err(|e| e.to_rust_err_string())?;
+            let args = basilisk_cpython::PyTuple::new(vec![text_obj])
+                .map_err(|e| e.to_rust_err_string())?;
+            let principal_py = from_str
+                .call(&args.into_object(), None)
+                .map_err(|e| e.to_rust_err_string())?;
+            let method_py = basilisk_cpython::PyObjectRef::from_str(method)
+                .map_err(|e| e.to_rust_err_string())?;
+            let tuple = basilisk_cpython::PyTuple::new(vec![principal_py, method_py])
+                .map_err(|e| e.to_rust_err_string())?;
+            Ok(tuple.into_object())
+        }
         _ => {
             // Fallback: convert to string representation
             let s = format!("{:?}", value);
@@ -821,12 +842,16 @@ fn strip_compound_wrapper<'a>(type_str: &'a str, keyword: &str) -> Option<&'a st
 }
 
 /// Convert a field name to a Candid Label.
-/// Names matching `_N_` pattern become numeric Label::Id(N).
+/// Names matching `_N_` pattern or plain numeric names become numeric Label::Id(N).
 fn field_name_to_label(name: &str) -> candid::types::Label {
     if name.starts_with('_') && name.ends_with('_') && name.len() > 2 {
         if let Ok(id) = name[1..name.len() - 1].parse::<u32>() {
             return candid::types::Label::Id(id);
         }
+    }
+    // Also handle plain numeric field names (e.g. "0", "1")
+    if let Ok(id) = name.parse::<u32>() {
+        return candid::types::Label::Id(id);
     }
     candid::types::Label::Named(name.to_string())
 }
@@ -837,10 +862,14 @@ fn is_tuple_record(fields: &[(String, String)]) -> bool {
         return false;
     }
     fields.iter().enumerate().all(|(i, (name, _))| {
-        name.starts_with('_')
+        // Check _N_ pattern (e.g. _0_, _1_)
+        let is_underscore = name.starts_with('_')
             && name.ends_with('_')
             && name.len() > 2
-            && name[1..name.len() - 1].parse::<u32>().ok() == Some(i as u32)
+            && name[1..name.len() - 1].parse::<u32>().ok() == Some(i as u32);
+        // Also check plain numeric field names (e.g. "0", "1")
+        let is_plain_numeric = name.parse::<u32>().ok() == Some(i as u32);
+        is_underscore || is_plain_numeric
     })
 }
 
@@ -975,6 +1004,38 @@ fn python_to_idl_value_inner(
         }
         "empty" => Ok(candid::IDLValue::Null),
         "reserved" => Ok(candid::IDLValue::Reserved),
+        other if other.starts_with("func ") => {
+            // Func type: Python tuple (Principal, method_name_str)
+            unsafe {
+                let len = basilisk_cpython::ffi::PySequence_Length(obj.as_ptr());
+                if len != 2 {
+                    return Err(format!("func value must be a 2-tuple (principal, method), got length {}", len));
+                }
+                let principal_obj = basilisk_cpython::ffi::PySequence_GetItem(obj.as_ptr(), 0);
+                if principal_obj.is_null() {
+                    return Err("func: null principal".to_string());
+                }
+                let principal_py = basilisk_cpython::PyObjectRef::from_owned(principal_obj)
+                    .ok_or_else(|| "func: null principal obj".to_string())?;
+                let to_str = principal_py.get_attr("to_str").map_err(|e| e.to_rust_err_string())?;
+                let empty_args = basilisk_cpython::PyTuple::empty().map_err(|e| e.to_rust_err_string())?;
+                let principal_text = to_str.call(&empty_args.into_object(), None)
+                    .map_err(|e| e.to_rust_err_string())?;
+                let text = principal_text.extract_str().map_err(|e| e.to_rust_err_string())?;
+                let p = candid::Principal::from_text(&text)
+                    .map_err(|e| format!("func principal: {}", e))?;
+
+                let method_obj = basilisk_cpython::ffi::PySequence_GetItem(obj.as_ptr(), 1);
+                if method_obj.is_null() {
+                    return Err("func: null method name".to_string());
+                }
+                let method_py = basilisk_cpython::PyObjectRef::from_owned(method_obj)
+                    .ok_or_else(|| "func: null method obj".to_string())?;
+                let method_name = method_py.extract_str().map_err(|e| e.to_rust_err_string())?;
+
+                Ok(candid::IDLValue::Func(p, method_name))
+            }
+        }
         other if other.starts_with("opt ") => {
             if obj.is_none() {
                 Ok(candid::IDLValue::None)
@@ -1004,9 +1065,25 @@ fn python_to_idl_value_inner(
                 Ok(candid::IDLValue::Vec(items))
             }
         }
+        other if other.starts_with("service ") => {
+            // Service type: extract principal via to_str()
+            let to_str = obj.get_attr("to_str")
+                .or_else(|_| obj.get_attr("_principal").and_then(|p| p.get_attr("to_str")))
+                .map_err(|e| e.to_rust_err_string())?;
+            let empty_args = basilisk_cpython::PyTuple::empty()
+                .map_err(|e| e.to_rust_err_string())?;
+            let result = to_str.call(&empty_args.into_object(), None)
+                .map_err(|e| e.to_rust_err_string())?;
+            let text = result.extract_str().map_err(|e| e.to_rust_err_string())?;
+            let p = candid::Principal::from_text(&text)
+                .map_err(|e| format!("service principal: {}", e))?;
+            Ok(candid::IDLValue::Service(p))
+        }
         _ => {
-            // Fallback: try to convert as text
-            let s = obj.extract_str().map_err(|e| e.to_rust_err_string())?;
+            // Fallback: try str_repr for display, then extract_str for actual string
+            let s = obj.extract_str().map_err(|e| {
+                format!("Cannot convert Python object to Candid type '{}': {}", resolved, e.to_rust_err_string())
+            })?;
             Ok(candid::IDLValue::Text(s))
         }
     }

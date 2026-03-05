@@ -507,12 +507,22 @@ class ic:
     time = staticmethod(_basilisk_ic.time)
     trap = staticmethod(_basilisk_ic.trap)
     reply = staticmethod(_basilisk_ic.reply)
-    stable_grow = staticmethod(_basilisk_ic.stable_grow)
     stable_read = staticmethod(_basilisk_ic.stable_read)
     stable_write = staticmethod(_basilisk_ic.stable_write)
-    stable64_grow = staticmethod(_basilisk_ic.stable64_grow)
     stable64_read = staticmethod(_basilisk_ic.stable64_read)
     stable64_write = staticmethod(_basilisk_ic.stable64_write)
+    @staticmethod
+    def stable_grow(new_pages):
+        result = _basilisk_ic.stable_grow(new_pages)
+        if result < 0:
+            return {"Err": {"OutOfMemory": None}}
+        return {"Ok": result}
+    @staticmethod
+    def stable64_grow(new_pages):
+        result = _basilisk_ic.stable64_grow(new_pages)
+        if result < 0:
+            return {"Err": {"OutOfMemory": None}}
+        return {"Ok": result}
     set_timer = staticmethod(_basilisk_ic.set_timer)
     set_timer_interval = staticmethod(_basilisk_ic.set_timer_interval)
     clear_timer = staticmethod(_basilisk_ic.clear_timer)

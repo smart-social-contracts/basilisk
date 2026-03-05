@@ -589,11 +589,14 @@ unsafe extern "C" fn ic_stable_grow(
         Err(_) => { ic_cdk::trap("stable_grow: expected int argument"); }
     };
     match ic_cdk::api::stable::stable_grow(new_pages) {
-        Ok(old_size) => match PyObjectRef::from_u64(old_size as u64) {
+        Ok(old_size) => match PyObjectRef::from_i64(old_size as i64) {
             Ok(obj) => obj.into_ptr(),
             Err(_) => core::ptr::null_mut(),
         },
-        Err(_) => { ic_cdk::trap("stable_grow: failed to grow stable memory"); }
+        Err(_) => match PyObjectRef::from_i64(-1) {
+            Ok(obj) => obj.into_ptr(),
+            Err(_) => core::ptr::null_mut(),
+        },
     }
 }
 
@@ -662,11 +665,14 @@ unsafe extern "C" fn ic_stable64_grow(
         Err(_) => { ic_cdk::trap("stable64_grow: expected int argument"); }
     };
     match ic_cdk::api::stable::stable64_grow(new_pages) {
-        Ok(old_size) => match PyObjectRef::from_u64(old_size) {
+        Ok(old_size) => match PyObjectRef::from_i64(old_size as i64) {
             Ok(obj) => obj.into_ptr(),
             Err(_) => core::ptr::null_mut(),
         },
-        Err(_) => { ic_cdk::trap("stable64_grow: failed to grow stable memory"); }
+        Err(_) => match PyObjectRef::from_i64(-1) {
+            Ok(obj) => obj.into_ptr(),
+            Err(_) => core::ptr::null_mut(),
+        },
     }
 }
 
