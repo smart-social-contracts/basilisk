@@ -2722,6 +2722,172 @@ except (ImportError, AttributeError):
 del _register_string
 
 
+# --- frozen stdlib: urllib.parse module ---
+def _register_urllib_parse():
+    import sys as _s
+    # Create urllib package if needed
+    if "urllib" not in _s.modules:
+        _urllib = type(_s)("urllib")
+        _urllib.__file__ = "<frozen urllib>"
+        _urllib.__path__ = ["<frozen urllib>"]
+        _urllib.__package__ = "urllib"
+        _s.modules["urllib"] = _urllib
+    else:
+        _urllib = _s.modules["urllib"]
+
+    m = type(_s)("urllib.parse")
+    m.__file__ = "<frozen urllib.parse>"
+    m.__package__ = "urllib"
+
+    _always_safe = frozenset(
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+        'abcdefghijklmnopqrstuvwxyz'
+        '0123456789' '_.-~')
+
+    def unquote(s, encoding='utf-8', errors='replace'):
+        if '%' not in s:
+            return s
+        res = []
+        i = 0
+        while i < len(s):
+            if s[i] == '%' and i + 2 < len(s):
+                try:
+                    byte_val = int(s[i+1:i+3], 16)
+                    res.append(bytes([byte_val]))
+                    i += 3
+                    continue
+                except ValueError:
+                    pass
+            res.append(s[i].encode(encoding))
+            i += 1
+        return b''.join(res).decode(encoding, errors)
+
+    def quote(s, safe='/'):
+        if isinstance(s, str):
+            s = s.encode('utf-8')
+        res = []
+        safe_set = frozenset(safe.encode('ascii') if isinstance(safe, str) else safe)
+        for byte in s:
+            if byte in _always_safe or byte in safe_set:
+                res.append(chr(byte))
+            else:
+                res.append('%{:02X}'.format(byte))
+        return ''.join(res)
+
+    def quote_plus(s, safe=''):
+        return quote(s, safe + ' ').replace(' ', '+')
+
+    def unquote_plus(s, encoding='utf-8', errors='replace'):
+        return unquote(s.replace('+', ' '), encoding, errors)
+
+    def urlencode(query, doseq=False):
+        if hasattr(query, 'items'):
+            query = list(query.items())
+        parts = []
+        for k, v in query:
+            if doseq and isinstance(v, (list, tuple)):
+                for item in v:
+                    parts.append(f"{quote_plus(str(k))}={quote_plus(str(item))}")
+            else:
+                parts.append(f"{quote_plus(str(k))}={quote_plus(str(v))}")
+        return '&'.join(parts)
+
+    def parse_qs(qs, keep_blank_values=False, strict_parsing=False):
+        result = {}
+        for part in qs.split('&'):
+            if '=' not in part:
+                continue
+            k, v = part.split('=', 1)
+            k, v = unquote_plus(k), unquote_plus(v)
+            if v or keep_blank_values:
+                result.setdefault(k, []).append(v)
+        return result
+
+    def parse_qsl(qs, keep_blank_values=False, strict_parsing=False):
+        result = []
+        for part in qs.split('&'):
+            if '=' not in part:
+                continue
+            k, v = part.split('=', 1)
+            k, v = unquote_plus(k), unquote_plus(v)
+            if v or keep_blank_values:
+                result.append((k, v))
+        return result
+
+    def urlparse(url, scheme='', allow_fragments=True):
+        from collections import namedtuple
+        ParseResult = namedtuple('ParseResult',
+            ['scheme','netloc','path','params','query','fragment'])
+        netloc = path = params = query = fragment = ''
+        i = url.find(':')
+        if i > 0 and url[:i].isalpha():
+            scheme = url[:i].lower()
+            url = url[i+1:]
+        if url[:2] == '//':
+            delim = len(url)
+            for c in '/?#':
+                idx = url.find(c, 2)
+                if idx >= 0:
+                    delim = min(delim, idx)
+            netloc = url[2:delim]
+            url = url[delim:]
+        if allow_fragments and '#' in url:
+            url, fragment = url.rsplit('#', 1)
+        if '?' in url:
+            url, query = url.split('?', 1)
+        path = url
+        return ParseResult(scheme, netloc, path, params, query, fragment)
+
+    def urlunparse(components):
+        scheme, netloc, path, params, query, fragment = components
+        url = ''
+        if scheme:
+            url = scheme + '://'
+        if netloc:
+            url += netloc
+        url += path
+        if params:
+            url += ';' + params
+        if query:
+            url += '?' + query
+        if fragment:
+            url += '#' + fragment
+        return url
+
+    def urljoin(base, url, allow_fragments=True):
+        if not base:
+            return url
+        if not url:
+            return base
+        if '://' in url:
+            return url
+        bp = urlparse(base)
+        if url.startswith('/'):
+            return urlunparse((bp.scheme, bp.netloc, url, '', '', ''))
+        path = bp.path.rsplit('/', 1)[0] + '/' + url
+        return urlunparse((bp.scheme, bp.netloc, path, '', '', ''))
+
+    m.unquote = unquote
+    m.quote = quote
+    m.quote_plus = quote_plus
+    m.unquote_plus = unquote_plus
+    m.urlencode = urlencode
+    m.parse_qs = parse_qs
+    m.parse_qsl = parse_qsl
+    m.urlparse = urlparse
+    m.urlunparse = urlunparse
+    m.urljoin = urljoin
+    _s.modules["urllib.parse"] = m
+    _urllib.parse = m
+
+try:
+    import urllib.parse
+    urllib.parse.unquote  # verify it's real
+except (ImportError, AttributeError):
+    _register_urllib_parse()
+del _register_urllib_parse
+
+
 # --- Install the universal fallback import wrapper ---
 # This MUST be after all rich stdlib stubs above, so that try/except import
 # blocks use _orig_import and the rich stubs get registered properly.
