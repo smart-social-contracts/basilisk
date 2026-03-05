@@ -730,6 +730,37 @@ unsafe extern "C" fn ic_stable64_write(
 
 // ─── Timers ──────────────────────────────────────────────────────────────────
 
+static mut TIMER_CB_COUNTER: u64 = 0;
+
+/// Resolve a Python callback to a global function name.
+/// For named functions, uses their __name__. For lambdas/closures, stores them
+/// under a generated unique global name so they can be retrieved later.
+unsafe fn resolve_timer_callback(callback: &PyObjectRef) -> String {
+    // Try to extract a string name first (if caller passed a string)
+    if let Ok(s) = callback.extract_str() {
+        return s;
+    }
+    // Try __name__ — skip if it's "<lambda>" since that's not a real global
+    if let Ok(name_obj) = callback.get_attr("__name__") {
+        if let Ok(name) = name_obj.extract_str() {
+            if name != "<lambda>" {
+                return name;
+            }
+        }
+    }
+    // Lambda or closure: store under a generated global name
+    let id = TIMER_CB_COUNTER;
+    TIMER_CB_COUNTER += 1;
+    let gen_name = format!("_timer_cb_{}", id);
+    let interpreter = crate::INTERPRETER_OPTION.as_mut()
+        .expect("SystemError: missing python interpreter");
+    interpreter.set_global(&gen_name, callback.clone())
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("Failed to store timer callback: {}", e.to_rust_err_string()));
+        });
+    gen_name
+}
+
 /// ic.set_timer(delay_ns, callback) -> timer_id
 unsafe extern "C" fn ic_set_timer(
     _self: *mut ffi::PyObject,
@@ -751,20 +782,7 @@ unsafe extern "C" fn ic_set_timer(
         None => { ic_cdk::trap("set_timer: missing callback"); }
     };
 
-    // Store callback name or function ref for later invocation
-    let func_name = match callback.extract_str() {
-        Ok(s) => s,
-        Err(_) => {
-            // Try to get __name__ attribute
-            match callback.get_attr("__name__") {
-                Ok(name_obj) => match name_obj.extract_str() {
-                    Ok(s) => s,
-                    Err(_) => { ic_cdk::trap("set_timer: callback must be a named function"); }
-                },
-                Err(_) => { ic_cdk::trap("set_timer: callback must be a named function"); }
-            }
-        }
-    };
+    let func_name = resolve_timer_callback(&callback);
 
     let delay = std::time::Duration::from_nanos(delay_ns);
     let timer_id = ic_cdk_timers::set_timer(delay, move || {
@@ -807,18 +825,7 @@ unsafe extern "C" fn ic_set_timer_interval(
         None => { ic_cdk::trap("set_timer_interval: missing callback"); }
     };
 
-    let func_name = match callback.extract_str() {
-        Ok(s) => s,
-        Err(_) => {
-            match callback.get_attr("__name__") {
-                Ok(name_obj) => match name_obj.extract_str() {
-                    Ok(s) => s,
-                    Err(_) => { ic_cdk::trap("set_timer_interval: callback must be a named function"); }
-                },
-                Err(_) => { ic_cdk::trap("set_timer_interval: callback must be a named function"); }
-            }
-        }
-    };
+    let func_name = resolve_timer_callback(&callback);
 
     let interval = std::time::Duration::from_nanos(interval_ns);
     let timer_id = ic_cdk_timers::set_timer_interval(interval, move || {

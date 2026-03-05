@@ -1321,9 +1321,9 @@ fn python_dict_to_variant(
     };
 
     let field = candid::types::value::IDLField {
-        id: field_name_to_label(&keys),
+        id: field_name_to_label(&clean_key),
         val: idl_val,
     };
 
-    Ok(candid::IDLValue::Variant(candid::types::value::VariantValue(Box::new(field), 0u64)))
+    Ok(candid::IDLValue::Variant(candid::types::value::VariantValue(Box::new(field), case_idx as u64)))
 }
