@@ -65,15 +65,15 @@ def build_with_template(
     # and runs before the basilisk shim during canister_init. No need to prepend here.
 
     # 3. Extract method metadata from the Python source
-    # For multi-file projects, the bundled python_source wraps imported modules
-    # as lazy-loaded string literals, so we need to extract methods from the raw
-    # individual .py files instead. Walk the ORIGINAL user source directory
-    # (the entry file's parent directory) to avoid picking up:
-    #   - basilisk internal modules (from python_source bundle)
-    #   - methods from other canisters (in multi-canister projects)
+    # Two-phase extraction for multi-file / multi-canister projects:
+    #   Phase 1: Methods + lifecycle from the entry file's parent directory only
+    #            (avoids picking up methods from other canisters)
+    #   Phase 2: Type definitions from the full src/ tree
+    #            (catches types imported from sibling canister directories)
     py_entry_file = paths.get("py_entry_file", "")
     user_src_dir = os.path.dirname(py_entry_file) if py_entry_file else ""
     if user_src_dir and os.path.isdir(user_src_dir):
+        # Phase 1: methods from entry dir
         raw_sources = []
         for root, _dirs, files in os.walk(user_src_dir):
             for fname in sorted(files):
@@ -82,6 +82,25 @@ def build_with_template(
                         raw_sources.append(f.read())
         combined_raw = "\n".join(raw_sources)
         methods, type_defs, lifecycle = extract_methods_from_python(combined_raw)
+
+        # Phase 2: merge type definitions from the broader src/ tree
+        # (for cross-canister type imports like canister1 using canister2/types.py)
+        entry_parts = os.path.normpath(py_entry_file).split(os.sep)
+        if "src" in entry_parts:
+            src_idx = entry_parts.index("src")
+            src_root = os.sep.join(entry_parts[: src_idx + 1])
+            if os.path.isdir(src_root) and os.path.normpath(src_root) != os.path.normpath(user_src_dir):
+                broad_sources = []
+                for root, _dirs, files in os.walk(src_root):
+                    for fname in sorted(files):
+                        if fname.endswith(".py"):
+                            with open(os.path.join(root, fname), "r") as f:
+                                broad_sources.append(f.read())
+                broad_raw = "\n".join(broad_sources)
+                _, broad_type_defs, _ = extract_methods_from_python(broad_raw)
+                for tname, tdef in broad_type_defs.items():
+                    if tname not in type_defs:
+                        type_defs[tname] = tdef
     else:
         methods, type_defs, lifecycle = extract_methods_from_python(python_source)
     if verbose:
