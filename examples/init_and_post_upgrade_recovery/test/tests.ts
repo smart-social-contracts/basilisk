@@ -59,7 +59,7 @@ export function getTests(
             test: async () => {
                 try {
                     execSync(
-                        `dfx deploy init_and_post_upgrade_recovery --argument '(true)'`
+                        `dfx deploy --upgrade-unchanged init_and_post_upgrade_recovery --argument '(true)'`
                     );
                 } catch (error: any) {
                     return {
@@ -78,7 +78,7 @@ export function getTests(
             name: 'post_upgrade should succeed',
             test: async () => {
                 execSync(
-                    `dfx deploy init_and_post_upgrade_recovery --argument '(false)'`,
+                    `dfx deploy --upgrade-unchanged init_and_post_upgrade_recovery --argument '(false)'`,
                     {
                         stdio: 'inherit'
                     }
