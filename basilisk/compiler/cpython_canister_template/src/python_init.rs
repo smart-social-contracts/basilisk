@@ -531,27 +531,36 @@ class _UpdateType:
 def Func(sig):
     return _FuncType(sig)
 
+def _to_candid_text(v):
+    """Convert a Python value to Candid text representation (recursive)."""
+    if v is None:
+        return 'null'
+    if isinstance(v, bool):
+        return 'true' if v else 'false'
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return str(v)
+    if isinstance(v, str):
+        return f'"{v}"'
+    if isinstance(v, bytes):
+        return f'blob "{"".join(format(b, "02x") for b in v)}"'
+    if isinstance(v, dict):
+        fields = [f'{k} = {_to_candid_text(val)}' for k, val in v.items()]
+        return f'record {{ {"; ".join(fields)} }}'
+    if isinstance(v, (list, tuple)):
+        items = [_to_candid_text(item) for item in v]
+        return f'vec {{ {"; ".join(items)} }}'
+    # Fallback: try str()
+    return str(v)
+
 class _ServiceCall:
     """Represents a pending cross-canister call to be yielded from a generator.
     Presents itself as a call_raw descriptor for the Rust async handler."""
     def __init__(self, canister_principal, method_name, call_args=None, payment=0):
         # Encode call args to Candid bytes
         if call_args:
-            # Try to encode args via ic.candid_encode — format as Candid text
-            parts = []
-            for a in call_args:
-                if isinstance(a, str):
-                    parts.append(f'"{a}"')
-                elif isinstance(a, bool):
-                    parts.append('true' if a else 'false')
-                elif isinstance(a, int):
-                    parts.append(str(a))
-                elif isinstance(a, float):
-                    parts.append(str(a))
-                elif isinstance(a, bytes):
-                    parts.append(f'blob "{a.hex()}"')
-                else:
-                    parts.append(str(a))
+            parts = [_to_candid_text(a) for a in call_args]
             candid_text = f"({', '.join(parts)})"
             try:
                 raw_args = _basilisk_ic.candid_encode(candid_text)

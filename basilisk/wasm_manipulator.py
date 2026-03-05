@@ -588,7 +588,7 @@ def rebuild_code_section(
 
     # Append new method stub function bodies
     for i, method in enumerate(methods):
-        if method["method_type"] == "query":
+        if method["method_type"] in ("query", "composite_query"):
             dispatcher_idx = query_dispatcher_idx
         else:
             dispatcher_idx = update_dispatcher_idx
@@ -1074,8 +1074,6 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
                             "post_upgrade", "heartbeat", "inspect_message",
                             "composite_query"):
                 method_type = dec_name
-                if dec_name == "composite_query":
-                    method_type = "query"  # composite_query is a query variant
                 if "guard" in dec_kwargs:
                     guard_name = dec_kwargs["guard"]
 
@@ -1125,7 +1123,7 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
         if is_async:
             entry["is_async"] = True
 
-        if method_type in ("query", "update"):
+        if method_type in ("query", "update", "composite_query"):
             methods.append(entry)
         else:
             lifecycle[method_type] = entry
@@ -1170,7 +1168,12 @@ def generate_candid_from_methods(
             p["candid_type"] for p in method["params"]
         )
         returns = method["returns"] if method["returns"] not in ("",) else ""
-        mode = " query" if method["method_type"] == "query" else ""
+        if method["method_type"] == "query":
+            mode = " query"
+        elif method["method_type"] == "composite_query":
+            mode = " composite_query"
+        else:
+            mode = ""
         svc_lines.append(f'  "{method["name"]}" : ({params}) -> ({returns}){mode};')
 
     if init_args:

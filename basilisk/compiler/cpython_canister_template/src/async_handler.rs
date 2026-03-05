@@ -108,7 +108,7 @@ async fn async_result_handler_call_raw(
     .await;
     async_result_handler(
         py_object_ref,
-        create_call_result_instance(call_raw_result)?,
+        create_call_result_raw_bytes(call_raw_result)?,
     )
     .await
 }
@@ -139,9 +139,42 @@ async fn async_result_handler_call_raw128(
     .await;
     async_result_handler(
         py_object_ref,
-        create_call_result_instance(call_raw_result)?,
+        create_call_result_raw_bytes(call_raw_result)?,
     )
     .await
+}
+
+/// Create a CallResult wrapping raw bytes (for call_raw / call_raw128).
+/// The Python code is responsible for decoding with ic.candid_decode().
+fn create_call_result_raw_bytes(
+    call_result: ic_cdk::api::call::CallResult<Vec<u8>>,
+) -> Result<basilisk_cpython::PyObjectRef, basilisk_cpython::PyError> {
+    let interpreter = unsafe { crate::INTERPRETER_OPTION.as_mut() }.ok_or_else(|| {
+        basilisk_cpython::PyError::new("SystemError", "missing python interpreter")
+    })?;
+    match call_result {
+        Ok(raw_bytes) => {
+            let ok_value = basilisk_cpython::PyObjectRef::from_bytes(&raw_bytes)?;
+            let code = "from basilisk import CallResult; CallResult";
+            let call_result_class = interpreter.eval_expression(code)?;
+            let none = basilisk_cpython::PyObjectRef::none();
+            let args = basilisk_cpython::PyTuple::new(vec![ok_value, none])?;
+            call_result_class.call(&args.into_object(), None)
+        }
+        Err(err) => {
+            let err_string = format!(
+                "Rejection code {}, {}",
+                (err.0 as i32).to_string(),
+                err.1
+            );
+            let err_py = basilisk_cpython::PyObjectRef::from_str(&err_string)?;
+            let code = "from basilisk import CallResult; CallResult";
+            let call_result_class = interpreter.eval_expression(code)?;
+            let none = basilisk_cpython::PyObjectRef::none();
+            let args = basilisk_cpython::PyTuple::new(vec![none, err_py])?;
+            call_result_class.call(&args.into_object(), None)
+        }
+    }
 }
 
 fn create_call_result_instance(
