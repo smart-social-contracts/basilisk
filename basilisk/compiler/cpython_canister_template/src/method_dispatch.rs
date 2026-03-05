@@ -880,23 +880,25 @@ fn type_str_to_candid_type(
         s => {
             if let Some(inner) = strip_compound_wrapper(s, "record") {
                 let fields = parse_fields(inner);
-                let candid_fields: Vec<Field> = fields.iter().map(|(name, ty)| {
+                let mut candid_fields: Vec<Field> = fields.iter().map(|(name, ty)| {
                     Field {
                         id: std::rc::Rc::new(field_name_to_label(name)),
                         ty: type_str_to_candid_type(ty, type_defs)
                             .unwrap_or_else(|| TypeInner::Reserved.into()),
                     }
                 }).collect();
+                candid_fields.sort_by(|a, b| a.id.get_id().cmp(&b.id.get_id()));
                 TypeInner::Record(candid_fields).into()
             } else if let Some(inner) = strip_compound_wrapper(s, "variant") {
                 let cases = parse_fields(inner);
-                let candid_fields: Vec<Field> = cases.iter().map(|(name, ty)| {
+                let mut candid_fields: Vec<Field> = cases.iter().map(|(name, ty)| {
                     Field {
                         id: std::rc::Rc::new(field_name_to_label(name)),
                         ty: type_str_to_candid_type(ty, type_defs)
                             .unwrap_or_else(|| TypeInner::Null.into()),
                     }
                 }).collect();
+                candid_fields.sort_by(|a, b| a.id.get_id().cmp(&b.id.get_id()));
                 TypeInner::Variant(candid_fields).into()
             } else if s.starts_with("func ") || s.starts_with("service ") {
                 return None; // Cannot represent func/service types easily
