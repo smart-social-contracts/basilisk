@@ -669,11 +669,14 @@ _PY_KEYWORDS = {
 
 def _strip_keyword_underscore(name: str) -> str:
     """Strip trailing underscore from Python keyword-escaped field names.
-    E.g. 'False_' -> 'False', 'from_' -> 'from', but 'my_field_' stays unchanged."""
+    E.g. 'False_' -> 'False', 'from_' -> 'from', 'with__' -> 'with_',
+    but 'my_field_' stays unchanged.
+    Rule: strip one _ if the base matches <keyword>_* (keyword + zero or more underscores)."""
     if name.endswith('_') and len(name) > 1:
         base = name[:-1]
-        if base in _PY_KEYWORDS:
-            return base
+        for kw in _PY_KEYWORDS:
+            if base == kw or (base.startswith(kw) and all(c == '_' for c in base[len(kw):])):
+                return base
     return name
 
 

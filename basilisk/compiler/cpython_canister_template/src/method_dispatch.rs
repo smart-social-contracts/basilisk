@@ -823,9 +823,89 @@ pub fn encode_python_to_candid(
     });
 
     let idl_args = candid::IDLArgs::new(&[idl_value]);
+
+    // Try typed serialization first — this correctly handles vecs of mixed
+    // variants by providing the full type to annotate_type which fixes
+    // variant indices.
+    let type_defs = unsafe { TYPE_DEFS.as_ref() }.map(|m| m.clone()).unwrap_or_default();
+    if let Some(candid_type) = type_str_to_candid_type(return_type, &type_defs) {
+        let env = candid::TypeEnv::new();
+        if let Ok(bytes) = idl_args.to_bytes_with_types(&env, &[candid_type]) {
+            return bytes;
+        }
+    }
+
+    // Fallback to untyped serialization (works for simple types / single variants)
     idl_args.to_bytes().unwrap_or_else(|e| {
         ic_cdk::trap(&format!("Failed to encode Candid result: {}", e));
     })
+}
+
+/// Convert a Candid type string into a `candid::types::Type` for typed serialization.
+/// Returns None for types that cannot be represented (func, service, etc.).
+fn type_str_to_candid_type(
+    type_str: &str,
+    type_defs: &HashMap<String, String>,
+) -> Option<candid::types::Type> {
+    let resolved = resolve_type(type_str, type_defs);
+    use candid::types::internal::{TypeInner, Field};
+    let ty: candid::types::Type = match resolved {
+        "" | "null" => TypeInner::Null.into(),
+        "bool" => TypeInner::Bool.into(),
+        "nat" => TypeInner::Nat.into(),
+        "int" => TypeInner::Int.into(),
+        "nat8" => TypeInner::Nat8.into(),
+        "nat16" => TypeInner::Nat16.into(),
+        "nat32" => TypeInner::Nat32.into(),
+        "nat64" => TypeInner::Nat64.into(),
+        "int8" => TypeInner::Int8.into(),
+        "int16" => TypeInner::Int16.into(),
+        "int32" => TypeInner::Int32.into(),
+        "int64" => TypeInner::Int64.into(),
+        "float32" => TypeInner::Float32.into(),
+        "float64" => TypeInner::Float64.into(),
+        "text" => TypeInner::Text.into(),
+        "blob" => TypeInner::Vec(TypeInner::Nat8.into()).into(),
+        "principal" => TypeInner::Principal.into(),
+        "empty" => TypeInner::Empty.into(),
+        "reserved" => TypeInner::Reserved.into(),
+        s if s.starts_with("opt ") => {
+            let inner = type_str_to_candid_type(&s[4..], type_defs)?;
+            TypeInner::Opt(inner).into()
+        }
+        s if s.starts_with("vec ") => {
+            let inner = type_str_to_candid_type(&s[4..], type_defs)?;
+            TypeInner::Vec(inner).into()
+        }
+        s => {
+            if let Some(inner) = strip_compound_wrapper(s, "record") {
+                let fields = parse_fields(inner);
+                let candid_fields: Vec<Field> = fields.iter().map(|(name, ty)| {
+                    Field {
+                        id: std::rc::Rc::new(field_name_to_label(name)),
+                        ty: type_str_to_candid_type(ty, type_defs)
+                            .unwrap_or_else(|| TypeInner::Reserved.into()),
+                    }
+                }).collect();
+                TypeInner::Record(candid_fields).into()
+            } else if let Some(inner) = strip_compound_wrapper(s, "variant") {
+                let cases = parse_fields(inner);
+                let candid_fields: Vec<Field> = cases.iter().map(|(name, ty)| {
+                    Field {
+                        id: std::rc::Rc::new(field_name_to_label(name)),
+                        ty: type_str_to_candid_type(ty, type_defs)
+                            .unwrap_or_else(|| TypeInner::Null.into()),
+                    }
+                }).collect();
+                TypeInner::Variant(candid_fields).into()
+            } else if s.starts_with("func ") || s.starts_with("service ") {
+                return None; // Cannot represent func/service types easily
+            } else {
+                return None; // Unknown type
+            }
+        }
+    };
+    Some(ty)
 }
 
 // ─── Candid type string parsing ──────────────────────────────────────────────
@@ -925,25 +1005,32 @@ const PY_KEYWORDS: &[&str] = &[
 ];
 
 /// Strip trailing underscore from Python keyword-escaped field names.
-/// E.g. "False_" → "False", "from_" → "from", but "my_field_" stays unchanged.
+/// E.g. "False_" → "False", "from_" → "from", "with__" → "with_",
+/// but "my_field_" stays unchanged.
+/// Rule: strip one _ if the base matches <keyword>_* (keyword + zero or more underscores).
 fn strip_keyword_underscore(name: &str) -> &str {
     if name.ends_with('_') && name.len() > 1 {
         let base = &name[..name.len() - 1];
-        if PY_KEYWORDS.contains(&base) {
-            return base;
+        for kw in PY_KEYWORDS {
+            if base == *kw || (base.starts_with(kw) && base[kw.len()..].chars().all(|c| c == '_')) {
+                return base;
+            }
         }
     }
     name
 }
 
 /// Add trailing underscore to Python keywords for use as Python dict keys.
-/// E.g. "False" → "False_", "from" → "from_", but "name" stays unchanged.
+/// E.g. "False" → "False_", "from" → "from_", "with_" → "with__",
+/// but "name" stays unchanged.
+/// Rule: add _ if name matches <keyword>_* (keyword + zero or more underscores).
 fn add_keyword_underscore(name: &str) -> String {
-    if PY_KEYWORDS.contains(&name) {
-        format!("{}_", name)
-    } else {
-        name.to_string()
+    for kw in PY_KEYWORDS {
+        if name == *kw || (name.starts_with(kw) && name[kw.len()..].chars().all(|c| c == '_')) {
+            return format!("{}_", name);
+        }
     }
+    name.to_string()
 }
 
 /// Convert a field name to a Candid Label.
