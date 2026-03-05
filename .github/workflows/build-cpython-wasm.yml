@@ -17,6 +17,7 @@ on:
 
 permissions:
     contents: write # Required for creating GitHub releases
+    actions: write  # Required for triggering workflow_dispatch on test.yml
 
 jobs:
     build-cpython-wasm:
