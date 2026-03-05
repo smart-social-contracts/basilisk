@@ -560,17 +560,24 @@ class _ServiceCall:
                 raw_args = b'DIDL\x00\x00'
         else:
             raw_args = b'DIDL\x00\x00'
-        # The async handler expects .name and .args matching call_raw protocol
+        # Keep original attributes for drive_generator / perform_service_call in method_dispatch.rs
+        self.canister_principal = canister_principal
+        self.method_name = method_name
+        self._raw_args = raw_args
+        self.payment = payment
+        # Also set .name and .args for async_handler.rs call_raw protocol
         principal_text = str(canister_principal) if not isinstance(canister_principal, str) else canister_principal
         self.name = "call_raw"
         self.args = [principal_text, method_name, raw_args, payment]
         self._payment = payment
     def with_cycles(self, cycles):
+        self.payment = cycles
         self.args[3] = cycles
         self._payment = cycles
         return self
     def with_cycles128(self, cycles):
         self.name = "call_raw128"
+        self.payment = cycles
         self.args[3] = cycles
         self._payment = cycles
         return self
