@@ -640,9 +640,11 @@ _PRIMITIVE_TYPE_MAP = {
     "blob": "blob",
     "Principal": "principal",
     "null": "null",
-    "void": "null",
+    "void": "",
     "empty": "empty",
     "reserved": "reserved",
+    "Duration": "nat64",
+    "TimerId": "nat64",
 }
 
 # Candid reserved words — field names matching these must be quoted

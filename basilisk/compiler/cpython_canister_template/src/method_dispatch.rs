@@ -761,6 +761,14 @@ pub fn encode_python_to_candid(
     py_result: &basilisk_cpython::PyObjectRef,
     return_type: &str,
 ) -> Vec<u8> {
+    // void (empty return type) → encode with no arguments
+    if return_type.is_empty() {
+        let idl_args = candid::IDLArgs::new(&[]);
+        return idl_args.to_bytes().unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("Failed to encode Candid result: {}", e));
+        });
+    }
+
     let idl_value = python_to_idl_value(py_result, return_type).unwrap_or_else(|e| {
         ic_cdk::trap(&format!("Failed to convert Python result to Candid: {}", e));
     });
