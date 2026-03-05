@@ -67,12 +67,21 @@ def build_with_template(
     # 3. Extract method metadata from the Python source
     # For multi-file projects, the bundled python_source wraps imported modules
     # as lazy-loaded string literals, so we need to extract methods from the raw
-    # individual .py files instead. Walk the python_source directory (populated
-    # by bundle_python_code) and concatenate all raw sources for extraction.
-    python_source_dir = paths.get("python_source", "")
-    if python_source_dir and os.path.isdir(python_source_dir):
+    # individual .py files instead. Walk the ORIGINAL user source directory
+    # (derived from py_entry_file) to avoid picking up basilisk internal modules
+    # that are copied into the python_source bundle directory.
+    py_entry_file = paths.get("py_entry_file", "")
+    user_src_dir = ""
+    if py_entry_file:
+        # Find the top-level 'src/' directory from the entry file path
+        # e.g. "src/main.py" -> "src/", "src/canister1/index.py" -> "src/"
+        entry_parts = os.path.normpath(py_entry_file).split(os.sep)
+        if "src" in entry_parts:
+            src_idx = entry_parts.index("src")
+            user_src_dir = os.sep.join(entry_parts[: src_idx + 1])
+    if user_src_dir and os.path.isdir(user_src_dir):
         raw_sources = []
-        for root, _dirs, files in os.walk(python_source_dir):
+        for root, _dirs, files in os.walk(user_src_dir):
             for fname in sorted(files):
                 if fname.endswith(".py"):
                     with open(os.path.join(root, fname), "r") as f:
