@@ -2674,6 +2674,54 @@ except (ImportError, AttributeError):
 del _register_future
 
 
+# --- frozen stdlib: string module ---
+def _register_string():
+    import sys as _s
+    m = type(_s)("string")
+    m.__file__ = "<frozen string>"
+    m.ascii_lowercase = "abcdefghijklmnopqrstuvwxyz"
+    m.ascii_uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    m.ascii_letters = m.ascii_lowercase + m.ascii_uppercase
+    m.digits = "0123456789"
+    m.hexdigits = "0123456789abcdefABCDEF"
+    m.octdigits = "01234567"
+    m.punctuation = """!"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~"""
+    m.printable = m.digits + m.ascii_letters + m.punctuation + " \t\n\r\x0b\x0c"
+    m.whitespace = " \t\n\r\x0b\x0c"
+
+    class Formatter:
+        def format(self, format_string, *args, **kwargs):
+            return format_string.format(*args, **kwargs)
+        def vformat(self, format_string, args, kwargs):
+            return format_string.format(*args, **kwargs)
+
+    class Template:
+        def __init__(self, template):
+            self.template = template
+        def substitute(self, mapping=None, **kws):
+            d = mapping or {}
+            d.update(kws)
+            result = self.template
+            for k, v in d.items():
+                result = result.replace(f"${k}", str(v)).replace(f"${{{k}}}", str(v))
+            return result
+        safe_substitute = substitute
+
+    m.Formatter = Formatter
+    m.Template = Template
+    m.capwords = lambda s, sep=None: (sep or " ").join(
+        w.capitalize() for w in s.split(sep)
+    )
+    _s.modules["string"] = m
+
+try:
+    import string
+    string.ascii_letters  # verify it's real
+except (ImportError, AttributeError):
+    _register_string()
+del _register_string
+
+
 # --- Install the universal fallback import wrapper ---
 # This MUST be after all rich stdlib stubs above, so that try/except import
 # blocks use _orig_import and the rich stubs get registered properly.
