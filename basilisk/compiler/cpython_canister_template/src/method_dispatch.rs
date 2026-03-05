@@ -459,9 +459,31 @@ fn decode_candid_response_to_python(raw_bytes: &[u8]) -> basilisk_cpython::PyObj
     }
 }
 
-/// Create a Python dict with a single key-value pair: {"key": value}
-/// Used to construct CallResult-like dicts for generator send().
+/// Create a Python CallResult instance with Ok or Err.
+/// Falls back to a plain dict if the CallResult class isn't available.
 fn make_python_dict_result(key: &str, value: basilisk_cpython::PyObjectRef) -> basilisk_cpython::PyObjectRef {
+    // Try to create a real CallResult instance
+    let interpreter = unsafe { crate::INTERPRETER_OPTION.as_mut() };
+    if let Some(interp) = interpreter {
+        if let Ok(cls) = interp.get_global("CallResult") {
+            let (ok_val, err_val) = if key == "Ok" {
+                (value.clone(), basilisk_cpython::PyObjectRef::none())
+            } else {
+                (basilisk_cpython::PyObjectRef::none(), value.clone())
+            };
+            // Call CallResult(ok=..., err=...)
+            let ok_key = basilisk_cpython::PyObjectRef::from_str("ok").unwrap();
+            let err_key = basilisk_cpython::PyObjectRef::from_str("err").unwrap();
+            let kwargs = basilisk_cpython::PyDict::new().unwrap();
+            let _ = kwargs.set_item(&ok_key, &ok_val);
+            let _ = kwargs.set_item(&err_key, &err_val);
+            let empty_args = basilisk_cpython::PyTuple::new(Vec::new()).unwrap();
+            if let Ok(instance) = cls.call(&empty_args.into_object(), Some(&kwargs.into_object())) {
+                return instance;
+            }
+        }
+    }
+    // Fallback: plain dict
     let dict = basilisk_cpython::PyDict::new().unwrap_or_else(|e| {
         ic_cdk::trap(&format!("Failed to create dict: {}", e));
     });

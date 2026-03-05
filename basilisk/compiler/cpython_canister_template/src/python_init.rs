@@ -702,15 +702,24 @@ class ic:
 @staticmethod
 def _ic_call_raw(canister_id, method, args_raw, cycles=0):
     call = _ServiceCall(canister_id, method)
-    call._raw_args = bytes(args_raw) if not isinstance(args_raw, bytes) else args_raw
+    raw = bytes(args_raw) if not isinstance(args_raw, bytes) else args_raw
+    call._raw_args = raw
+    call.args[2] = raw
     call.payment = int(cycles)
+    call.args[3] = int(cycles)
+    call._payment = int(cycles)
     return call
 
 @staticmethod
 def _ic_call_raw128(canister_id, method, args_raw, cycles=0):
     call = _ServiceCall(canister_id, method)
-    call._raw_args = bytes(args_raw) if not isinstance(args_raw, bytes) else args_raw
+    raw = bytes(args_raw) if not isinstance(args_raw, bytes) else args_raw
+    call._raw_args = raw
+    call.args[2] = raw
     call.payment = int(cycles)
+    call.args[3] = int(cycles)
+    call._payment = int(cycles)
+    call.name = "call_raw128"
     return call
 
 ic.call_raw = _ic_call_raw
@@ -719,8 +728,12 @@ ic.call_raw128 = _ic_call_raw128
 @staticmethod
 def _ic_notify_raw(canister_id, method, args_raw, cycles=0):
     call = _ServiceCall(canister_id, method)
-    call._raw_args = bytes(args_raw) if not isinstance(args_raw, bytes) else args_raw
+    raw = bytes(args_raw) if not isinstance(args_raw, bytes) else args_raw
+    call._raw_args = raw
+    call.args[2] = raw
     call.payment = int(cycles)
+    call.args[3] = int(cycles)
+    call._payment = int(cycles)
     return call
 
 ic.notify_raw = _ic_notify_raw
