@@ -940,7 +940,7 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
     for name, definition in _BUILTIN_BASILISK_TYPES.items():
         if name not in type_defs:
             type_defs[name] = definition
-            known_types.add(name)
+            known_types[name] = ""
 
     def get_candid_type(annotation) -> str:
         """Convert a Python type annotation to a Candid type string."""
