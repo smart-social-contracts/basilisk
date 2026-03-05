@@ -842,11 +842,22 @@ pub fn encode_python_to_candid(
 }
 
 /// Convert a Candid type string into a `candid::types::Type` for typed serialization.
-/// Returns None for types that cannot be represented (func, service, etc.).
+/// Returns None for types that cannot be represented (func, service, recursive, etc.).
 fn type_str_to_candid_type(
     type_str: &str,
     type_defs: &HashMap<String, String>,
 ) -> Option<candid::types::Type> {
+    type_str_to_candid_type_inner(type_str, type_defs, 0)
+}
+
+fn type_str_to_candid_type_inner(
+    type_str: &str,
+    type_defs: &HashMap<String, String>,
+    depth: usize,
+) -> Option<candid::types::Type> {
+    if depth > 16 {
+        return None; // Prevent infinite recursion on recursive types
+    }
     let resolved = resolve_type(type_str, type_defs);
     use candid::types::internal::{TypeInner, Field};
     let ty: candid::types::Type = match resolved {
@@ -870,11 +881,11 @@ fn type_str_to_candid_type(
         "empty" => TypeInner::Empty.into(),
         "reserved" => TypeInner::Reserved.into(),
         s if s.starts_with("opt ") => {
-            let inner = type_str_to_candid_type(&s[4..], type_defs)?;
+            let inner = type_str_to_candid_type_inner(&s[4..], type_defs, depth + 1)?;
             TypeInner::Opt(inner).into()
         }
         s if s.starts_with("vec ") => {
-            let inner = type_str_to_candid_type(&s[4..], type_defs)?;
+            let inner = type_str_to_candid_type_inner(&s[4..], type_defs, depth + 1)?;
             TypeInner::Vec(inner).into()
         }
         s => {
@@ -883,7 +894,7 @@ fn type_str_to_candid_type(
                 let mut candid_fields: Vec<Field> = fields.iter().map(|(name, ty)| {
                     Field {
                         id: std::rc::Rc::new(candid_name_to_label(name)),
-                        ty: type_str_to_candid_type(ty, type_defs)
+                        ty: type_str_to_candid_type_inner(ty, type_defs, depth + 1)
                             .unwrap_or_else(|| TypeInner::Reserved.into()),
                     }
                 }).collect();
@@ -894,7 +905,7 @@ fn type_str_to_candid_type(
                 let mut candid_fields: Vec<Field> = cases.iter().map(|(name, ty)| {
                     Field {
                         id: std::rc::Rc::new(candid_name_to_label(name)),
-                        ty: type_str_to_candid_type(ty, type_defs)
+                        ty: type_str_to_candid_type_inner(ty, type_defs, depth + 1)
                             .unwrap_or_else(|| TypeInner::Null.into()),
                     }
                 }).collect();
