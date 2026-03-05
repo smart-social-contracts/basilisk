@@ -65,7 +65,22 @@ def build_with_template(
     # and runs before the basilisk shim during canister_init. No need to prepend here.
 
     # 3. Extract method metadata from the Python source
-    methods, type_defs, lifecycle = extract_methods_from_python(python_source)
+    # For multi-file projects, the bundled python_source wraps imported modules
+    # as lazy-loaded string literals, so we need to extract methods from the raw
+    # individual .py files instead. Walk the python_source directory (populated
+    # by bundle_python_code) and concatenate all raw sources for extraction.
+    python_source_dir = paths.get("python_source", "")
+    if python_source_dir and os.path.isdir(python_source_dir):
+        raw_sources = []
+        for root, _dirs, files in os.walk(python_source_dir):
+            for fname in sorted(files):
+                if fname.endswith(".py"):
+                    with open(os.path.join(root, fname), "r") as f:
+                        raw_sources.append(f.read())
+        combined_raw = "\n".join(raw_sources)
+        methods, type_defs, lifecycle = extract_methods_from_python(combined_raw)
+    else:
+        methods, type_defs, lifecycle = extract_methods_from_python(python_source)
     if verbose:
         print(f"Extracted {len(methods)} canister methods from Python source")
         for m in methods:
