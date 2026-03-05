@@ -1,6 +1,6 @@
 //! CPython Canister Template
 //!
-//! Pre-compiled canister template. Contains all the
+//! Pre-compiled canister template that contains all the
 //! identical boilerplate code that every CPython-based basilisk canister needs:
 //! - Type conversion traits (CdkActTryIntoVmValue / CdkActTryFromVmValue)
 //! - Async result handler for cross-canister calls
