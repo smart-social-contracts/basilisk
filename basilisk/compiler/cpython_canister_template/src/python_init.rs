@@ -329,10 +329,30 @@ class Principal:
 _mod.Principal = Principal
 
 # === CallResult class ===
-class CallResult:
-    def __init__(self, ok=None, err=None):
-        self.Ok = ok
-        self.Err = err
+class CallResult(dict):
+    """CallResult wraps cross-canister call results.
+    Supports both dict-style (result['Ok']) and attribute-style (result.Ok) access.
+    Async yield returns a plain dict; this subclass makes both patterns work."""
+    def __init__(self, ok=None, err=None, **kwargs):
+        super().__init__(**kwargs)
+        if ok is not None:
+            self['Ok'] = ok
+        if err is not None:
+            self['Err'] = err
+    def __getattr__(self, name):
+        if name.startswith('_'):
+            raise AttributeError(name)
+        try:
+            return self[name]
+        except KeyError:
+            return None
+    def __setattr__(self, name, value):
+        self[name] = value
+    @staticmethod
+    def from_dict(d):
+        cr = CallResult()
+        cr.update(d)
+        return cr
 _mod.CallResult = CallResult
 
 # === StableBTreeMap ===

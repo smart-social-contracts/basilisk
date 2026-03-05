@@ -773,6 +773,33 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
                                 raw_funcs[alias_name] = (mode, param_anns, ret_node)
                                 known_types.add(alias_name)
 
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            # TypeAlias annotated form: BoolAlias: TypeAlias = Alias[bool]
+            alias_name = node.target.id
+            value = node.value
+            if isinstance(value, ast.Subscript) and isinstance(value.value, ast.Name):
+                if value.value.id == "Tuple":
+                    elements = _extract_subscript_elements(value.slice)
+                    raw_tuples[alias_name] = elements
+                    known_types.add(alias_name)
+                if value.value.id == "Alias":
+                    raw_tuples.pop(alias_name, None)
+                    raw_aliases[alias_name] = value.slice
+                    known_types.add(alias_name)
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
+                if value.func.id == "Func" and len(value.args) == 1:
+                    func_arg = value.args[0]
+                    if isinstance(func_arg, ast.Subscript) and isinstance(func_arg.value, ast.Name):
+                        mode = "query" if func_arg.value.id == "Query" else "update" if func_arg.value.id == "Update" else None
+                        if mode and isinstance(func_arg.slice, ast.Tuple) and len(func_arg.slice.elts) == 2:
+                            params_node = func_arg.slice.elts[0]
+                            ret_node = func_arg.slice.elts[1]
+                            param_anns = []
+                            if isinstance(params_node, ast.List):
+                                param_anns = params_node.elts
+                            raw_funcs[alias_name] = (mode, param_anns, ret_node)
+                            known_types.add(alias_name)
+
     # Pass 2: resolve all types into Candid definitions
     def resolve_annotation(annotation) -> str:
         """Convert a Python type annotation AST node to a Candid type string."""
