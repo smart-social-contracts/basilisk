@@ -208,6 +208,10 @@ class Principal:
         return f"Principal({self._text!r})"
     def __str__(self):
         return self._text
+    @property
+    def bytes(self):
+        # Return raw bytes of the principal text (used by threshold_ecdsa example)
+        return self._text.encode('utf-8') if isinstance(self._text, str) else self._text
 
 _mod.Principal = Principal
 
@@ -531,6 +535,15 @@ def _ic_call_raw128(canister_id, method, args_raw, cycles=0):
 
 ic.call_raw = _ic_call_raw
 ic.call_raw128 = _ic_call_raw128
+
+@staticmethod
+def _ic_notify_raw(canister_id, method, args_raw, cycles=0):
+    call = _ServiceCall(canister_id, method)
+    call._raw_args = bytes(args_raw) if not isinstance(args_raw, bytes) else args_raw
+    call.payment = int(cycles)
+    return call
+
+ic.notify_raw = _ic_notify_raw
 
 _mod.ic = ic
 

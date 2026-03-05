@@ -1574,8 +1574,24 @@ def _register_datetime():
             return f"{self.year:04d}-{self.month:02d}-{self.day:02d} {self.hour:02d}:{self.minute:02d}:{self.second:02d}.{self.microsecond:06d}"
         def isoformat(self, sep='T'):
             return f"{self.year:04d}-{self.month:02d}-{self.day:02d}{sep}{self.hour:02d}:{self.minute:02d}:{self.second:02d}"
+        def weekday(self):
+            # Zeller-like day-of-week (Mon=0 .. Sun=6)
+            y, m, d = self.year, self.month, self.day
+            if m < 3:
+                m += 12; y -= 1
+            return (d + (13*(m+1))//5 + y + y//4 - y//100 + y//400 + 6) % 7
+        def date(self):
+            return self
         def __repr__(self):
             return self.strftime("%Y-%m-%d %H:%M:%S.%f")
+        def __sub__(self, other):
+            if isinstance(other, datetime):
+                return timedelta(days=0)
+            return NotImplemented
+        def __add__(self, other):
+            if isinstance(other, timedelta):
+                return self
+            return NotImplemented
 
     m = type(_sys)("datetime")
     m.__file__ = "<frozen datetime>"
@@ -2408,6 +2424,54 @@ try:
 except (ImportError, AttributeError):
     _register_math()
 del _register_math
+
+
+# --- frozen stdlib: secrets module ---
+def _register_secrets():
+    import random as _rnd
+    def token_bytes(nbytes=32):
+        return bytes(_rnd.getrandbits(8) for _ in range(nbytes))
+    def token_hex(nbytes=32):
+        return token_bytes(nbytes).hex()
+    def token_urlsafe(nbytes=32):
+        import base64 as _b64
+        return _b64.b64encode(token_bytes(nbytes)).rstrip(b'=').decode('ascii')
+    m = type(_sys)("secrets")
+    m.__file__ = "<frozen secrets>"
+    m.token_bytes = token_bytes
+    m.token_hex = token_hex
+    m.token_urlsafe = token_urlsafe
+    _sys.modules["secrets"] = m
+
+try:
+    import secrets
+    secrets.token_bytes
+except (ImportError, AttributeError):
+    _register_secrets()
+del _register_secrets
+
+
+# --- frozen stdlib: __future__ module ---
+def _register_future():
+    m = type(_sys)("__future__")
+    m.__file__ = "<frozen __future__>"
+    m.division = True
+    m.absolute_import = True
+    m.print_function = True
+    m.unicode_literals = True
+    m.annotations = True
+    m.generator_stop = True
+    m.nested_scopes = True
+    m.generators = True
+    m.with_statement = True
+    m.barry_as_FLUFL = False
+    _sys.modules["__future__"] = m
+
+try:
+    from __future__ import division
+except ImportError:
+    _register_future()
+del _register_future
 
 
 # --- Install the universal fallback import wrapper ---
