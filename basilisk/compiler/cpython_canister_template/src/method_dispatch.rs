@@ -1358,7 +1358,7 @@ fn python_dict_to_record(
 
         let idl_val = python_to_idl_value_inner(&value, field_type, type_defs)?;
         idl_fields.push(candid::types::value::IDLField {
-            id: field_name_to_label(field_name),
+            id: candid_name_to_label(field_name),
             val: idl_val,
         });
     }
@@ -1462,7 +1462,7 @@ fn python_dict_to_variant(
     };
 
     let field = candid::types::value::IDLField {
-        id: field_name_to_label(&clean_key),
+        id: candid_name_to_label(&clean_key),
         val: idl_val,
     };
 
