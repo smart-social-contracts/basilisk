@@ -10,7 +10,7 @@ use slotmap::Key as _SlotMapKey;
 /// Create the _basilisk_ic Python module with all IC API bindings.
 pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyError> {
     // Method table for the _basilisk_ic module
-    static mut METHODS: [ffi::PyMethodDef; 42] = unsafe { core::mem::zeroed() };
+    static mut METHODS: [ffi::PyMethodDef; 43] = unsafe { core::mem::zeroed() };
 
     unsafe {
         let methods = &mut METHODS;
@@ -69,6 +69,7 @@ pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyEr
         add_method!("clear_timer", ic_clear_timer, ffi::METH_O);
         add_method!("call_raw", ic_call_raw, ffi::METH_VARARGS);
         add_method!("call_raw128", ic_call_raw128, ffi::METH_VARARGS);
+        add_method!("notify_raw", ic_notify_raw, ffi::METH_VARARGS);
 
         // Sentinel (null terminator)
         methods[i] = core::mem::zeroed();
@@ -891,4 +892,109 @@ unsafe extern "C" fn ic_call_raw128(
     _args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     ic_cdk::trap("call_raw128: cross-canister calls are not yet supported in CPython mode. This requires async/generator support (Tier 2).");
+}
+
+/// ic.notify_raw(canister_id, method, args_raw, cycles=0) -> NotifyResult
+/// Fire-and-forget notification — no response expected.
+/// Returns {"Ok": None} on success, {"Err": <RejectionCode>} on failure.
+unsafe extern "C" fn ic_notify_raw(
+    _self: *mut ffi::PyObject,
+    args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let args_tuple = match basilisk_cpython::PyTuple::from_object_unchecked(args) {
+        Some(t) => t,
+        None => { ic_cdk::trap("notify_raw: expected tuple args"); }
+    };
+    if args_tuple.len() < 3 {
+        ic_cdk::trap("notify_raw: expected at least 3 arguments (canister_id, method, args_raw)");
+    }
+
+    // Extract canister_id (Principal)
+    let canister_id_obj = args_tuple.get_item(0).unwrap_or_else(|| {
+        ic_cdk::trap("notify_raw: missing canister_id");
+    });
+    let canister_id_str = if let Ok(to_str) = canister_id_obj.get_attr("to_str") {
+        let empty_args = basilisk_cpython::PyTuple::empty().unwrap_or_else(|_| {
+            ic_cdk::trap("notify_raw: failed to create empty args");
+        });
+        let result = to_str.call(&empty_args.into_object(), None).unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("notify_raw: to_str failed: {}", e.to_rust_err_string()));
+        });
+        result.extract_str().unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("notify_raw: to_str not string: {}", e.to_rust_err_string()));
+        })
+    } else {
+        canister_id_obj.extract_str().unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("notify_raw: canister_id not string: {}", e.to_rust_err_string()));
+        })
+    };
+    let principal = candid::Principal::from_text(&canister_id_str).unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("notify_raw: invalid principal '{}': {}", canister_id_str, e));
+    });
+
+    // Extract method name
+    let method_obj = args_tuple.get_item(1).unwrap_or_else(|| {
+        ic_cdk::trap("notify_raw: missing method");
+    });
+    let method = method_obj.extract_str().unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("notify_raw: method not string: {}", e.to_rust_err_string()));
+    });
+
+    // Extract args_raw (bytes)
+    let args_raw_obj = args_tuple.get_item(2).unwrap_or_else(|| {
+        ic_cdk::trap("notify_raw: missing args_raw");
+    });
+    let args_raw = args_raw_obj.extract_bytes().unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("notify_raw: args_raw not bytes: {}", e.to_rust_err_string()));
+    });
+
+    // Extract cycles (optional, default 0)
+    let cycles: u128 = if args_tuple.len() > 3 {
+        if let Some(c) = args_tuple.get_item(3) {
+            c.extract_u64().unwrap_or(0) as u128
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    // Call ic_cdk notify_raw
+    let result = ic_cdk::api::call::notify_raw(principal, &method, &args_raw, cycles);
+
+    // Build result dict: {"Ok": None} or {"Err": <rejection_code_str>}
+    let dict = basilisk_cpython::PyDict::new().unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("notify_raw: failed to create dict: {}", e.to_rust_err_string()));
+    });
+
+    match result {
+        Ok(()) => {
+            dict.set_item_str("Ok", &PyObjectRef::none()).unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("notify_raw: set Ok failed: {}", e.to_rust_err_string()));
+            });
+        }
+        Err(reject_code) => {
+            let code_str = match reject_code {
+                ic_cdk::api::call::RejectionCode::NoError => "NoError",
+                ic_cdk::api::call::RejectionCode::SysFatal => "SysFatal",
+                ic_cdk::api::call::RejectionCode::SysTransient => "SysTransient",
+                ic_cdk::api::call::RejectionCode::DestinationInvalid => "DestinationInvalid",
+                ic_cdk::api::call::RejectionCode::CanisterReject => "CanisterReject",
+                ic_cdk::api::call::RejectionCode::CanisterError => "CanisterError",
+                _ => "Unknown",
+            };
+            // Return as variant dict: {"Err": {"SysFatal": None}} etc.
+            let inner_dict = basilisk_cpython::PyDict::new().unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("notify_raw: inner dict: {}", e.to_rust_err_string()));
+            });
+            inner_dict.set_item_str(code_str, &PyObjectRef::none()).unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("notify_raw: set code: {}", e.to_rust_err_string()));
+            });
+            dict.set_item_str("Err", &inner_dict.into_object()).unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("notify_raw: set Err failed: {}", e.to_rust_err_string()));
+            });
+        }
+    }
+
+    dict.into_object().into_ptr()
 }
