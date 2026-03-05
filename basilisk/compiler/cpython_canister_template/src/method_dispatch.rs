@@ -809,10 +809,14 @@ pub fn encode_python_to_candid(
     py_result: &basilisk_cpython::PyObjectRef,
     return_type: &str,
 ) -> Vec<u8> {
-    // For void (empty return type), python_to_idl_value_inner maps "" to IDLValue::Null.
-    // Candid subtyping rules allow sending (null) even when .did declares () → the
-    // extra value is silently ignored by the agent. This keeps Manual[void] + ic.reply(None)
-    // compatible with tests that expect a null response.
+    // For void (empty return type), encode zero Candid args.
+    // The .did declares () -> () so the agent expects no return values.
+    if return_type.is_empty() {
+        let idl_args = candid::IDLArgs::new(&[]);
+        return idl_args.to_bytes().unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("Failed to encode void Candid result: {}", e));
+        });
+    }
 
     let idl_value = python_to_idl_value(py_result, return_type).unwrap_or_else(|e| {
         ic_cdk::trap(&format!("Failed to convert Python result to Candid: {}", e));
@@ -1347,5 +1351,5 @@ fn python_dict_to_variant(
         val: idl_val,
     };
 
-    Ok(candid::IDLValue::Variant(candid::types::value::VariantValue(Box::new(field), case_idx as u64)))
+    Ok(candid::IDLValue::Variant(candid::types::value::VariantValue(Box::new(field), 0u64)))
 }
