@@ -490,7 +490,7 @@ fn decode_candid_args_to_python(
 }
 
 /// Convert a candid::IDLValue to a Python object (convenience wrapper without type info).
-fn idl_value_to_python(
+pub fn idl_value_to_python(
     value: &candid::IDLValue,
 ) -> Result<basilisk_cpython::PyObjectRef, String> {
     let type_defs = unsafe { TYPE_DEFS.as_ref() };

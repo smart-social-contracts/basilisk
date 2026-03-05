@@ -1580,6 +1580,29 @@ def _register_datetime():
             if m < 3:
                 m += 12; y -= 1
             return (d + (13*(m+1))//5 + y + y//4 - y//100 + y//400 + 5) % 7
+        def timestamp(self):
+            # Convert to POSIX timestamp (seconds since 1970-01-01 UTC)
+            # Days from year 1 to year y
+            y, m, d = self.year, self.month, self.day
+            # Days in each month (non-leap)
+            _mdays = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+            def _is_leap(yr):
+                return yr % 4 == 0 and (yr % 100 != 0 or yr % 400 == 0)
+            # Days from epoch (1970-01-01) to this date
+            days = 0
+            for yr in range(1970, y):
+                days += 366 if _is_leap(yr) else 365
+            for mo in range(1, m):
+                days += _mdays[mo]
+                if mo == 2 and _is_leap(y):
+                    days += 1
+            days += d - 1
+            return days * 86400 + self.hour * 3600 + self.minute * 60 + self.second + self.microsecond / 1e6
+        def utcoffset(self):
+            return None
+        @property
+        def tzinfo(self):
+            return None
         def date(self):
             return self
         def __repr__(self):
@@ -1604,6 +1627,143 @@ try:
 except ImportError:
     _register_datetime()
 del _register_datetime
+
+
+# --- frozen stdlib: itertools module ---
+def _register_itertools():
+    def permutations(iterable, r=None):
+        pool = tuple(iterable)
+        n = len(pool)
+        r = n if r is None else r
+        if r > n:
+            return
+        indices = list(range(n))
+        cycles = list(range(n, n - r, -1))
+        yield tuple(pool[i] for i in indices[:r])
+        while n:
+            found = False
+            for i in reversed(range(r)):
+                cycles[i] -= 1
+                if cycles[i] == 0:
+                    indices[i:] = indices[i+1:] + indices[i:i+1]
+                    cycles[i] = n - i
+                else:
+                    j = cycles[i]
+                    indices[i], indices[-j] = indices[-j], indices[i]
+                    yield tuple(pool[i] for i in indices[:r])
+                    found = True
+                    break
+            if not found:
+                return
+
+    def combinations(iterable, r):
+        pool = tuple(iterable)
+        n = len(pool)
+        if r > n:
+            return
+        indices = list(range(r))
+        yield tuple(pool[i] for i in indices)
+        while True:
+            found = False
+            for i in reversed(range(r)):
+                if indices[i] != i + n - r:
+                    found = True
+                    break
+            if not found:
+                return
+            indices[i] += 1
+            for j in range(i + 1, r):
+                indices[j] = indices[j - 1] + 1
+            yield tuple(pool[i] for i in indices)
+
+    def product(*iterables, repeat=1):
+        pools = [tuple(p) for p in iterables] * repeat
+        result = [[]]
+        for pool in pools:
+            result = [x + [y] for x in result for y in pool]
+        for prod in result:
+            yield tuple(prod)
+
+    def chain(*iterables):
+        for it in iterables:
+            yield from it
+
+    def chain_from_iterable(iterables):
+        for it in iterables:
+            yield from it
+
+    def islice(iterable, *args):
+        s = slice(*args)
+        start = s.start or 0
+        stop = s.stop
+        step = s.step or 1
+        i = 0
+        nexti = start
+        for element in iterable:
+            if i == nexti:
+                yield element
+                nexti += step
+            if stop is not None and nexti >= stop:
+                break
+            i += 1
+
+    def count(start=0, step=1):
+        n = start
+        while True:
+            yield n
+            n += step
+
+    def cycle(iterable):
+        saved = []
+        for element in iterable:
+            yield element
+            saved.append(element)
+        while saved:
+            for element in saved:
+                yield element
+
+    def repeat(obj, times=None):
+        if times is None:
+            while True:
+                yield obj
+        else:
+            for _ in range(times):
+                yield obj
+
+    def accumulate(iterable, func=None, initial=None):
+        it = iter(iterable)
+        total = initial
+        if initial is None:
+            try:
+                total = next(it)
+            except StopIteration:
+                return
+        yield total
+        for element in it:
+            total = func(total, element) if func else total + element
+            yield total
+
+    m = type(_sys)("itertools")
+    m.__file__ = "<frozen itertools>"
+    m.permutations = permutations
+    m.combinations = combinations
+    m.product = product
+    m.chain = chain
+    m.chain.from_iterable = chain_from_iterable
+    m.islice = islice
+    m.count = count
+    m.cycle = cycle
+    m.repeat = repeat
+    m.accumulate = accumulate
+    _sys.modules["itertools"] = m
+
+try:
+    import itertools
+    if not hasattr(itertools, 'permutations'):
+        raise ImportError
+except ImportError:
+    _register_itertools()
+del _register_itertools
 
 
 # --- frozen stdlib: typing module ---

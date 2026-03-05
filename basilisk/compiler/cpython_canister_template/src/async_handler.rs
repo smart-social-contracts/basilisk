@@ -144,17 +144,39 @@ async fn async_result_handler_call_raw128(
     .await
 }
 
-fn create_call_result_instance<T: std::fmt::Debug>(
-    call_result: ic_cdk::api::call::CallResult<T>,
+fn create_call_result_instance(
+    call_result: ic_cdk::api::call::CallResult<Vec<u8>>,
 ) -> Result<basilisk_cpython::PyObjectRef, basilisk_cpython::PyError> {
     let interpreter = unsafe { crate::INTERPRETER_OPTION.as_mut() }.ok_or_else(|| {
         basilisk_cpython::PyError::new("SystemError", "missing python interpreter")
     })?;
     match call_result {
-        Ok(ok) => {
-            // For call_raw, ok is Vec<u8>
-            let ok_str = format!("{:?}", ok);
-            let ok_value = basilisk_cpython::PyObjectRef::from_str(&ok_str)?;
+        Ok(raw_bytes) => {
+            // Decode Candid response bytes into IDLValues and convert to Python
+            let ok_value = match candid::IDLArgs::from_bytes(&raw_bytes) {
+                Ok(idl_args) => {
+                    if idl_args.args.is_empty() {
+                        basilisk_cpython::PyObjectRef::none()
+                    } else if idl_args.args.len() == 1 {
+                        crate::method_dispatch::idl_value_to_python(&idl_args.args[0])
+                            .map_err(|e| basilisk_cpython::PyError::new("ValueError", &e))?
+                    } else {
+                        // Multiple return values: wrap in a Python tuple
+                        let mut py_vals = Vec::new();
+                        for val in &idl_args.args {
+                            py_vals.push(
+                                crate::method_dispatch::idl_value_to_python(val)
+                                    .map_err(|e| basilisk_cpython::PyError::new("ValueError", &e))?,
+                            );
+                        }
+                        basilisk_cpython::PyTuple::new(py_vals)?.into_object()
+                    }
+                }
+                Err(_) => {
+                    // Fallback: pass raw bytes if decoding fails
+                    basilisk_cpython::PyObjectRef::from_bytes(&raw_bytes)?
+                }
+            };
             let code = "from basilisk import CallResult; CallResult";
             let call_result_class = interpreter.eval_expression(code)?;
             let none = basilisk_cpython::PyObjectRef::none();

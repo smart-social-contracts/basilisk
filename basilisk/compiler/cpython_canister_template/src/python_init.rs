@@ -532,17 +532,47 @@ def Func(sig):
     return _FuncType(sig)
 
 class _ServiceCall:
-    """Represents a pending cross-canister call to be yielded from a generator."""
-    def __init__(self, canister_principal, method_name, args=None, payment=0):
-        self.canister_principal = canister_principal
-        self.method_name = method_name
-        self.args = args or ()
-        self.payment = payment
+    """Represents a pending cross-canister call to be yielded from a generator.
+    Presents itself as a call_raw descriptor for the Rust async handler."""
+    def __init__(self, canister_principal, method_name, call_args=None, payment=0):
+        # Encode call args to Candid bytes
+        if call_args:
+            # Try to encode args via ic.candid_encode — format as Candid text
+            parts = []
+            for a in call_args:
+                if isinstance(a, str):
+                    parts.append(f'"{a}"')
+                elif isinstance(a, bool):
+                    parts.append('true' if a else 'false')
+                elif isinstance(a, int):
+                    parts.append(str(a))
+                elif isinstance(a, float):
+                    parts.append(str(a))
+                elif isinstance(a, bytes):
+                    parts.append(f'blob "{a.hex()}"')
+                else:
+                    parts.append(str(a))
+            candid_text = f"({', '.join(parts)})"
+            try:
+                raw_args = _basilisk_ic.candid_encode(candid_text)
+            except Exception:
+                # Fallback: empty args
+                raw_args = b'DIDL\x00\x00'
+        else:
+            raw_args = b'DIDL\x00\x00'
+        # The async handler expects .name and .args matching call_raw protocol
+        principal_text = str(canister_principal) if not isinstance(canister_principal, str) else canister_principal
+        self.name = "call_raw"
+        self.args = [principal_text, method_name, raw_args, payment]
+        self._payment = payment
     def with_cycles(self, cycles):
-        self.payment = cycles
+        self.args[3] = cycles
+        self._payment = cycles
         return self
     def with_cycles128(self, cycles):
-        self.payment = cycles
+        self.name = "call_raw128"
+        self.args[3] = cycles
+        self._payment = cycles
         return self
     def notify(self):
         return {"Ok": None}
