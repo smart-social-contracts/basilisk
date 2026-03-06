@@ -728,6 +728,8 @@ fn idl_value_to_python_typed(
                         candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => {
                             if let Some((name, typ)) = hash_to_field.get(id) {
                                 (add_keyword_underscore(name), Some(typ.as_str()))
+                            } else if let Some(name) = reverse_field_hash(*id, type_defs) {
+                                (add_keyword_underscore(&name), None)
                             } else {
                                 (format!("_{}", id), None)
                             }
@@ -775,6 +777,8 @@ fn idl_value_to_python_typed(
                 candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => {
                     if let Some((name, typ)) = hash_to_case.get(id) {
                         (add_keyword_underscore(name), Some(typ.clone()))
+                    } else if let Some(name) = reverse_field_hash(*id, type_defs) {
+                        (add_keyword_underscore(&name), None)
                     } else {
                         (format!("_{}", id), None)
                     }
@@ -1320,6 +1324,68 @@ fn candid_field_hash(name: &str) -> u32 {
         hash = hash.wrapping_mul(223).wrapping_add(b as u32);
     }
     hash
+}
+
+/// Well-known IC management canister and common field/variant names.
+/// These cover create_canister, canister_status, install_code, http_request, etc.
+const WELL_KNOWN_FIELD_NAMES: &[&str] = &[
+    // Management canister
+    "canister_id", "controllers", "compute_allocation", "memory_allocation",
+    "freezing_threshold", "settings", "mode", "wasm_module", "arg", "amount",
+    "status", "module_hash", "memory_size", "cycles", "idle_cycles_burned_per_day",
+    "sender_canister_version", "reserved_cycles", "reserved_cycles_limit",
+    "install", "reinstall", "upgrade", "running", "stopping", "stopped",
+    "query_stats", "num_calls_total", "num_instructions_total",
+    "request_payload_bytes_total", "response_payload_bytes_total",
+    // HTTP outcalls
+    "url", "method", "headers", "body", "max_response_bytes", "transform",
+    "name", "value", "function", "context",
+    // Threshold ECDSA / Schnorr
+    "public_key", "chain_code", "signature", "key_id", "curve",
+    "derivation_path", "message_hash", "message",
+    "secp256k1", "ed25519",
+    // Bitcoin
+    "network", "address", "min_confirmations", "utxos", "outpoint",
+    "txid", "vout", "height", "block_hash", "tip_block_hash", "tip_height",
+    "next_page", "satoshi", "mainnet", "testnet", "regtest",
+    // Ledger
+    "memo", "from", "to", "fee", "timestamp", "created_at_time",
+    "e8s", "amount_e8s", "block_index",
+    // Common
+    "Ok", "Err", "err", "ok", "result", "data", "error", "code", "description",
+    "id", "key", "token", "principal", "caller", "time", "source", "target",
+];
+
+/// Try to reverse a Candid field hash to its original name.
+/// First checks TYPE_DEFS field names, then falls back to well-known names.
+fn reverse_field_hash(hash: u32, type_defs: &HashMap<String, String>) -> Option<String> {
+    // Check all field names from TYPE_DEFS
+    for (_name, def) in type_defs.iter() {
+        let resolved = def.trim();
+        // Check record fields
+        if let Some(inner) = strip_compound_wrapper(resolved, "record") {
+            for (field_name, _) in parse_fields(inner) {
+                if candid_field_hash(&field_name) == hash {
+                    return Some(field_name);
+                }
+            }
+        }
+        // Check variant cases
+        if let Some(inner) = strip_compound_wrapper(resolved, "variant") {
+            for (case_name, _) in parse_fields(inner) {
+                if candid_field_hash(&case_name) == hash {
+                    return Some(case_name);
+                }
+            }
+        }
+    }
+    // Check well-known field names
+    for &name in WELL_KNOWN_FIELD_NAMES {
+        if candid_field_hash(name) == hash {
+            return Some(name.to_string());
+        }
+    }
+    None
 }
 
 // ─── Python → Candid conversion ─────────────────────────────────────────────
