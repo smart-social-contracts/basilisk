@@ -49,6 +49,27 @@ pub fn cpython_full_init(python_code: &str) {
             panic!("Failed to run basilisk shim: {}", e.to_rust_err_string())
         });
 
+    // Now that Service is defined, fix up management_canister / Ledger stubs
+    // that were registered by the frozen preamble before Service existed.
+    interpreter
+        .run_code_string(
+            "import sys as _sys\n\
+             _bmod = _sys.modules.get('basilisk')\n\
+             if _bmod and hasattr(_bmod, 'Service'):\n\
+             \x20\x20\x20\x20_S = _bmod.Service\n\
+             \x20\x20\x20\x20_P = getattr(_bmod, 'Principal', None)\n\
+             \x20\x20\x20\x20_mgmt = _sys.modules.get('basilisk.canisters.management')\n\
+             \x20\x20\x20\x20if _mgmt and _P:\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20_mgmt.management_canister = _S(_P.from_str('aaaaa-aa'))\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20_mgmt.ManagementCanister = _S\n\
+             \x20\x20\x20\x20_ledger = _sys.modules.get('basilisk.canisters.ledger')\n\
+             \x20\x20\x20\x20if _ledger:\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20_ledger.Ledger = _S\n",
+        )
+        .unwrap_or_else(|e| {
+            panic!("Failed to fix up service stubs: {}", e.to_rust_err_string())
+        });
+
     // Cache the Principal class for Rust→Python conversions
     let principal_class = interpreter
         .eval_expression("Principal")
