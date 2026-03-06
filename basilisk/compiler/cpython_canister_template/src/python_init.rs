@@ -671,7 +671,7 @@ def match(value, cases):
     if isinstance(value, CallResult):
         if value.Err is not None and "Err" in cases:
             return cases["Err"](value.Err)
-        if value.Ok is not None and "Ok" in cases:
+        if "Ok" in cases:
             return cases["Ok"](value.Ok)
     return None
 

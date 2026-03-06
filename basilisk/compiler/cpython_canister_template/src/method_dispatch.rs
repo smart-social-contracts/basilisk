@@ -1491,14 +1491,11 @@ fn python_to_idl_value_inner(
             }
         }
         other if other.starts_with("service ") => {
-            // Service type: extract principal via to_str(), _principal attr, canister_id attr, or plain string
-            let text = if let Ok(to_str) = obj.get_attr("to_str") {
-                let empty_args = basilisk_cpython::PyTuple::empty()
-                    .map_err(|e| e.to_rust_err_string())?;
-                let result = to_str.call(&empty_args.into_object(), None)
-                    .map_err(|e| e.to_rust_err_string())?;
-                result.extract_str().map_err(|e| e.to_rust_err_string())?
-            } else if let Ok(principal_attr) = obj.get_attr("_principal") {
+            // Service type: extract principal text.
+            // Order matters: Service.__getattr__ intercepts non-underscore names (returns
+            // _ServiceMethodProxy), so we must check _principal/canister_id BEFORE to_str.
+            let text = if let Ok(principal_attr) = obj.get_attr("_principal") {
+                // Template Service class stores principal as self._principal
                 let to_str = principal_attr.get_attr("to_str")
                     .map_err(|e| e.to_rust_err_string())?;
                 let empty_args = basilisk_cpython::PyTuple::empty()
@@ -1507,7 +1504,7 @@ fn python_to_idl_value_inner(
                     .map_err(|e| e.to_rust_err_string())?;
                 result.extract_str().map_err(|e| e.to_rust_err_string())?
             } else if let Ok(canister_id_attr) = obj.get_attr("canister_id") {
-                // Preamble Service class stores principal as self.canister_id
+                // Preamble fallback Service class stores principal as self.canister_id
                 let to_str = canister_id_attr.get_attr("to_str")
                     .map_err(|e| format!("service.canister_id has no to_str: {}", e.to_rust_err_string()))?;
                 let empty_args = basilisk_cpython::PyTuple::empty()
@@ -1516,10 +1513,18 @@ fn python_to_idl_value_inner(
                     .map_err(|e| e.to_rust_err_string())?;
                 result.extract_str().map_err(|e| e.to_rust_err_string())?
             } else {
-                // Fallback: try as plain string (principal text)
-                obj.extract_str().map_err(|e| {
-                    format!("service: expected Principal object or string, got: {}", e.to_rust_err_string())
-                })?
+                // Fallback: raw Principal (has to_str) or plain string
+                if let Ok(to_str) = obj.get_attr("to_str") {
+                    let empty_args = basilisk_cpython::PyTuple::empty()
+                        .map_err(|e| e.to_rust_err_string())?;
+                    let result = to_str.call(&empty_args.into_object(), None)
+                        .map_err(|e| e.to_rust_err_string())?;
+                    result.extract_str().map_err(|e| e.to_rust_err_string())?
+                } else {
+                    obj.extract_str().map_err(|e| {
+                        format!("service: expected Service/Principal or string, got: {}", e.to_rust_err_string())
+                    })?
+                }
             };
             let p = candid::Principal::from_text(&text)
                 .map_err(|e| format!("service principal: {}", e))?;
