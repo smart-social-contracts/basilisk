@@ -95,8 +95,14 @@ def build_with_template(
                 src_root = candidate
 
         # Extract from full src/ tree (types + methods with correct type resolution)
-        all_sources = []
+        # Put entry dir sources FIRST so entry dir methods appear first in the AST
+        # and win deduplication (e.g. heartbeat_async vs heartbeat_sync both have
+        # get_initialized with different return types)
+        norm_entry_dir = os.path.normpath(user_src_dir)
+        all_sources = list(entry_dir_sources)  # entry dir first
         for root, _dirs, files in os.walk(src_root):
+            if os.path.normpath(root).startswith(norm_entry_dir):
+                continue  # already included from entry dir
             for fname in sorted(files):
                 if fname.endswith(".py"):
                     with open(os.path.join(root, fname), "r") as f:
