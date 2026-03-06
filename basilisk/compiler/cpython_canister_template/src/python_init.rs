@@ -614,7 +614,7 @@ class _ServiceCall:
         self._payment = cycles
         return self
     def notify(self):
-        return {"Ok": None}
+        return _basilisk_ic.notify_service_call(self)
 
 class _ServiceMethodProxy:
     """Proxy for a service method that creates _ServiceCall descriptors."""

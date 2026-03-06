@@ -424,7 +424,7 @@ async fn perform_service_call(
 /// Encode the args from a _ServiceCall to Candid bytes.
 /// If _raw_args is present (from ic.call_raw), use those bytes directly.
 /// Otherwise, args is a Python tuple — encode generically.
-fn encode_service_call_args(service_call: &basilisk_cpython::PyObjectRef) -> Vec<u8> {
+pub fn encode_service_call_args(service_call: &basilisk_cpython::PyObjectRef) -> Vec<u8> {
     // Check for pre-encoded raw args (from ic.call_raw / ic.call_raw128)
     if let Ok(raw_args) = service_call.get_attr("_raw_args") {
         if let Ok(bytes) = raw_args.extract_bytes() {

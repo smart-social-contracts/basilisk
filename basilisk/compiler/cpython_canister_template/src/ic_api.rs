@@ -70,6 +70,7 @@ pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyEr
         add_method!("call_raw", ic_call_raw, ffi::METH_VARARGS);
         add_method!("call_raw128", ic_call_raw128, ffi::METH_VARARGS);
         add_method!("notify_raw", ic_notify_raw, ffi::METH_VARARGS);
+        add_method!("notify_service_call", ic_notify_service_call, ffi::METH_O);
 
         // Sentinel (null terminator)
         methods[i] = core::mem::zeroed();
@@ -992,6 +993,82 @@ unsafe extern "C" fn ic_notify_raw(
             });
             dict.set_item_str("Err", &inner_dict.into_object()).unwrap_or_else(|e| {
                 ic_cdk::trap(&format!("notify_raw: set Err failed: {}", e.to_rust_err_string()));
+            });
+        }
+    }
+
+    dict.into_object().into_ptr()
+}
+
+/// _basilisk_ic.notify_service_call(service_call) -> NotifyResult dict
+/// Takes a _ServiceCall object, encodes its args, and sends a one-way notification.
+unsafe extern "C" fn ic_notify_service_call(
+    _self: *mut ffi::PyObject,
+    arg: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let service_call = basilisk_cpython::PyObjectRef::from_ptr_unchecked(arg);
+
+    // Extract principal text
+    let py_principal = service_call.get_attr("canister_principal").unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("notify_service_call: missing canister_principal: {}", e.to_rust_err_string()));
+    });
+    let principal_text = py_principal
+        .get_attr("_text")
+        .and_then(|t| t.extract_str())
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("notify_service_call: cannot extract principal text: {}", e.to_rust_err_string()));
+        });
+    let principal = candid::Principal::from_text(&principal_text).unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("notify_service_call: invalid principal '{}': {}", principal_text, e));
+    });
+
+    // Extract method name
+    let method_name = service_call.get_attr("method_name")
+        .and_then(|m| m.extract_str())
+        .unwrap_or_else(|e| {
+            ic_cdk::trap(&format!("notify_service_call: missing method_name: {}", e.to_rust_err_string()));
+        });
+
+    // Extract payment (default 0)
+    let payment = service_call.get_attr("payment")
+        .and_then(|p| p.extract_u64())
+        .unwrap_or(0u64) as u128;
+
+    // Encode args using the same logic as method_dispatch::encode_service_call_args
+    let args_raw = crate::method_dispatch::encode_service_call_args(&service_call);
+
+    // Send notification
+    let result = ic_cdk::api::call::notify_raw(principal, &method_name, &args_raw, payment);
+
+    // Build result dict
+    let dict = basilisk_cpython::PyDict::new().unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("notify_service_call: dict: {}", e.to_rust_err_string()));
+    });
+
+    match result {
+        Ok(()) => {
+            dict.set_item_str("Ok", &PyObjectRef::none()).unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("notify_service_call: set Ok: {}", e.to_rust_err_string()));
+            });
+        }
+        Err(reject_code) => {
+            let code_str = match reject_code {
+                ic_cdk::api::call::RejectionCode::NoError => "NoError",
+                ic_cdk::api::call::RejectionCode::SysFatal => "SysFatal",
+                ic_cdk::api::call::RejectionCode::SysTransient => "SysTransient",
+                ic_cdk::api::call::RejectionCode::DestinationInvalid => "DestinationInvalid",
+                ic_cdk::api::call::RejectionCode::CanisterReject => "CanisterReject",
+                ic_cdk::api::call::RejectionCode::CanisterError => "CanisterError",
+                _ => "Unknown",
+            };
+            let inner_dict = basilisk_cpython::PyDict::new().unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("notify_service_call: inner dict: {}", e.to_rust_err_string()));
+            });
+            inner_dict.set_item_str(code_str, &PyObjectRef::none()).unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("notify_service_call: set code: {}", e.to_rust_err_string()));
+            });
+            dict.set_item_str("Err", &inner_dict.into_object()).unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("notify_service_call: set Err: {}", e.to_rust_err_string()));
             });
         }
     }
