@@ -10,7 +10,7 @@ use slotmap::Key as _SlotMapKey;
 /// Create the _basilisk_ic Python module with all IC API bindings.
 pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyError> {
     // Method table for the _basilisk_ic module
-    static mut METHODS: [ffi::PyMethodDef; 43] = unsafe { core::mem::zeroed() };
+    static mut METHODS: [ffi::PyMethodDef; 44] = unsafe { core::mem::zeroed() };
 
     unsafe {
         let methods = &mut METHODS;
