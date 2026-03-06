@@ -245,20 +245,38 @@ def _register_management_canister_stubs():
     _mgmt.__package__ = 'basilisk.canisters.management'
     for _n in _type_names:
         setattr(_mgmt, _n, dict)
-    # management_canister singleton (Service stub)
-    class _MgmtService:
-        def __init__(self, principal):
-            self.canister_id = principal
-        def __getattr__(self, name):
-            async def _stub(*a, **kw):
-                raise RuntimeError(f"management_canister.{name}() not available in CPython template")
-            return _stub
+    # management_canister singleton — use real Service class so methods
+    # return _ServiceMethodProxy → _ServiceCall with .with_cycles() etc.
+    _ServiceCls = getattr(_bmod, 'Service', None)
     _P = getattr(_bmod, 'Principal', None)
-    if _P:
+    if _ServiceCls and _P:
+        _mgmt.management_canister = _ServiceCls(_P.from_str('aaaaa-aa'))
+        _mgmt.ManagementCanister = _ServiceCls
+    elif _P:
+        # Fallback if Service not yet available
+        class _MgmtService:
+            def __init__(self, principal):
+                self._principal = principal
+            def __getattr__(self, name):
+                if name.startswith('_'):
+                    raise AttributeError(name)
+                async def _stub(*a, **kw):
+                    raise RuntimeError(f"management_canister.{name}() not available in CPython template")
+                return _stub
         _mgmt.management_canister = _MgmtService(_P.from_str('aaaaa-aa'))
         _mgmt.ManagementCanister = _MgmtService
     else:
+        class _MgmtService:
+            def __init__(self, principal):
+                self._principal = principal
+            def __getattr__(self, name):
+                if name.startswith('_'):
+                    raise AttributeError(name)
+                async def _stub(*a, **kw):
+                    raise RuntimeError(f"management_canister.{name}() not available in CPython template")
+                return _stub
         _mgmt.management_canister = _MgmtService('aaaaa-aa')
+        _mgmt.ManagementCanister = _MgmtService
     _canisters.management = _mgmt
     if not hasattr(_bmod, 'canisters'):
         _bmod.canisters = _canisters
@@ -294,15 +312,21 @@ def _register_ledger_canister_stubs():
     _ledger_mod.__package__ = 'basilisk.canisters.ledger'
     for _n in _type_names:
         setattr(_ledger_mod, _n, dict)
-    # Ledger service stub
-    class _LedgerService:
-        def __init__(self, principal):
-            self.canister_id = principal
-        def __getattr__(self, name):
-            async def _stub(*a, **kw):
-                raise RuntimeError(f"Ledger.{name}() not available in CPython template")
-            return _stub
-    _ledger_mod.Ledger = _LedgerService
+    # Ledger service — use real Service class so methods work properly
+    _ServiceCls = getattr(_bmod, 'Service', None)
+    if _ServiceCls:
+        _ledger_mod.Ledger = _ServiceCls
+    else:
+        class _LedgerService:
+            def __init__(self, principal):
+                self._principal = principal
+            def __getattr__(self, name):
+                if name.startswith('_'):
+                    raise AttributeError(name)
+                async def _stub(*a, **kw):
+                    raise RuntimeError(f"Ledger.{name}() not available in CPython template")
+                return _stub
+        _ledger_mod.Ledger = _LedgerService
     # Ensure basilisk.canisters exists
     if 'basilisk.canisters' not in _sys.modules:
         _canisters = _M('basilisk.canisters')
