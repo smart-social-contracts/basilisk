@@ -32,7 +32,6 @@ class State(TypedDict):
 
 
 state: State = {"created_canister_id": Principal.from_str("aaaaa-aa")}
-_debug_hex = ""
 
 
 @update
@@ -59,8 +58,7 @@ def execute_create_canister() -> Async[ExecuteCreateCanisterResult]:
 
 @update
 def execute_update_settings(canister_id: Principal) -> Async[DefaultResult]:
-    global _debug_hex
-    call = management_canister.update_settings(
+    call_result: CallResult[void] = yield management_canister.update_settings(
         {
             "canister_id": canister_id,
             "settings": {
@@ -71,8 +69,6 @@ def execute_update_settings(canister_id: Principal) -> Async[DefaultResult]:
             },
         }
     )
-    _debug_hex = call._raw_args.hex() if hasattr(call, '_raw_args') else 'no_raw'
-    call_result: CallResult[void] = yield call
 
     return match(
         call_result, {"Ok": lambda _: {"Ok": True}, "Err": lambda err: {"Err": err}}
@@ -223,6 +219,3 @@ def provisional_top_up_canister(
 def get_created_canister_id() -> Principal:
     return state["created_canister_id"]
 
-@query
-def get_debug_hex() -> str:
-    return _debug_hex
