@@ -946,8 +946,19 @@ fn type_str_to_candid_type_inner(
                 }).collect();
                 candid_fields.sort_by(|a, b| a.id.get_id().cmp(&b.id.get_id()));
                 TypeInner::Variant(candid_fields).into()
-            } else if s.starts_with("func ") || s.starts_with("service ") {
-                return None; // Cannot represent func/service types easily
+            } else if let Some(inner) = strip_compound_wrapper(s, "service") {
+                // Parse service { method_name : sig; ... }
+                let method_strs = parse_fields(inner);
+                let mut methods: Vec<(String, candid::types::Type)> = Vec::new();
+                for (name, sig) in &method_strs {
+                    if let Some(func_ty) = parse_func_signature(sig, type_defs, depth + 1) {
+                        methods.push((name.clone(), func_ty));
+                    }
+                }
+                TypeInner::Service(methods).into()
+            } else if s.starts_with("func ") {
+                let sig = &s[5..]; // strip "func "
+                return parse_func_signature(sig, type_defs, depth + 1);
             } else {
                 return None; // Unknown type
             }
@@ -1028,6 +1039,103 @@ fn parse_fields(inner: &str) -> Vec<(String, String)> {
             }
         })
         .collect()
+}
+
+/// Find the position of the closing ')' that matches the '(' at `open_pos`.
+fn find_matching_paren(s: &str, open_pos: usize) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut depth = 0i32;
+    for i in open_pos..bytes.len() {
+        match bytes[i] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Parse a comma-separated list of Candid type strings into a Vec<Type>.
+fn parse_type_list(
+    s: &str,
+    type_defs: &HashMap<String, String>,
+    depth: usize,
+) -> Vec<candid::types::Type> {
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let mut types = Vec::new();
+    let mut current = String::new();
+    let mut paren_depth = 0i32;
+    let mut brace_depth = 0i32;
+    for ch in trimmed.chars() {
+        match ch {
+            '(' => { paren_depth += 1; current.push(ch); }
+            ')' => { paren_depth -= 1; current.push(ch); }
+            '{' => { brace_depth += 1; current.push(ch); }
+            '}' => { brace_depth -= 1; current.push(ch); }
+            ',' if paren_depth == 0 && brace_depth == 0 => {
+                let t = current.trim().to_string();
+                if !t.is_empty() {
+                    if let Some(ty) = type_str_to_candid_type_inner(&t, type_defs, depth + 1) {
+                        types.push(ty);
+                    }
+                }
+                current.clear();
+            }
+            _ => { current.push(ch); }
+        }
+    }
+    let t = current.trim().to_string();
+    if !t.is_empty() {
+        if let Some(ty) = type_str_to_candid_type_inner(&t, type_defs, depth + 1) {
+            types.push(ty);
+        }
+    }
+    types
+}
+
+/// Parse a Candid function signature string like `(text, nat64) -> (bool) query`
+/// into a `candid::types::Type` (TypeInner::Func).
+fn parse_func_signature(
+    sig: &str,
+    type_defs: &HashMap<String, String>,
+    depth: usize,
+) -> Option<candid::types::Type> {
+    use candid::types::internal::TypeInner;
+    use candid::types::{Function, FuncMode};
+
+    let sig = sig.trim();
+    let args_start = sig.find('(')?;
+    let args_end = find_matching_paren(sig, args_start)?;
+    let args_str = &sig[args_start + 1..args_end];
+
+    let rest = sig[args_end + 1..].trim();
+    let rest = rest.strip_prefix("->")?;
+    let rest = rest.trim();
+
+    let rets_start = rest.find('(')?;
+    let rets_end = find_matching_paren(rest, rets_start)?;
+    let rets_str = &rest[rets_start + 1..rets_end];
+
+    let mode_str = rest[rets_end + 1..].trim();
+    let modes = match mode_str {
+        "query" => vec![FuncMode::Query],
+        "composite_query" => vec![FuncMode::CompositeQuery],
+        "oneway" => vec![FuncMode::Oneway],
+        _ => vec![],
+    };
+
+    let args = parse_type_list(args_str, type_defs, depth);
+    let rets = parse_type_list(rets_str, type_defs, depth);
+
+    Some(TypeInner::Func(Function { modes, args, rets }).into())
 }
 
 /// Strip the outer `record { ... }` or `variant { ... }` wrapper and return the inner content.
