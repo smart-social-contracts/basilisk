@@ -1342,7 +1342,13 @@ fn python_to_idl_value_inner(
     // Check for variant { ... }
     if let Some(inner) = strip_compound_wrapper(resolved, "variant") {
         let cases = parse_fields(inner);
-        return python_dict_to_variant(obj, &cases, type_defs);
+        let result = python_dict_to_variant(obj, &cases, type_defs);
+        if result.is_err() {
+            let repr = obj.str_repr().unwrap_or_else(|_| "<repr failed>".to_string());
+            return Err(format!("{} [candid_type='{}', resolved='{}', repr='{}']",
+                result.unwrap_err(), candid_type, resolved, repr));
+        }
+        return result;
     }
 
     // Primitive and compound types
