@@ -662,6 +662,10 @@ def _to_candid_text(v, type_hint=None):
     If type_hint is provided, uses it for correct type annotations."""
     if v is None:
         return 'null'
+    # Auto-wrap with opt when type hint says opt but value is concrete
+    if type_hint and type_hint.strip().startswith('opt ') and not isinstance(v, _Opt):
+        inner_hint = type_hint.strip()[4:].strip()
+        return f'opt {_to_candid_text(v, inner_hint)}'
     if isinstance(v, bool):
         return 'true' if v else 'false'
     if isinstance(v, int):
@@ -695,6 +699,11 @@ def _to_candid_text(v, type_hint=None):
         fields = [f'{k} = {_to_candid_text(val, ft.get(k))}' for k, val in v.items()]
         return f'record {{ {"; ".join(fields)} }}'
     if isinstance(v, (list, tuple)):
+        # Handle func type: (Principal, method_name_str)
+        if type_hint and type_hint.strip() == 'func' and len(v) == 2 and isinstance(v[1], str):
+            p = v[0]
+            ptxt = p.to_str() if isinstance(p, Principal) else str(p)
+            return f'func "{ptxt}".{v[1]}'
         elem_hint = type_hint[3:].strip() if type_hint and type_hint.strip().startswith('vec') else None
         items = [_to_candid_text(item, elem_hint) for item in v]
         return f'vec {{ {"; ".join(items)} }}'
