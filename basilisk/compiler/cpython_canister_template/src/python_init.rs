@@ -381,6 +381,20 @@ class Principal:
         self._ensure_bytes()
         return self._bytes.hex().upper()
 
+    def to_account_id(self, subaccount=None):
+        self._ensure_bytes()
+        if subaccount is None:
+            subaccount = b'\x00' * 32
+        domain = b'\x0aaccount-id'
+        try:
+            import hashlib
+            h = hashlib.sha224(domain + self._bytes + subaccount).digest()
+        except ImportError:
+            import _basilisk_hashlib_sha224
+            h = _basilisk_hashlib_sha224.digest(domain + self._bytes + subaccount)
+        crc = Principal._crc32(h)
+        return _AccountIdentifier(crc.to_bytes(4, byteorder='big') + h)
+
     def __eq__(self, other):
         if isinstance(other, Principal):
             return self.to_str() == other.to_str()
@@ -394,6 +408,14 @@ class Principal:
 
     def __str__(self):
         return self.to_str()
+
+class _AccountIdentifier:
+    def __init__(self, raw_bytes):
+        self._bytes = raw_bytes
+    def to_str(self):
+        return '0x' + self._bytes.hex()
+    def __repr__(self):
+        return f'AccountIdentifier({self.to_str()!r})'
 
 _mod.Principal = Principal
 
