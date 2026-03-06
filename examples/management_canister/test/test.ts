@@ -47,6 +47,42 @@ runTests(
             };
         }
 
+        if (test.name === 'executeUpdateSettings') {
+            return {
+                name: 'executeUpdateSettings',
+                test: async () => {
+                    const canisterId =
+                        await managementCanister.get_created_canister_id();
+                    console.log('executeUpdateSettings: canisterId =', canisterId?.toText?.() ?? String(canisterId));
+
+                    try {
+                        const result =
+                            await managementCanister.execute_update_settings(
+                                canisterId
+                            );
+                        console.log(
+                            'executeUpdateSettings: result =',
+                            JSON.stringify(result, (_, v) =>
+                                typeof v === 'bigint' ? v.toString() : v
+                            )
+                        );
+
+                        if (!ok(result)) {
+                            return { Err: result.Err ?? 'unknown error' };
+                        }
+
+                        return { Ok: result.Ok === true };
+                    } catch (e: any) {
+                        console.log(
+                            'executeUpdateSettings: exception =',
+                            e?.message ?? String(e)
+                        );
+                        return { Err: e?.message ?? String(e) };
+                    }
+                }
+            };
+        }
+
         if (test.name === 'executeDepositCycles') {
             return {
                 name: 'executeDepositCycles',
