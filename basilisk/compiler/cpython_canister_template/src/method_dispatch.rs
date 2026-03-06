@@ -338,7 +338,16 @@ fn drive_generator(
                                 make_python_dict_result("Ok", py_val)
                             }
                             Err((rejection_code, msg)) => {
-                                let err_msg = format!("Rejection code {:?}: {}", rejection_code, msg);
+                                let code_num = match rejection_code {
+                                    ic_cdk::api::call::RejectionCode::NoError => 0,
+                                    ic_cdk::api::call::RejectionCode::SysFatal => 1,
+                                    ic_cdk::api::call::RejectionCode::SysTransient => 2,
+                                    ic_cdk::api::call::RejectionCode::DestinationInvalid => 3,
+                                    ic_cdk::api::call::RejectionCode::CanisterReject => 4,
+                                    ic_cdk::api::call::RejectionCode::CanisterError => 5,
+                                    _ => 99,
+                                };
+                                let err_msg = format!("Rejection code {}, {}", code_num, msg);
                                 let py_err = basilisk_cpython::PyObjectRef::from_str(&err_msg)
                                     .unwrap_or_else(|_| basilisk_cpython::PyObjectRef::none());
                                 make_python_dict_result("Err", py_err)
@@ -794,7 +803,7 @@ fn idl_value_to_python_typed(
                 .map_err(|e| e.to_rust_err_string())
         }
         IDLValue::Service(p) => {
-            // Service → Python Principal object
+            // Service → Python Service(principal) so __getattr__ enables cross-canister calls
             let text = p.to_text();
             let principal_class = unsafe { crate::PRINCIPAL_CLASS_OPTION.as_ref() }
                 .ok_or_else(|| "Principal class not cached".to_string())?;
@@ -805,9 +814,21 @@ fn idl_value_to_python_typed(
                 .map_err(|e| e.to_rust_err_string())?;
             let args = basilisk_cpython::PyTuple::new(vec![text_obj])
                 .map_err(|e| e.to_rust_err_string())?;
-            from_str
+            let principal_obj = from_str
                 .call(&args.into_object(), None)
-                .map_err(|e| e.to_rust_err_string())
+                .map_err(|e| e.to_rust_err_string())?;
+            // Wrap in Service(principal) so methods are callable via __getattr__
+            let interpreter = unsafe { crate::INTERPRETER_OPTION.as_mut() }
+                .ok_or_else(|| "missing interpreter".to_string())?;
+            if let Ok(service_cls) = interpreter.get_global("Service") {
+                let ctor_args = basilisk_cpython::PyTuple::new(vec![principal_obj.clone()])
+                    .map_err(|e| e.to_rust_err_string())?;
+                service_cls.call(&ctor_args.into_object(), None)
+                    .map_err(|e| e.to_rust_err_string())
+            } else {
+                // Fallback: return Principal if Service class not available
+                Ok(principal_obj)
+            }
         }
         IDLValue::Func(p, method) => {
             // Func → Python tuple (Principal, method_name_str)
