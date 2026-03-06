@@ -787,9 +787,10 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
                 if isinstance(value, ast.Call) and isinstance(value.func, ast.Name):
                     if value.func.id == "Func" and len(value.args) == 1:
                         func_arg = value.args[0]
-                        # func_arg should be Query[[params], ret] or Update[[params], ret]
+                        # func_arg should be Query[[params], ret] or Update[[params], ret] or Oneway[[params], ret]
                         if isinstance(func_arg, ast.Subscript) and isinstance(func_arg.value, ast.Name):
-                            mode = "query" if func_arg.value.id == "Query" else "update" if func_arg.value.id == "Update" else None
+                            fmode_id = func_arg.value.id
+                            mode = "query" if fmode_id == "Query" else "oneway" if fmode_id == "Oneway" else "update" if fmode_id == "Update" else None
                             if mode and isinstance(func_arg.slice, ast.Tuple) and len(func_arg.slice.elts) == 2:
                                 params_node = func_arg.slice.elts[0]  # should be a List
                                 ret_node = func_arg.slice.elts[1]
@@ -816,7 +817,8 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
                 if value.func.id == "Func" and len(value.args) == 1:
                     func_arg = value.args[0]
                     if isinstance(func_arg, ast.Subscript) and isinstance(func_arg.value, ast.Name):
-                        mode = "query" if func_arg.value.id == "Query" else "update" if func_arg.value.id == "Update" else None
+                        fmode_id = func_arg.value.id
+                        mode = "query" if fmode_id == "Query" else "oneway" if fmode_id == "Oneway" else "update" if fmode_id == "Update" else None
                         if mode and isinstance(func_arg.slice, ast.Tuple) and len(func_arg.slice.elts) == 2:
                             params_node = func_arg.slice.elts[0]
                             ret_node = func_arg.slice.elts[1]
@@ -912,7 +914,7 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
             mode, param_anns, ret_node = raw_funcs[name]
             param_strs = [resolve_annotation(p) for p in param_anns]
             ret_str = resolve_annotation(ret_node)
-            mode_suffix = " query" if mode == "query" else ""
+            mode_suffix = " query" if mode == "query" else " oneway" if mode == "oneway" else ""
             ret_part = f" ({ret_str})" if ret_str not in ("null", "") else " ()"
             type_defs[name] = f"func ({', '.join(param_strs)}) ->{ret_part}{mode_suffix}"
         elif name in raw_services:
