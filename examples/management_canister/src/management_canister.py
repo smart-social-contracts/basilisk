@@ -4,6 +4,7 @@ from basilisk import (
     CallResult,
     match,
     nat,
+    Opt,
     Principal,
     query,
     update,
@@ -62,9 +63,9 @@ def execute_update_settings(canister_id: Principal) -> Async[DefaultResult]:
             "canister_id": canister_id,
             "settings": {
                 "controllers": None,
-                "compute_allocation": 1,
-                "memory_allocation": 3_000_000,
-                "freezing_threshold": 2_000_000,
+                "compute_allocation": Opt(1),
+                "memory_allocation": Opt(3_000_000),
+                "freezing_threshold": Opt(2_000_000),
             },
         }
     )

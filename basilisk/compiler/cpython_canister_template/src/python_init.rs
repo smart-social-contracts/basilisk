@@ -149,7 +149,12 @@ _mod.text = str
 _mod.blob = bytes
 _mod.null = None
 _mod.void = None
-_mod.Opt = _Sub
+class _Opt(_Sub):
+    """Opt wrapper: Opt[T] for type annotations, Opt(value) for runtime opt encoding."""
+    __slots__ = ('value',)
+    def __init__(self, value=None):
+        self.value = value
+_mod.Opt = _Opt
 _mod.Vec = list
 class _Record(dict):
     def __class_getitem__(cls, params): return cls
@@ -590,6 +595,10 @@ def _to_candid_text(v):
     if isinstance(v, bytes):
         escaped = "".join("\\{:02x}".format(b) for b in v)
         return 'blob "' + escaped + '"'
+    if isinstance(v, _Opt):
+        if v.value is None:
+            return 'null'
+        return f'opt {_to_candid_text(v.value)}'
     if isinstance(v, Principal):
         return f'principal "{v.to_str()}"'
     if isinstance(v, dict):
@@ -599,12 +608,7 @@ def _to_candid_text(v):
             if isinstance(k0, str) and len(k0) > 0 and (k0[0].isupper() or k0 in ('install','reinstall','upgrade','running','stopping','stopped','get','head','post')):
                 inner = _to_candid_text(v0)
                 return f'variant {{ {k0} = {inner} }}'
-        fields = []
-        for k, val in v.items():
-            inner = _to_candid_text(val)
-            if val is not None:
-                inner = f'opt {inner}'
-            fields.append(f'{k} = {inner}')
+        fields = [f'{k} = {_to_candid_text(val)}' for k, val in v.items()]
         return f'record {{ {"; ".join(fields)} }}'
     if isinstance(v, (list, tuple)):
         items = [_to_candid_text(item) for item in v]
