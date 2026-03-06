@@ -588,7 +588,8 @@ def _to_candid_text(v):
     if isinstance(v, str):
         return f'"{v}"'
     if isinstance(v, bytes):
-        return f'blob "{"".join(format(b, "02x") for b in v)}"'
+        escaped = "".join("\\{:02x}".format(b) for b in v)
+        return 'blob "' + escaped + '"'
     if isinstance(v, Principal):
         return f'principal "{v.to_str()}"'
     if isinstance(v, dict):
