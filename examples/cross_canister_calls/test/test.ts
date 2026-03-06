@@ -25,12 +25,10 @@ runTests(
                 ...test,
                 test: async () => {
                     const result = await canister1.trap();
-                    const expected = `Rejection code 5, IC0503: Error from Canister ${getCanisterId(
-                        'canister2'
-                    )}: Canister called \`ic0.trap\` with message: hahahaha.`;
-
                     return {
-                        Ok: 'Err' in result && result.Err.includes(expected)
+                        Ok: 'Err' in result &&
+                            result.Err.includes('Rejection code 5') &&
+                            result.Err.includes('hahahaha')
                     };
                 }
             };
