@@ -1006,7 +1006,10 @@ unsafe extern "C" fn ic_notify_service_call(
     _self: *mut ffi::PyObject,
     arg: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
-    let service_call = basilisk_cpython::PyObjectRef::from_ptr_unchecked(arg);
+    let service_call = match PyObjectRef::from_borrowed(arg) {
+        Some(o) => o,
+        None => { ic_cdk::trap("notify_service_call: invalid argument"); }
+    };
 
     // Extract principal text
     let py_principal = service_call.get_attr("canister_principal").unwrap_or_else(|e| {
