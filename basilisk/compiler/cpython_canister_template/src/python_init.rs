@@ -72,11 +72,42 @@ pub fn cpython_full_init(python_code: &str) {
              \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_utxos': 'record { next_page : opt blob; tip_block_hash : blob; tip_height : nat32; utxos : vec record { height : nat32; outpoint : record { txid : blob; vout : nat32 }; value : nat64 } }',\n\
              \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_current_fee_percentiles': 'vec nat64',\n\
              \x20\x20\x20\x20\x20\x20\x20\x20}\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20_mc._arg_types = {\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'create_canister': 'record { settings : opt record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'update_settings': 'record { canister_id : principal; settings : record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'install_code': 'record { mode : variant { install : null; reinstall : null; upgrade : null }; canister_id : principal; wasm_module : blob; arg : blob }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'uninstall_code': 'record { canister_id : principal }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'start_canister': 'record { canister_id : principal }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'stop_canister': 'record { canister_id : principal }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'canister_status': 'record { canister_id : principal }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'delete_canister': 'record { canister_id : principal }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'deposit_cycles': 'record { canister_id : principal }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'provisional_create_canister_with_cycles': 'record { amount : opt nat; settings : opt record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'provisional_top_up_canister': 'record { canister_id : principal; amount : nat }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_balance': 'record { address : text; min_confirmations : opt nat32; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_utxos': 'record { address : text; filter : opt variant { min_confirmations : nat32; page : blob }; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_current_fee_percentiles': 'record { network : variant { Mainnet : null; Testnet : null; Regtest : null } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_send_transaction': 'record { transaction : blob; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'http_request': 'record { url : text; max_response_bytes : opt nat64; method : variant { get : null; head : null; post : null }; headers : vec record { name : text; value : text }; body : opt blob; transform : opt record { function : func; context : blob } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'ecdsa_public_key': 'record { canister_id : opt principal; derivation_path : vec blob; key_id : record { curve : variant { secp256k1 : null }; name : text } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'sign_with_ecdsa': 'record { message_hash : blob; derivation_path : vec blob; key_id : record { curve : variant { secp256k1 : null }; name : text } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20}\n\
              \x20\x20\x20\x20\x20\x20\x20\x20_mgmt.management_canister = _mc\n\
              \x20\x20\x20\x20\x20\x20\x20\x20_mgmt.ManagementCanister = _S\n\
              \x20\x20\x20\x20_ledger = _sys.modules.get('basilisk.canisters.ledger')\n\
              \x20\x20\x20\x20if _ledger:\n\
-             \x20\x20\x20\x20\x20\x20\x20\x20_ledger.Ledger = _S\n",
+             \x20\x20\x20\x20\x20\x20\x20\x20class _LedgerSvc(_S):\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20_arg_types = {\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'transfer': 'record { memo : nat64; amount : record { e8s : nat64 }; fee : record { e8s : nat64 }; from_subaccount : opt blob; to : blob; created_at_time : opt record { timestamp_nanos : nat64 } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'account_balance': 'record { account : blob }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'query_blocks': 'record { start : nat64; length : nat64 }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20}\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20_return_types = {\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'account_balance': 'record { e8s : nat64 }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'transfer': 'variant { Ok : nat64; Err : variant { BadFee : record { expected_fee : record { e8s : nat64 } }; InsufficientFunds : record { balance : record { e8s : nat64 } }; TxTooOld : record { allowed_window_nanos : nat64 }; TxCreatedInFuture : null; TxDuplicate : record { duplicate_of : nat64 } } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'transfer_fee': 'record { transfer_fee : record { e8s : nat64 } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20}\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20_ledger.Ledger = _LedgerSvc\n",
         )
         .unwrap_or_else(|e| {
             panic!("Failed to fix up service stubs: {}", e.to_rust_err_string())
@@ -592,13 +623,50 @@ class _UpdateType:
 def Func(sig):
     return _FuncType(sig)
 
-def _to_candid_text(v):
-    """Convert a Python value to Candid text representation (recursive)."""
+def _parse_record_fields(th):
+    """Parse a Candid record type hint into {field_name: field_type}."""
+    if not th or not th.strip().startswith('record'):
+        return {}
+    inner = th.strip()[6:].strip()
+    if not inner.startswith('{') or not inner.endswith('}'):
+        return {}
+    inner = inner[1:-1].strip()
+    if not inner:
+        return {}
+    result = {}
+    depth = 0
+    cur = ''
+    for ch in inner:
+        if ch == '{':
+            depth += 1
+            cur += ch
+        elif ch == '}':
+            depth -= 1
+            cur += ch
+        elif ch == ';' and depth == 0:
+            p = cur.strip()
+            if ':' in p:
+                i = p.index(':')
+                result[p[:i].strip()] = p[i+1:].strip()
+            cur = ''
+        else:
+            cur += ch
+    p = cur.strip()
+    if p and ':' in p:
+        i = p.index(':')
+        result[p[:i].strip()] = p[i+1:].strip()
+    return result
+
+def _to_candid_text(v, type_hint=None):
+    """Convert a Python value to Candid text representation (recursive).
+    If type_hint is provided, uses it for correct type annotations."""
     if v is None:
         return 'null'
     if isinstance(v, bool):
         return 'true' if v else 'false'
     if isinstance(v, int):
+        if type_hint and type_hint.strip() in ('nat64','nat32','nat16','nat8','int64','int32','int16','int8','nat','int'):
+            return f'({v} : {type_hint.strip()})'
         if v >= 0:
             return f'({v} : nat)'
         return str(v)
@@ -612,7 +680,8 @@ def _to_candid_text(v):
     if isinstance(v, _Opt):
         if v.value is None:
             return 'null'
-        return f'opt {_to_candid_text(v.value)}'
+        inner_hint = type_hint[3:].strip() if type_hint and type_hint.strip().startswith('opt') else None
+        return f'opt {_to_candid_text(v.value, inner_hint)}'
     if isinstance(v, Principal):
         return f'principal "{v.to_str()}"'
     if isinstance(v, dict):
@@ -622,10 +691,12 @@ def _to_candid_text(v):
             if isinstance(k0, str) and len(k0) > 0 and (k0[0].isupper() or k0 in ('install','reinstall','upgrade','running','stopping','stopped','get','head','post')):
                 inner = _to_candid_text(v0)
                 return f'variant {{ {k0} = {inner} }}'
-        fields = [f'{k} = {_to_candid_text(val)}' for k, val in v.items()]
+        ft = _parse_record_fields(type_hint) if type_hint else {}
+        fields = [f'{k} = {_to_candid_text(val, ft.get(k))}' for k, val in v.items()]
         return f'record {{ {"; ".join(fields)} }}'
     if isinstance(v, (list, tuple)):
-        items = [_to_candid_text(item) for item in v]
+        elem_hint = type_hint[3:].strip() if type_hint and type_hint.strip().startswith('vec') else None
+        items = [_to_candid_text(item, elem_hint) for item in v]
         return f'vec {{ {"; ".join(items)} }}'
     # Fallback: try str()
     return str(v)
@@ -633,10 +704,10 @@ def _to_candid_text(v):
 class _ServiceCall:
     """Represents a pending cross-canister call to be yielded from a generator.
     Presents itself as a call_raw descriptor for the Rust async handler."""
-    def __init__(self, canister_principal, method_name, call_args=None, payment=0):
+    def __init__(self, canister_principal, method_name, call_args=None, payment=0, arg_type=None):
         # Encode call args to Candid bytes
         if call_args:
-            parts = [_to_candid_text(a) for a in call_args]
+            parts = [_to_candid_text(a, arg_type) for a in call_args]
             candid_text = f"({', '.join(parts)})"
             try:
                 raw_args = _basilisk_ic.candid_encode(candid_text)
@@ -671,12 +742,13 @@ class _ServiceCall:
 
 class _ServiceMethodProxy:
     """Proxy for a service method that creates _ServiceCall descriptors."""
-    def __init__(self, principal, method_name, return_type=None):
+    def __init__(self, principal, method_name, return_type=None, arg_type=None):
         self._principal = principal
         self._method_name = method_name
         self._return_type = return_type
+        self._arg_type = arg_type
     def __call__(self, *args, **kwargs):
-        call = _ServiceCall(self._principal, self._method_name, args)
+        call = _ServiceCall(self._principal, self._method_name, args, arg_type=self._arg_type)
         if self._return_type:
             call._return_candid_type = self._return_type
         return call
@@ -689,9 +761,12 @@ class _ServiceMethodDescriptor:
         if obj is None:
             return self
         rt = None
+        at = None
         if hasattr(obj, '_return_types'):
             rt = obj._return_types.get(self.name)
-        return _ServiceMethodProxy(obj._principal, self.name, rt)
+        if hasattr(obj, '_arg_types'):
+            at = obj._arg_types.get(self.name)
+        return _ServiceMethodProxy(obj._principal, self.name, rt, at)
 
 def service_query(func):
     return _ServiceMethodDescriptor(func)
@@ -701,13 +776,15 @@ def service_update(func):
 
 class Service:
     _return_types = {}
+    _arg_types = {}
     def __init__(self, principal=None):
         self._principal = principal
     def __getattr__(self, name):
         if name.startswith('_'):
             raise AttributeError(name)
         rt = self._return_types.get(name) if self._return_types else None
-        return _ServiceMethodProxy(self._principal, name, rt)
+        at = self._arg_types.get(name) if self._arg_types else None
+        return _ServiceMethodProxy(self._principal, name, rt, at)
 
 _mod._ServiceCall = _ServiceCall
 _mod.Func = Func
