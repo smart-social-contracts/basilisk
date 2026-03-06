@@ -10,6 +10,53 @@ const managementCanister = createActor(getCanisterId('management_canister'), {
 
 runTests(
     getTests(createSnakeCaseProxy(managementCanister)).map((test) => {
+        if (test.name === 'executeUpdateSettings') {
+            return {
+                name: 'executeUpdateSettings',
+                test: async () => {
+                    try {
+                        const canisterId =
+                            await managementCanister.get_created_canister_id();
+                        console.log('diag: canisterId =', canisterId?.toText?.() ?? String(canisterId));
+
+                        const updateResult =
+                            await managementCanister.execute_update_settings(canisterId);
+                        console.log('diag: updateResult =', JSON.stringify(updateResult, (_, v) => typeof v === 'bigint' ? v.toString() : v));
+
+                        if (!ok(updateResult)) {
+                            return { Err: 'update failed: ' + (updateResult.Err ?? 'unknown') };
+                        }
+
+                        const statusResult =
+                            await managementCanister.get_canister_status({
+                                canister_id: canisterId
+                            });
+                        console.log('diag: statusResult =', JSON.stringify(statusResult, (_, v) => typeof v === 'bigint' ? v.toString() : v));
+
+                        if (!ok(statusResult)) {
+                            return { Err: 'status failed: ' + (statusResult.Err ?? 'unknown') };
+                        }
+
+                        const s = statusResult.Ok.settings;
+                        console.log('diag: settings =', JSON.stringify(s, (_, v) => typeof v === 'bigint' ? v.toString() : v));
+                        console.log('diag: compute_allocation =', s.compute_allocation, 'type:', typeof s.compute_allocation);
+                        console.log('diag: memory_allocation =', s.memory_allocation, 'type:', typeof s.memory_allocation);
+                        console.log('diag: freezing_threshold =', s.freezing_threshold, 'type:', typeof s.freezing_threshold);
+
+                        return {
+                            Ok:
+                                s.compute_allocation === 1n &&
+                                s.memory_allocation === 3_000_000n &&
+                                s.freezing_threshold === 2_000_000n
+                        };
+                    } catch (e: any) {
+                        console.log('diag: exception =', e?.message ?? String(e));
+                        return { Err: e?.message ?? String(e) };
+                    }
+                }
+            };
+        }
+
         if (test.name === 'getCanisterStatus') {
             return {
                 name: 'getCanisterStatus',
