@@ -1110,6 +1110,12 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
 
         return_type = get_candid_type(ret_annotation)
 
+        # Auto-promote @query with async (yield/Async) to composite_query.
+        # The IC requires queries that make inter-canister calls to be exported
+        # as canister_composite_query instead of canister_query.
+        if method_type == "query" and is_async:
+            method_type = "composite_query"
+
         entry = {
             "name": node.name,
             "method_type": method_type,
