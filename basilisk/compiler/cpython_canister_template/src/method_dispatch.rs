@@ -656,11 +656,21 @@ fn idl_value_to_python_typed(
         IDLValue::Record(fields) => {
             // Parse field definitions from the expected type (if available)
             let resolved_str = resolved.unwrap_or("");
-            let field_defs: Vec<(String, String)> = if let Some(inner) = strip_compound_wrapper(resolved_str, "record") {
+            let mut field_defs: Vec<(String, String)> = if let Some(inner) = strip_compound_wrapper(resolved_str, "record") {
                 parse_fields(inner)
             } else {
                 Vec::new()
             };
+
+            // If no expected type, try to auto-detect from TYPE_DEFS by matching field hashes.
+            // This is needed for cross-canister responses where the return type is unknown.
+            if field_defs.is_empty() && !fields.is_empty() {
+                let field_ids: Vec<u32> = fields.iter().filter_map(|f| match &f.id {
+                    candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => Some(*id),
+                    candid::types::Label::Named(name) => Some(candid_field_hash(name)),
+                }).collect();
+                field_defs = try_match_record_type_from_hashes(&field_ids, type_defs);
+            }
 
             // Build hash → (name, type) map for field-name resolution
             let hash_to_field: HashMap<u32, (String, String)> = field_defs
@@ -724,11 +734,21 @@ fn idl_value_to_python_typed(
         IDLValue::Variant(variant) => {
             // Parse case definitions from the expected type
             let resolved_str = resolved.unwrap_or("");
-            let case_defs: Vec<(String, String)> = if let Some(inner) = strip_compound_wrapper(resolved_str, "variant") {
+            let mut case_defs: Vec<(String, String)> = if let Some(inner) = strip_compound_wrapper(resolved_str, "variant") {
                 parse_fields(inner)
             } else {
                 Vec::new()
             };
+
+            // If no expected type, try to auto-detect from TYPE_DEFS by matching case hashes.
+            if case_defs.is_empty() {
+                let case_ids: Vec<u32> = match &variant.0.id {
+                    candid::types::Label::Id(id) | candid::types::Label::Unnamed(id) => vec![*id],
+                    candid::types::Label::Named(name) => vec![candid_field_hash(name)],
+                };
+                case_defs = try_match_variant_type_from_hashes(&case_ids, type_defs);
+            }
+
             let hash_to_case: HashMap<u32, (String, String)> = case_defs
                 .into_iter()
                 .map(|(name, typ)| (candid_field_hash(&name), (name, typ)))
@@ -1108,6 +1128,59 @@ fn is_tuple_record(fields: &[(String, String)]) -> bool {
         let is_plain_numeric = name.parse::<u32>().ok() == Some(i as u32);
         is_underscore || is_plain_numeric
     })
+}
+
+/// Try to find a matching record type from TYPE_DEFS by matching field hashes.
+/// Used when decoding cross-canister responses where the expected type is unknown.
+/// Returns parsed field definitions if a match is found.
+fn try_match_record_type_from_hashes(
+    field_ids: &[u32],
+    type_defs: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    if field_ids.is_empty() {
+        return Vec::new();
+    }
+    let mut target: Vec<u32> = field_ids.to_vec();
+    target.sort();
+
+    for (_name, def) in type_defs.iter() {
+        let resolved = def.trim();
+        if let Some(inner) = strip_compound_wrapper(resolved, "record") {
+            let fields = parse_fields(inner);
+            if fields.len() != target.len() {
+                continue;
+            }
+            let mut hashes: Vec<u32> = fields.iter().map(|(n, _)| candid_field_hash(n)).collect();
+            hashes.sort();
+            if hashes == target {
+                return fields;
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Try to find a matching variant type from TYPE_DEFS by matching case hashes.
+fn try_match_variant_type_from_hashes(
+    case_ids: &[u32],
+    type_defs: &HashMap<String, String>,
+) -> Vec<(String, String)> {
+    if case_ids.is_empty() {
+        return Vec::new();
+    }
+    // For variant, we only have ONE case at a time, but the type def has all cases.
+    // We need to find a variant type that contains ALL of the provided case IDs.
+    for (_name, def) in type_defs.iter() {
+        let resolved = def.trim();
+        if let Some(inner) = strip_compound_wrapper(resolved, "variant") {
+            let cases = parse_fields(inner);
+            let case_hashes: Vec<u32> = cases.iter().map(|(n, _)| candid_field_hash(n)).collect();
+            if case_ids.iter().all(|id| case_hashes.contains(id)) {
+                return cases;
+            }
+        }
+    }
+    Vec::new()
 }
 
 /// Compute the Candid field-name hash (same algorithm as the candid crate).
