@@ -854,7 +854,8 @@ pub fn encode_python_to_candid(
     }
 
     let idl_value = python_to_idl_value(py_result, return_type).unwrap_or_else(|e| {
-        ic_cdk::trap(&format!("Failed to convert Python result to Candid: {}", e));
+        let repr = py_result.str_repr().unwrap_or_else(|_| "<repr failed>".to_string());
+        ic_cdk::trap(&format!("Failed to convert Python result to Candid: {} (return_type='{}', repr='{}')", e, return_type, repr));
     });
 
     let idl_args = candid::IDLArgs::new(&[idl_value]);
@@ -1484,7 +1485,7 @@ fn python_to_idl_value_inner(
             }
         }
         other if other.starts_with("service ") => {
-            // Service type: extract principal via to_str(), _principal attr, or plain string
+            // Service type: extract principal via to_str(), _principal attr, canister_id attr, or plain string
             let text = if let Ok(to_str) = obj.get_attr("to_str") {
                 let empty_args = basilisk_cpython::PyTuple::empty()
                     .map_err(|e| e.to_rust_err_string())?;
@@ -1494,6 +1495,15 @@ fn python_to_idl_value_inner(
             } else if let Ok(principal_attr) = obj.get_attr("_principal") {
                 let to_str = principal_attr.get_attr("to_str")
                     .map_err(|e| e.to_rust_err_string())?;
+                let empty_args = basilisk_cpython::PyTuple::empty()
+                    .map_err(|e| e.to_rust_err_string())?;
+                let result = to_str.call(&empty_args.into_object(), None)
+                    .map_err(|e| e.to_rust_err_string())?;
+                result.extract_str().map_err(|e| e.to_rust_err_string())?
+            } else if let Ok(canister_id_attr) = obj.get_attr("canister_id") {
+                // Preamble Service class stores principal as self.canister_id
+                let to_str = canister_id_attr.get_attr("to_str")
+                    .map_err(|e| format!("service.canister_id has no to_str: {}", e.to_rust_err_string()))?;
                 let empty_args = basilisk_cpython::PyTuple::empty()
                     .map_err(|e| e.to_rust_err_string())?;
                 let result = to_str.call(&empty_args.into_object(), None)
@@ -1610,7 +1620,9 @@ fn python_dict_to_variant(
     let keys = unsafe {
         let keys_obj = basilisk_cpython::ffi::PyDict_Keys(obj.as_ptr());
         if keys_obj.is_null() {
-            return Err("Variant value is not a dict".to_string());
+            let repr = obj.str_repr().unwrap_or_else(|_| "<repr failed>".to_string());
+            let case_names: Vec<&str> = cases.iter().map(|(n,_)| n.as_str()).collect();
+            return Err(format!("Variant value is not a dict (repr='{}', cases={:?})", repr, case_names));
         }
         let len = basilisk_cpython::ffi::PyList_Size(keys_obj);
         if len != 1 {
