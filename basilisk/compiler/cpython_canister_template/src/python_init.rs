@@ -587,6 +587,8 @@ def _to_candid_text(v):
     if isinstance(v, bool):
         return 'true' if v else 'false'
     if isinstance(v, int):
+        if v >= 0:
+            return f'({v} : nat)'
         return str(v)
     if isinstance(v, float):
         return str(v)
