@@ -65,42 +65,54 @@ def build_with_template(
     # and runs before the basilisk shim during canister_init. No need to prepend here.
 
     # 3. Extract method metadata from the Python source
-    # Two-phase extraction for multi-file / multi-canister projects:
-    #   Phase 1: Methods + lifecycle from the entry file's parent directory only
-    #            (avoids picking up methods from other canisters)
-    #   Phase 2: Type definitions from the full src/ tree
-    #            (catches types imported from sibling canister directories)
+    # For multi-file / multi-canister projects:
+    #   - Extract from the full src/ tree so cross-canister types (e.g. AccountArgs
+    #     from canister2/types.py) are in the registry when resolving method params.
+    #   - Then filter methods to only keep those defined in the entry file's directory
+    #     (avoids picking up methods from other canisters that cause .did collisions).
     py_entry_file = paths.get("py_entry_file", "")
     user_src_dir = os.path.dirname(py_entry_file) if py_entry_file else ""
     if user_src_dir and os.path.isdir(user_src_dir):
-        # Phase 1: methods from entry dir
-        raw_sources = []
+        # Determine entry dir method names (for filtering)
+        entry_dir_sources = []
         for root, _dirs, files in os.walk(user_src_dir):
             for fname in sorted(files):
                 if fname.endswith(".py"):
                     with open(os.path.join(root, fname), "r") as f:
-                        raw_sources.append(f.read())
-        combined_raw = "\n".join(raw_sources)
-        methods, type_defs, lifecycle = extract_methods_from_python(combined_raw)
+                        entry_dir_sources.append(f.read())
+        entry_raw = "\n".join(entry_dir_sources)
+        entry_methods, _, entry_lifecycle = extract_methods_from_python(entry_raw)
+        entry_method_names = {m["name"] for m in entry_methods}
+        entry_lifecycle_keys = set(entry_lifecycle.keys())
 
-        # Phase 2: merge type definitions from the broader src/ tree
-        # (for cross-canister type imports like canister1 using canister2/types.py)
+        # Find the src/ root for the full tree extraction
         entry_parts = os.path.normpath(py_entry_file).split(os.sep)
+        src_root = user_src_dir  # default: just use entry dir
         if "src" in entry_parts:
             src_idx = entry_parts.index("src")
-            src_root = os.sep.join(entry_parts[: src_idx + 1])
-            if os.path.isdir(src_root) and os.path.normpath(src_root) != os.path.normpath(user_src_dir):
-                broad_sources = []
-                for root, _dirs, files in os.walk(src_root):
-                    for fname in sorted(files):
-                        if fname.endswith(".py"):
-                            with open(os.path.join(root, fname), "r") as f:
-                                broad_sources.append(f.read())
-                broad_raw = "\n".join(broad_sources)
-                _, broad_type_defs, _ = extract_methods_from_python(broad_raw)
-                for tname, tdef in broad_type_defs.items():
-                    if tname not in type_defs:
-                        type_defs[tname] = tdef
+            candidate = os.sep.join(entry_parts[: src_idx + 1])
+            if os.path.isdir(candidate):
+                src_root = candidate
+
+        # Extract from full src/ tree (types + methods with correct type resolution)
+        all_sources = []
+        for root, _dirs, files in os.walk(src_root):
+            for fname in sorted(files):
+                if fname.endswith(".py"):
+                    with open(os.path.join(root, fname), "r") as f:
+                        all_sources.append(f.read())
+        all_raw = "\n".join(all_sources)
+        all_methods, type_defs, all_lifecycle = extract_methods_from_python(all_raw)
+
+        # Filter: keep only methods/lifecycle from the entry directory
+        # Deduplicate by name (other canisters may define methods with the same name)
+        methods = []
+        seen_names = set()
+        for m in all_methods:
+            if m["name"] in entry_method_names and m["name"] not in seen_names:
+                methods.append(m)
+                seen_names.add(m["name"])
+        lifecycle = {k: v for k, v in all_lifecycle.items() if k in entry_lifecycle_keys}
     else:
         methods, type_defs, lifecycle = extract_methods_from_python(python_source)
     if verbose:
