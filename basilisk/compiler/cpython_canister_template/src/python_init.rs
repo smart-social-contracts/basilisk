@@ -599,7 +599,12 @@ def _to_candid_text(v):
             if isinstance(k0, str) and len(k0) > 0 and (k0[0].isupper() or k0 in ('install','reinstall','upgrade','running','stopping','stopped','get','head','post')):
                 inner = _to_candid_text(v0)
                 return f'variant {{ {k0} = {inner} }}'
-        fields = [f'{k} = {_to_candid_text(val)}' for k, val in v.items()]
+        fields = []
+        for k, val in v.items():
+            inner = _to_candid_text(val)
+            if val is not None:
+                inner = f'opt {inner}'
+            fields.append(f'{k} = {inner}')
         return f'record {{ {"; ".join(fields)} }}'
     if isinstance(v, (list, tuple)):
         items = [_to_candid_text(item) for item in v]
