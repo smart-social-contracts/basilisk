@@ -307,7 +307,7 @@ fn execute_async_generator(
 /// Recursively drive a Python generator. Handles both _ServiceCall yields (IC calls)
 /// and nested generator yields (sub-generators that themselves yield _ServiceCall objects).
 /// Returns the generator's return value (from StopIteration.value).
-fn drive_generator(
+pub fn drive_generator(
     generator: basilisk_cpython::PyObjectRef,
     func_name: &str,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = basilisk_cpython::PyObjectRef> + 'static>> {
@@ -325,6 +325,10 @@ fn drive_generator(
                     if yielded.has_attr("canister_principal") {
                         // It's a _ServiceCall — make the IC inter-canister call
                         let return_raw = yielded.has_attr("_return_raw");
+                        // Extract optional return type hint for typed decoding
+                        let return_type_hint = yielded.get_attr("_return_candid_type")
+                            .ok()
+                            .and_then(|obj| if obj.is_none() { None } else { obj.extract_str().ok() });
                         let call_result = perform_service_call(&yielded).await;
                         send_value = match call_result {
                             Ok(raw_bytes) => {
@@ -333,7 +337,7 @@ fn drive_generator(
                                     basilisk_cpython::PyObjectRef::from_bytes(&raw_bytes)
                                         .unwrap_or_else(|_| basilisk_cpython::PyObjectRef::none())
                                 } else {
-                                    decode_candid_response_to_python(&raw_bytes)
+                                    decode_candid_response_typed(&raw_bytes, return_type_hint.as_deref())
                                 };
                                 make_python_dict_result("Ok", py_val)
                             }
@@ -461,12 +465,23 @@ pub fn encode_service_call_args(service_call: &basilisk_cpython::PyObjectRef) ->
         .unwrap_or_else(|_| vec![0x44, 0x49, 0x44, 0x4c, 0x00, 0x00])
 }
 
-/// Decode Candid response bytes to a Python object.
-/// Returns the first value from the decoded IDLArgs, or None if empty.
-fn decode_candid_response_to_python(raw_bytes: &[u8]) -> basilisk_cpython::PyObjectRef {
+/// Decode Candid response bytes to a Python object with optional type hint.
+/// If a type hint is provided, tries typed decoding first (handles opaque references).
+/// Falls back to typeless decoding, then raw bytes.
+fn decode_candid_response_typed(raw_bytes: &[u8], type_hint: Option<&str>) -> basilisk_cpython::PyObjectRef {
     if raw_bytes.is_empty() {
         return basilisk_cpython::PyObjectRef::none();
     }
+
+    // Try typed decoding if we have a type hint
+    if let Some(hint) = type_hint {
+        if let Ok(result) = decode_with_type_hint(raw_bytes, hint) {
+            return result;
+        }
+        // Fall through to typeless decoding
+    }
+
+    // Typeless decoding
     match candid::IDLArgs::from_bytes(raw_bytes) {
         Ok(idl_args) => {
             if let Some(first_val) = idl_args.args.into_iter().next() {
@@ -481,6 +496,33 @@ fn decode_candid_response_to_python(raw_bytes: &[u8]) -> basilisk_cpython::PyObj
                 .unwrap_or_else(|_| basilisk_cpython::PyObjectRef::none())
         }
     }
+}
+
+/// Decode Candid bytes using a type hint string parsed via candid_parser.
+fn decode_with_type_hint(raw_bytes: &[u8], type_hint: &str) -> Result<basilisk_cpython::PyObjectRef, String> {
+    // Build a minimal .did source containing the type definition
+    let did_source = format!("type __Return = {}; service : {{ __m : () -> (__Return) }}", type_hint);
+    let (env, _) = candid_parser::utils::CandidSource::Text(&did_source)
+        .load()
+        .map_err(|e| format!("Failed to parse type hint '{}': {}", type_hint, e))?;
+
+    let return_type = env.find_type("__Return")
+        .map_err(|e| format!("Type __Return not found: {}", e))?;
+
+    let idl_args = candid::IDLArgs::from_bytes_with_types(raw_bytes, &env, &[return_type.clone()])
+        .map_err(|e| format!("Typed decode failed: {}", e))?;
+
+    if let Some(first_val) = idl_args.args.into_iter().next() {
+        idl_value_to_python(&first_val).map_err(|e| format!("IDL to Python failed: {}", e))
+    } else {
+        Ok(basilisk_cpython::PyObjectRef::none())
+    }
+}
+
+/// Decode Candid response bytes to a Python object (typeless).
+/// Returns the first value from the decoded IDLArgs, or None if empty.
+fn decode_candid_response_to_python(raw_bytes: &[u8]) -> basilisk_cpython::PyObjectRef {
+    decode_candid_response_typed(raw_bytes, None)
 }
 
 /// Create a Python CallResult instance with Ok or Err.

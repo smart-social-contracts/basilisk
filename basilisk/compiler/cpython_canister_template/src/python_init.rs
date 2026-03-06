@@ -60,7 +60,19 @@ pub fn cpython_full_init(python_code: &str) {
              \x20\x20\x20\x20_P = getattr(_bmod, 'Principal', None)\n\
              \x20\x20\x20\x20_mgmt = _sys.modules.get('basilisk.canisters.management')\n\
              \x20\x20\x20\x20if _mgmt and _P:\n\
-             \x20\x20\x20\x20\x20\x20\x20\x20_mgmt.management_canister = _S(_P.from_str('aaaaa-aa'))\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20_mc = _S(_P.from_str('aaaaa-aa'))\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20_mc._return_types = {\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'create_canister': 'record { canister_id : principal }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'canister_status': 'record { status : variant { running : null; stopping : null; stopped : null }; settings : record { controllers : vec principal; compute_allocation : nat; memory_allocation : nat; freezing_threshold : nat }; module_hash : opt blob; memory_size : nat; cycles : nat }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'raw_rand': 'blob',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'http_request': 'record { status : nat; headers : vec record { name : text; value : text }; body : blob }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'ecdsa_public_key': 'record { public_key : blob; chain_code : blob }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'sign_with_ecdsa': 'record { signature : blob }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_balance': 'nat64',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_utxos': 'record { next_page : opt blob; tip_block_hash : blob; tip_height : nat32; utxos : vec record { height : nat32; outpoint : record { txid : blob; vout : nat32 }; value : nat64 } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_current_fee_percentiles': 'vec nat64',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20}\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20_mgmt.management_canister = _mc\n\
              \x20\x20\x20\x20\x20\x20\x20\x20_mgmt.ManagementCanister = _S\n\
              \x20\x20\x20\x20_ledger = _sys.modules.get('basilisk.canisters.ledger')\n\
              \x20\x20\x20\x20if _ledger:\n\
@@ -659,11 +671,15 @@ class _ServiceCall:
 
 class _ServiceMethodProxy:
     """Proxy for a service method that creates _ServiceCall descriptors."""
-    def __init__(self, principal, method_name):
+    def __init__(self, principal, method_name, return_type=None):
         self._principal = principal
         self._method_name = method_name
+        self._return_type = return_type
     def __call__(self, *args, **kwargs):
-        return _ServiceCall(self._principal, self._method_name, args)
+        call = _ServiceCall(self._principal, self._method_name, args)
+        if self._return_type:
+            call._return_candid_type = self._return_type
+        return call
 
 class _ServiceMethodDescriptor:
     """Descriptor that returns a _ServiceMethodProxy when accessed on a Service instance."""
@@ -672,7 +688,10 @@ class _ServiceMethodDescriptor:
     def __get__(self, obj, objtype=None):
         if obj is None:
             return self
-        return _ServiceMethodProxy(obj._principal, self.name)
+        rt = None
+        if hasattr(obj, '_return_types'):
+            rt = obj._return_types.get(self.name)
+        return _ServiceMethodProxy(obj._principal, self.name, rt)
 
 def service_query(func):
     return _ServiceMethodDescriptor(func)
@@ -681,12 +700,14 @@ def service_update(func):
     return _ServiceMethodDescriptor(func)
 
 class Service:
+    _return_types = {}
     def __init__(self, principal=None):
         self._principal = principal
     def __getattr__(self, name):
         if name.startswith('_'):
             raise AttributeError(name)
-        return _ServiceMethodProxy(self._principal, name)
+        rt = self._return_types.get(name) if self._return_types else None
+        return _ServiceMethodProxy(self._principal, name, rt)
 
 _mod._ServiceCall = _ServiceCall
 _mod.Func = Func
