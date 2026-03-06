@@ -23,6 +23,9 @@ runTests(
                             await managementCanister.execute_update_settings(canisterId);
                         console.log('diag: updateResult =', JSON.stringify(updateResult, (_, v) => typeof v === 'bigint' ? v.toString() : v));
 
+                        const debugHex = await managementCanister.get_debug_hex();
+                        console.log('diag: raw_args_hex =', debugHex);
+
                         if (!ok(updateResult)) {
                             return { Err: 'update failed: ' + (updateResult.Err ?? 'unknown') };
                         }
