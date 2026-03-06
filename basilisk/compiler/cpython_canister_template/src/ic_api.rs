@@ -763,7 +763,7 @@ unsafe fn resolve_timer_callback(callback: &PyObjectRef) -> String {
     gen_name
 }
 
-/// ic.set_timer(delay_ns, callback) -> timer_id
+/// ic.set_timer(delay_secs, callback) -> timer_id
 unsafe extern "C" fn ic_set_timer(
     _self: *mut ffi::PyObject,
     args: *mut ffi::PyObject,
@@ -773,10 +773,10 @@ unsafe extern "C" fn ic_set_timer(
         None => { ic_cdk::trap("set_timer: expected tuple args"); }
     };
     if args_tuple.len() != 2 {
-        ic_cdk::trap("set_timer: expected 2 arguments (delay_ns, callback)");
+        ic_cdk::trap("set_timer: expected 2 arguments (delay_secs, callback)");
     }
-    let delay_ns = match args_tuple.get_item(0) {
-        Some(o) => match o.extract_u64() { Ok(v) => v, Err(_) => { ic_cdk::trap("set_timer: delay must be int (nanoseconds)"); } },
+    let delay_secs = match args_tuple.get_item(0) {
+        Some(o) => match o.extract_u64() { Ok(v) => v, Err(_) => { ic_cdk::trap("set_timer: delay must be int (seconds)"); } },
         None => { ic_cdk::trap("set_timer: missing delay"); }
     };
     let callback = match args_tuple.get_item(1) {
@@ -786,7 +786,7 @@ unsafe extern "C" fn ic_set_timer(
 
     let func_name = resolve_timer_callback(&callback);
 
-    let delay = std::time::Duration::from_nanos(delay_ns);
+    let delay = std::time::Duration::from_secs(delay_secs);
     let timer_id = ic_cdk_timers::set_timer(delay, move || {
         let interpreter = crate::INTERPRETER_OPTION.as_mut()
             .expect("SystemError: missing python interpreter");
@@ -795,7 +795,20 @@ unsafe extern "C" fn ic_set_timer(
                 ic_cdk::trap(&format!("Timer callback '{}' not found: {}", func_name, e.to_rust_err_string()));
             });
         let empty = basilisk_cpython::PyTuple::new(Vec::new()).unwrap();
-        let _ = py_func.call(&empty.into_object(), None);
+        match py_func.call(&empty.into_object(), None) {
+            Ok(result) => {
+                // If the callback returns a generator, drive it async
+                if result.has_attr("send") {
+                    let cb_name = func_name.clone();
+                    ic_cdk::spawn(async move {
+                        let _ = crate::drive_generator(result, &cb_name).await;
+                    });
+                }
+            }
+            Err(e) => {
+                ic_cdk::println!("Timer callback '{}' error: {}", func_name, e.to_rust_err_string());
+            }
+        }
     });
 
     // Return timer_id as int
@@ -806,7 +819,7 @@ unsafe extern "C" fn ic_set_timer(
     }
 }
 
-/// ic.set_timer_interval(interval_ns, callback) -> timer_id
+/// ic.set_timer_interval(interval_secs, callback) -> timer_id
 unsafe extern "C" fn ic_set_timer_interval(
     _self: *mut ffi::PyObject,
     args: *mut ffi::PyObject,
@@ -816,10 +829,10 @@ unsafe extern "C" fn ic_set_timer_interval(
         None => { ic_cdk::trap("set_timer_interval: expected tuple args"); }
     };
     if args_tuple.len() != 2 {
-        ic_cdk::trap("set_timer_interval: expected 2 arguments (interval_ns, callback)");
+        ic_cdk::trap("set_timer_interval: expected 2 arguments (interval_secs, callback)");
     }
-    let interval_ns = match args_tuple.get_item(0) {
-        Some(o) => match o.extract_u64() { Ok(v) => v, Err(_) => { ic_cdk::trap("set_timer_interval: interval must be int (nanoseconds)"); } },
+    let interval_secs = match args_tuple.get_item(0) {
+        Some(o) => match o.extract_u64() { Ok(v) => v, Err(_) => { ic_cdk::trap("set_timer_interval: interval must be int (seconds)"); } },
         None => { ic_cdk::trap("set_timer_interval: missing interval"); }
     };
     let callback = match args_tuple.get_item(1) {
@@ -829,7 +842,7 @@ unsafe extern "C" fn ic_set_timer_interval(
 
     let func_name = resolve_timer_callback(&callback);
 
-    let interval = std::time::Duration::from_nanos(interval_ns);
+    let interval = std::time::Duration::from_secs(interval_secs);
     let timer_id = ic_cdk_timers::set_timer_interval(interval, move || {
         let interpreter = crate::INTERPRETER_OPTION.as_mut()
             .expect("SystemError: missing python interpreter");
@@ -838,7 +851,20 @@ unsafe extern "C" fn ic_set_timer_interval(
                 ic_cdk::trap(&format!("Timer callback '{}' not found: {}", func_name, e.to_rust_err_string()));
             });
         let empty = basilisk_cpython::PyTuple::new(Vec::new()).unwrap();
-        let _ = py_func.call(&empty.into_object(), None);
+        match py_func.call(&empty.into_object(), None) {
+            Ok(result) => {
+                // If the callback returns a generator, drive it async
+                if result.has_attr("send") {
+                    let cb_name = func_name.clone();
+                    ic_cdk::spawn(async move {
+                        let _ = crate::drive_generator(result, &cb_name).await;
+                    });
+                }
+            }
+            Err(e) => {
+                ic_cdk::println!("Timer callback '{}' error: {}", func_name, e.to_rust_err_string());
+            }
+        }
     });
 
     let id_val = timer_id.data().as_ffi() as u64;
