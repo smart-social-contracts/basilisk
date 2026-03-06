@@ -931,6 +931,89 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
 
         resolving.discard(name)
 
+    # Pre-inject well-known basilisk types so imported types resolve correctly.
+    # Without this, types like CreateCanisterResult (from basilisk.canisters.management)
+    # would fall through to the "text" default since they aren't defined in user code.
+    _BUILTIN_BASILISK_TYPES = {
+        # --- basilisk core ---
+        "StableMemoryError": "variant { OutOfMemory : null; OutOfBounds : null }",
+        "StableGrowResult": "variant { Ok : nat32; Err : variant { OutOfMemory : null; OutOfBounds : null } }",
+        "Stable64GrowResult": "variant { Ok : nat64; Err : variant { OutOfMemory : null; OutOfBounds : null } }",
+        "RejectionCode": "variant { NoError : null; SysFatal : null; SysTransient : null; DestinationInvalid : null; CanisterReject : null; CanisterError : null }",
+        "NotifyResult": "variant { Ok : null; Err : variant { NoError : null; SysFatal : null; SysTransient : null; DestinationInvalid : null; CanisterReject : null; CanisterError : null } }",
+        "GuardResult": "variant { Ok : null; Err : text }",
+        "KeyTooLarge": "record { given : nat32; max : nat32 }",
+        "ValueTooLarge": "record { given : nat32; max : nat32 }",
+        "InsertError": "variant { KeyTooLarge : record { given : nat32; max : nat32 }; ValueTooLarge : record { given : nat32; max : nat32 } }",
+        # --- basilisk.canisters.management.basic ---
+        "CreateCanisterArgs": "record { settings : opt CanisterSettings }",
+        "CanisterSettings": "record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat }",
+        "DefiniteCanisterSettings": "record { controllers : vec principal; compute_allocation : nat; memory_allocation : nat; freezing_threshold : nat }",
+        "CreateCanisterResult": "record { canister_id : principal }",
+        "UpdateSettingsArgs": "record { canister_id : principal; settings : CanisterSettings }",
+        "InstallCodeArgs": "record { mode : InstallCodeMode; canister_id : principal; wasm_module : blob; arg : blob }",
+        "InstallCodeMode": "variant { install : null; reinstall : null; upgrade : null }",
+        "UninstallCodeArgs": "record { canister_id : principal }",
+        "StartCanisterArgs": "record { canister_id : principal }",
+        "StopCanisterArgs": "record { canister_id : principal }",
+        "CanisterStatusArgs": "record { canister_id : principal }",
+        "CanisterStatusResult": "record { status : CanisterStatus; settings : DefiniteCanisterSettings; module_hash : opt blob; memory_size : nat; cycles : nat }",
+        "CanisterStatus": "variant { running : null; stopping : null; stopped : null }",
+        "DeleteCanisterArgs": "record { canister_id : principal }",
+        "DepositCyclesArgs": "record { canister_id : principal }",
+        "ProvisionalCreateCanisterWithCyclesArgs": "record { amount : opt nat; settings : opt CanisterSettings }",
+        "ProvisionalCreateCanisterWithCyclesResult": "record { canister_id : principal }",
+        "ProvisionalTopUpCanisterArgs": "record { canister_id : principal; amount : nat }",
+        # --- basilisk.canisters.management.http ---
+        "HttpMethod": "variant { get : null; head : null; post : null }",
+        "HttpHeader": "record { name : text; value : text }",
+        "HttpResponse": "record { status : nat; headers : vec HttpHeader; body : blob }",
+        "HttpTransformArgs": "record { response : HttpResponse; context : blob }",
+        "HttpTransformFunc": "func (HttpTransformArgs) -> (HttpResponse) query",
+        "HttpTransform": "record { function : HttpTransformFunc; context : blob }",
+        "HttpRequestArgs": "record { url : text; max_response_bytes : opt nat64; method : HttpMethod; headers : vec HttpHeader; body : opt blob; transform : opt HttpTransform }",
+        # --- basilisk.canisters.management.tecdsa ---
+        "EcdsaCurve": "variant { secp256k1 : null }",
+        "KeyId": "record { curve : EcdsaCurve; name : text }",
+        "EcdsaPublicKeyArgs": "record { canister_id : opt principal; derivation_path : vec blob; key_id : KeyId }",
+        "SignWithEcdsaArgs": "record { message_hash : blob; derivation_path : vec blob; key_id : KeyId }",
+        "EcdsaPublicKeyResult": "record { public_key : blob; chain_code : blob }",
+        "SignWithEcdsaResult": "record { signature : blob }",
+        # --- basilisk.canisters.management.bitcoin ---
+        "BitcoinNetwork": "variant { Mainnet : null; Regtest : null; Testnet : null }",
+        "GetBalanceArgs": "record { address : text; min_confirmations : opt nat32; network : BitcoinNetwork }",
+        "GetCurrentFeePercentilesArgs": "record { network : BitcoinNetwork }",
+        "UtxosFilter": "variant { MinConfirmations : nat32; Page : blob }",
+        "GetUtxosArgs": "record { address : text; filter : opt UtxosFilter; network : BitcoinNetwork }",
+        "Outpoint": "record { txid : blob; vout : nat32 }",
+        "Utxo": "record { height : nat32; outpoint : Outpoint; value : nat64 }",
+        "GetUtxosResult": "record { next_page : opt blob; tip_block_hash : blob; tip_height : nat32; utxos : vec Utxo }",
+        "SendTransactionArgs": "record { transaction : blob; network : BitcoinNetwork }",
+        "SendTransactionError": "variant { MalformedTransaction : null; QueueFull : null }",
+        # --- basilisk.canisters.ledger ---
+        "Tokens": "record { e8s : nat64 }",
+        "TimeStamp": "record { timestamp_nanos : nat64 }",
+        "TransferArgs": "record { memo : nat64; amount : Tokens; fee : Tokens; from_subaccount : opt blob; to : blob; created_at_time : opt TimeStamp }",
+        "TransferError_BadFee": "record { expected_fee : Tokens }",
+        "TransferError_InsufficientFunds": "record { balance : Tokens }",
+        "TransferError_TxTooOld": "record { allowed_window_nanos : nat64 }",
+        "TransferError_TxDuplicate": "record { duplicate_of : nat64 }",
+        "TransferError": "variant { BadFee : TransferError_BadFee; InsufficientFunds : TransferError_InsufficientFunds; TxTooOld : TransferError_TxTooOld; TxCreatedInFuture : null; TxDuplicate : TransferError_TxDuplicate }",
+        "TransferResult": "variant { Ok : nat64; Err : TransferError }",
+        "AccountBalanceArgs": "record { account : blob }",
+        "TransferFeeArg": "record { }",
+        "TransferFee": "record { transfer_fee : Tokens }",
+        "AccountIdentifier": "blob",
+        "SubAccount": "blob",
+        "BlockIndex": "nat64",
+        "Memo": "nat64",
+        "Address": "text",
+    }
+    for bname, bdef in _BUILTIN_BASILISK_TYPES.items():
+        if bname not in type_defs and bname not in known_types:
+            type_defs[bname] = bdef
+            known_types.add(bname)
+
     # Resolve all types
     for name in list(raw_records.keys()) + list(raw_variants.keys()) + list(raw_tuples.keys()) + list(raw_funcs.keys()) + list(raw_services.keys()) + list(raw_aliases.keys()):
         ensure_type_resolved(name)
@@ -978,22 +1061,8 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
     # Build type registry from class definitions
     known_types, type_defs = _build_type_registry(tree)
 
-    # Inject basilisk built-in types that users import but don't redefine
-    _BUILTIN_BASILISK_TYPES = {
-        "StableMemoryError": "variant { OutOfMemory : null; OutOfBounds : null }",
-        "StableGrowResult": "variant { Ok : nat32; Err : variant { OutOfMemory : null; OutOfBounds : null } }",
-        "Stable64GrowResult": "variant { Ok : nat64; Err : variant { OutOfMemory : null; OutOfBounds : null } }",
-        "RejectionCode": "variant { NoError : null; SysFatal : null; SysTransient : null; DestinationInvalid : null; CanisterReject : null; CanisterError : null }",
-        "NotifyResult": "variant { Ok : null; Err : variant { NoError : null; SysFatal : null; SysTransient : null; DestinationInvalid : null; CanisterReject : null; CanisterError : null } }",
-        "GuardResult": "variant { Ok : null; Err : text }",
-        "KeyTooLarge": "record { given : nat32; max : nat32 }",
-        "ValueTooLarge": "record { given : nat32; max : nat32 }",
-        "InsertError": "variant { KeyTooLarge : record { given : nat32; max : nat32 }; ValueTooLarge : record { given : nat32; max : nat32 } }",
-    }
-    for name, definition in _BUILTIN_BASILISK_TYPES.items():
-        if name not in type_defs:
-            type_defs[name] = definition
-            known_types[name] = ""
+    # NOTE: builtin basilisk types are now injected inside _build_type_registry
+    # (before the resolution pass) so that imported types resolve correctly.
 
     def get_candid_type(annotation) -> str:
         """Convert a Python type annotation to a Candid type string."""
