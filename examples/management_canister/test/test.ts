@@ -79,6 +79,17 @@ runTests(
                     }
 
                     const canisterStatus = getCanisterStatusResult.Ok;
+                    const s = canisterStatus.settings;
+                    console.log('diag getCanisterStatus:', JSON.stringify({
+                        status_running: 'running' in canisterStatus.status,
+                        memory_size: canisterStatus.memory_size?.toString(),
+                        cycles: canisterStatus.cycles?.toString(),
+                        freezing_threshold: s.freezing_threshold?.toString(),
+                        controllers_len: s.controllers?.length,
+                        memory_allocation: s.memory_allocation?.toString(),
+                        compute_allocation: s.compute_allocation?.toString(),
+                        module_hash_len: canisterStatus.module_hash?.length
+                    }));
 
                     return {
                         Ok:
