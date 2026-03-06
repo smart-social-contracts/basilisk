@@ -61,6 +61,8 @@ if _bmod:
         _bic = _bic  # capture reference before cleanup
         def __init__(self, memory_id, max_key_size=0, max_value_size=0):
             self.memory_id = memory_id
+            self.max_key_size = max_key_size
+            self.max_value_size = max_value_size
             self._native = self._bic and hasattr(self._bic, f"stable_b_tree_map_{memory_id}_get")
             if not self._native:
                 self._data = {}
@@ -76,9 +78,31 @@ if _bmod:
             if self._native:
                 return self._fn("get")(key)
             return self._data.get(key)
+        def _estimate_size(self, value):
+            if isinstance(value, bytes):
+                return len(value)
+            if isinstance(value, str):
+                return len(value.encode('utf-8'))
+            if isinstance(value, bool):
+                return 1
+            if isinstance(value, (int, float)):
+                return 8
+            try:
+                import json as _j
+                return len(_j.dumps(value).encode('utf-8'))
+            except Exception:
+                return 0
         def insert(self, key, value):
             if self._native:
                 return self._fn("insert")(key, value)
+            if hasattr(self, 'max_key_size') and self.max_key_size > 0:
+                ks = self._estimate_size(key)
+                if ks > self.max_key_size:
+                    raise Exception(f"Key is too large. Expected <= {self.max_key_size} bytes, received {ks} bytes")
+            if hasattr(self, 'max_value_size') and self.max_value_size > 0:
+                vs = self._estimate_size(value)
+                if vs > self.max_value_size:
+                    raise Exception(f"Value is too large. Expected <= {self.max_value_size} bytes, received {vs} bytes")
             old = self._data.get(key)
             self._data[key] = value
             return old

@@ -387,7 +387,30 @@ class StableBTreeMap(metaclass=_StableBTreeMapMeta):
     def get(self, key):
         k = self._normalize_key(key)
         return self._data.get(k, None)
+    def _estimate_size(self, value):
+        if isinstance(value, bytes):
+            return len(value)
+        if isinstance(value, str):
+            return len(value.encode('utf-8'))
+        if isinstance(value, bool):
+            return 1
+        if isinstance(value, int):
+            return 8
+        if isinstance(value, float):
+            return 8
+        try:
+            return len(_json.dumps(value).encode('utf-8'))
+        except Exception:
+            return 0
     def insert(self, key, value):
+        if self._max_key_size > 0:
+            ks = self._estimate_size(key)
+            if ks > self._max_key_size:
+                raise Exception(f"Key is too large. Expected <= {self._max_key_size} bytes, received {ks} bytes")
+        if self._max_value_size > 0:
+            vs = self._estimate_size(value)
+            if vs > self._max_value_size:
+                raise Exception(f"Value is too large. Expected <= {self._max_value_size} bytes, received {vs} bytes")
         k = self._normalize_key(key)
         prev = self._data.get(k, None)
         self._data[k] = value
