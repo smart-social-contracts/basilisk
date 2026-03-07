@@ -391,11 +391,41 @@ jobs:
             - working-directory: ${{ matrix.example_directories }}
               run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
 
-            - name: Deploy and test
+            - name: Install test dependencies
               shell: bash -l {0}
               working-directory: ${{ matrix.example_directories }}/test
-              timeout-minutes: 65
-              run: source ../venv/bin/activate && npm install && npm test
+              timeout-minutes: 10
+              run: source ../venv/bin/activate && npm install
+
+            - name: Deploy canister
+              shell: bash -l {0}
+              working-directory: ${{ matrix.example_directories }}/test
+              timeout-minutes: 30
+              run: |
+                  source ../venv/bin/activate
+                  npm run pretest 2>&1 || { echo "::error::Pretest (deploy) failed"; exit 1; }
+
+            - name: Verify canister deployment
+              working-directory: ${{ matrix.example_directories }}
+              run: |
+                  CANISTER_NAME=$(ls -1 src/*.py 2>/dev/null | head -1 | xargs -I{} basename {} .py || echo "")
+                  DFX_CANISTER=$(jq -r '.canisters | keys[0]' dfx.json 2>/dev/null || echo "")
+                  NAME="${DFX_CANISTER:-$CANISTER_NAME}"
+                  if [ -n "$NAME" ]; then
+                    echo "Canister: $NAME"
+                    dfx canister status "$NAME" 2>&1 || true
+                  fi
+
+            - name: Run tests
+              shell: bash -l {0}
+              working-directory: ${{ matrix.example_directories }}/test
+              timeout-minutes: 35
+              run: |
+                  source ../venv/bin/activate
+                  BASILISK_REBUILD=true npx ts-node --transpile-only --ignore=false test.ts 2>&1 || {
+                    echo "::error::Test failed for ${{ matrix.example_directories }}"
+                    exit 1
+                  }
 
     cpython-ic-deploy:
         needs: release-candidate-deploy
