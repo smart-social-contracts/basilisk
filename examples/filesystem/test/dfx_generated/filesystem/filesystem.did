@@ -1,0 +1,8 @@
+service : {
+  "test_fs_diagnostics" : () -> (vec text);
+  "test_fs_mkdir" : () -> (vec text);
+  "test_fs_path_exists" : () -> (vec text);
+  "test_fs_rename" : () -> (vec text);
+  "test_fs_rmdir" : () -> (vec text);
+  "test_fs_nested_mkdir" : () -> (vec text);
+}

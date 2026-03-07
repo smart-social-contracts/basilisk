@@ -422,7 +422,7 @@ jobs:
               timeout-minutes: 35
               run: |
                   source ../venv/bin/activate
-                  BASILISK_REBUILD=true npx ts-node --transpile-only --ignore=false test.ts 2>&1 || {
+                  npm test 2>&1 || {
                     echo "::error::Test failed for ${{ matrix.example_directories }}"
                     exit 1
                   }

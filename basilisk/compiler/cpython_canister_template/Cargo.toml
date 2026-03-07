@@ -28,7 +28,7 @@ serde_json = "1.0"
 async-recursion = "1.0.0"
 ic-stable-structures = "0.5.2"
 slotmap = "1.0.6"
-ic-wasi-polyfill = { version = "0.6.1", features = ["transient"] }
+ic-wasi-polyfill = { version = "0.6.1" }
 
 [patch.crates-io]
 num-bigint = { git = "https://github.com/rust-num/num-bigint" }
