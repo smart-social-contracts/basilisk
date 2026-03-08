@@ -118,7 +118,7 @@ def build_with_template(
             if m["name"] in entry_method_names and m["name"] not in seen_names:
                 methods.append(m)
                 seen_names.add(m["name"])
-        lifecycle = {k: v for k, v in all_lifecycle.items() if k in entry_lifecycle_keys}
+        lifecycle = {k: entry_lifecycle[k] for k in entry_lifecycle_keys}
     else:
         methods, type_defs, lifecycle = extract_methods_from_python(python_source)
     if verbose:
