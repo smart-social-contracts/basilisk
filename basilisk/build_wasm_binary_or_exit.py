@@ -81,7 +81,7 @@ def build_with_template(
                     with open(os.path.join(root, fname), "r") as f:
                         entry_dir_sources.append(f.read())
         entry_raw = "\n".join(entry_dir_sources)
-        entry_methods, _, entry_lifecycle = extract_methods_from_python(entry_raw)
+        entry_methods, entry_type_defs, entry_lifecycle = extract_methods_from_python(entry_raw)
         entry_method_names = {m["name"] for m in entry_methods}
         entry_lifecycle_keys = set(entry_lifecycle.keys())
 
@@ -119,6 +119,9 @@ def build_with_template(
                 methods.append(m)
                 seen_names.add(m["name"])
         lifecycle = {k: entry_lifecycle[k] for k in entry_lifecycle_keys}
+        # Override type_defs with entry-dir types to avoid name collisions
+        # (e.g. StatusRecord defined differently in multiple canisters)
+        type_defs.update(entry_type_defs)
     else:
         methods, type_defs, lifecycle = extract_methods_from_python(python_source)
     if verbose:
