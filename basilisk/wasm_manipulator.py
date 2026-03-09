@@ -731,14 +731,56 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
                 for item in node.body:
                     if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
                         fields.append((item.target.id, item.annotation))
-                raw_records[node.name] = fields
+                if node.name in raw_records:
+                    # Merge: keep union of fields, later definition wins for conflicts
+                    existing = {f[0]: f[1] for f in raw_records[node.name]}
+                    new = {f[0]: f[1] for f in fields}
+                    merged = {**existing, **new}
+                    # Preserve insertion order: existing fields first, then new ones
+                    merged_fields = []
+                    for fname in existing:
+                        merged_fields.append((fname, merged[fname]))
+                    for fname in new:
+                        if fname not in existing:
+                            merged_fields.append((fname, merged[fname]))
+                    if set(existing.keys()) != set(new.keys()):
+                        import sys
+                        print(
+                            f"⚠️  Basilisk: duplicate Record '{node.name}' detected "
+                            f"(fields merged: {sorted(set(new.keys()) - set(existing.keys()))} added, "
+                            f"{sorted(set(existing.keys()) - set(new.keys()))} kept from earlier definition)",
+                            file=sys.stderr,
+                        )
+                    raw_records[node.name] = merged_fields
+                else:
+                    raw_records[node.name] = fields
                 known_types.add(node.name)
             elif "Variant" in base_names:
                 cases = []
                 for item in node.body:
                     if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name):
                         cases.append((item.target.id, item.annotation))
-                raw_variants[node.name] = cases
+                if node.name in raw_variants:
+                    # Merge: keep union of cases, later definition wins for conflicts
+                    existing = {c[0]: c[1] for c in raw_variants[node.name]}
+                    new = {c[0]: c[1] for c in cases}
+                    merged = {**existing, **new}
+                    merged_cases = []
+                    for cname in existing:
+                        merged_cases.append((cname, merged[cname]))
+                    for cname in new:
+                        if cname not in existing:
+                            merged_cases.append((cname, merged[cname]))
+                    if set(existing.keys()) != set(new.keys()):
+                        import sys
+                        print(
+                            f"⚠️  Basilisk: duplicate Variant '{node.name}' detected "
+                            f"(cases merged)",
+                            file=sys.stderr,
+                        )
+                    raw_variants[node.name] = merged_cases
+                else:
+                    raw_variants[node.name] = cases
                 known_types.add(node.name)
             elif "Service" in base_names:
                 # Service class: extract @service_query / @service_update methods
