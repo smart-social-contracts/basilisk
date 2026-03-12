@@ -7,6 +7,7 @@ behaviour, and clean up after themselves.
 
 import os
 import re
+import subprocess
 import sys
 
 import pytest
@@ -1618,6 +1619,178 @@ class TestE2EDownloadAndRun:
             )
         finally:
             _cleanup_task(tid, canister, network)
+
+
+# ===========================================================================
+# Persistent file storage — survives canister upgrade
+# ===========================================================================
+
+class TestPersistentFileStorage:
+    """E2E: files on memfs survive canister upgrades via stable memory."""
+
+    # Path to the pre-built WASM for triggering upgrades
+    _WASM_PATH = os.path.join(
+        os.path.dirname(__file__),
+        "test_canister", ".basilisk", "bosh_test", "bosh_test.wasm",
+    )
+
+    def _upgrade_canister(self, canister, network, retries=2):
+        """Trigger a canister upgrade using the existing WASM.
+
+        Retries on transient errors; skips the test on persistent IC failures.
+        """
+        import time as _time
+        cmd = [
+            "dfx", "canister", "install", canister,
+            "--mode", "upgrade",
+            "--wasm", self._WASM_PATH,
+            "--upgrade-unchanged",
+        ]
+        if network:
+            cmd.extend(["--network", network])
+        for attempt in range(retries + 1):
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+            except subprocess.TimeoutExpired:
+                if attempt < retries:
+                    _time.sleep(5)
+                    continue
+                pytest.skip("Canister upgrade timed out (IC transient issue)")
+            if r.returncode == 0:
+                return
+            stderr = r.stderr or ""
+            if "out of cycles" in stderr:
+                pytest.skip("Canister out of cycles for upgrade")
+            if attempt < retries and ("Timeout" in stderr or "SysTransient" in stderr):
+                _time.sleep(5)
+                continue
+            if "Timeout" in stderr or "SysTransient" in stderr:
+                pytest.skip(f"IC transient error during upgrade: {stderr.strip()}")
+            assert r.returncode == 0, f"Upgrade failed: {stderr}"
+
+    def test_file_persists_across_upgrade(self, canister_reachable, canister, network):
+        """Write a file, upgrade the canister, verify the file is intact."""
+        import time
+        import uuid
+
+        marker = f"PERSIST_TEST_{uuid.uuid4().hex[:8]}"
+        fpath = f"/test_persist_{marker}.txt"
+
+        # 1. Write a file with unique content
+        write_result = exec_on_canister(
+            f"with open('{fpath}', 'w') as f: f.write('{marker}')\n"
+            f"print('written')",
+            canister, network,
+        )
+        assert "written" in write_result, f"Write failed: {write_result}"
+
+        # 2. Verify the file exists before upgrade
+        pre = exec_on_canister(f"print(open('{fpath}').read())", canister, network)
+        assert marker in pre, f"Pre-upgrade read failed: {pre}"
+
+        # 3. Upgrade the canister (triggers pre_upgrade → post_upgrade)
+        self._upgrade_canister(canister, network)
+
+        # 4. Wait for canister to come back online
+        time.sleep(5)
+
+        # 5. Verify the file survived the upgrade
+        post = exec_on_canister(f"print(open('{fpath}').read())", canister, network)
+        assert marker in post, (
+            f"File did NOT survive upgrade!\n"
+            f"  Expected content containing: {marker}\n"
+            f"  Got: {post}"
+        )
+
+        # 6. Cleanup
+        exec_on_canister(f"import os; os.remove('{fpath}')", canister, network)
+
+    def test_binary_file_persists(self, canister_reachable, canister, network):
+        """Binary files should also survive upgrades (base64-safe)."""
+        import time
+
+        fpath = "/test_persist_binary.bin"
+
+        # 1. Write binary content (non-UTF8 bytes)
+        write_result = exec_on_canister(
+            f"with open('{fpath}', 'wb') as f: f.write(bytes(range(256)))\n"
+            f"print('written')",
+            canister, network,
+        )
+        assert "written" in write_result
+
+        # 2. Upgrade
+        self._upgrade_canister(canister, network)
+        time.sleep(5)
+
+        # 3. Verify binary content is intact
+        post = exec_on_canister(
+            f"data = open('{fpath}', 'rb').read()\n"
+            f"print(len(data))\n"
+            f"print(data == bytes(range(256)))",
+            canister, network,
+        )
+        assert "256" in post, f"Binary length mismatch: {post}"
+        assert "True" in post, f"Binary content mismatch: {post}"
+
+        # 4. Cleanup
+        exec_on_canister(f"import os; os.remove('{fpath}')", canister, network)
+
+    def test_volatile_tmp_not_persisted(self, canister_reachable, canister, network):
+        """Files in /tmp/ should NOT survive upgrades."""
+        import time
+
+        fpath = "/tmp/test_volatile.txt"
+
+        # 1. Write to /tmp/
+        write_result = exec_on_canister(
+            f"import os; os.makedirs('/tmp', exist_ok=True)\n"
+            f"with open('{fpath}', 'w') as f: f.write('volatile')\n"
+            f"print('written')",
+            canister, network,
+        )
+        assert "written" in write_result
+
+        # 2. Upgrade
+        self._upgrade_canister(canister, network)
+        time.sleep(5)
+
+        # 3. /tmp/ file should be gone
+        post = exec_on_canister(
+            f"import os\n"
+            f"print(os.path.exists('{fpath}'))",
+            canister, network,
+        )
+        assert "False" in post, f"/tmp/ file should not survive upgrade: {post}"
+
+    def test_nested_directory_persists(self, canister_reachable, canister, network):
+        """Files in nested directories should survive upgrades."""
+        import time
+
+        fpath = "/data/subdir/nested_file.txt"
+
+        # 1. Write to nested dir
+        write_result = exec_on_canister(
+            f"import os; os.makedirs('/data/subdir', exist_ok=True)\n"
+            f"with open('{fpath}', 'w') as f: f.write('nested_ok')\n"
+            f"print('written')",
+            canister, network,
+        )
+        assert "written" in write_result
+
+        # 2. Upgrade
+        self._upgrade_canister(canister, network)
+        time.sleep(5)
+
+        # 3. Verify
+        post = exec_on_canister(f"print(open('{fpath}').read())", canister, network)
+        assert "nested_ok" in post, f"Nested file lost: {post}"
+
+        # 4. Cleanup
+        exec_on_canister(
+            "import os, shutil; shutil.rmtree('/data', ignore_errors=True)",
+            canister, network,
+        )
 
 
 # ===========================================================================

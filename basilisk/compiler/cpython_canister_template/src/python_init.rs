@@ -643,24 +643,38 @@ def _stable_maps_end_offset():
     payload_len = int.from_bytes(header[8:16], 'little')
     return 16 + payload_len
 
+def _memfs_walk(root):
+    """Recursive file listing using os.listdir (os.walk not in WASI polyfill)."""
+    import os, os.path
+    result = []
+    try:
+        entries = os.listdir(root)
+    except Exception:
+        return result
+    for name in entries:
+        full = os.path.join(root, name)
+        if os.path.isfile(full):
+            result.append(full)
+        elif os.path.isdir(full):
+            result.extend(_memfs_walk(full))
+    return result
+
 def _basilisk_save_files():
     """Serialize memfs files to stable memory (after maps region)."""
-    import os
+    import os, os.path
     import base64 as _b64
     files = {}
-    for dirpath, dirnames, filenames in os.walk('/'):
-        full_dir = dirpath if dirpath.endswith('/') else dirpath + '/'
-        skip = any(full_dir.startswith(p) for p in _VOLATILE_PREFIXES)
-        if skip:
+    for fpath in _memfs_walk('/'):
+        full_dir = os.path.dirname(fpath)
+        full_dir = full_dir if full_dir.endswith('/') else full_dir + '/'
+        if any(full_dir.startswith(p) for p in _VOLATILE_PREFIXES):
             continue
-        for fname in filenames:
-            fpath = os.path.join(dirpath, fname)
-            try:
-                with open(fpath, 'rb') as f:
-                    content = f.read()
-                files[fpath] = _b64.b64encode(content).decode('ascii')
-            except Exception:
-                pass
+        try:
+            with open(fpath, 'rb') as f:
+                content = f.read()
+            files[fpath] = _b64.b64encode(content).decode('ascii')
+        except Exception:
+            pass
     payload = _json.dumps(files).encode('utf-8') if files else b""
     offset = _stable_maps_end_offset()
     total_needed = offset + 16 + len(payload)
