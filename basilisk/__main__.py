@@ -257,23 +257,30 @@ def bundle_python_code(paths: Paths):
             )
 
         if type(node) == modulegraph.modulegraph.Package:  # type: ignore
-            # Skip the installed basilisk package - we use our custom runtime version
+            # Skip the installed basilisk package (compiler, bosh, etc.)
+            # but allow canister-side subpackages like basilisk.os
             if should_skip_package(node.identifier, node.packagepath[0]):  # type: ignore
                 continue
+            # Convert dotted identifier to path (e.g. basilisk.os -> basilisk/os)
+            dest_dir = node.identifier.replace(".", os.sep)  # type: ignore
             shutil.copytree(
                 node.packagepath[0],  # type: ignore
-                f"{python_source_path}/{node.identifier}",  # type: ignore
+                f"{python_source_path}/{dest_dir}",  # type: ignore
                 dirs_exist_ok=True,
                 ignore=ignore_specific_dir,
             )
+            # Ensure parent __init__.py files exist for nested packages
+            _ensure_parent_inits(python_source_path, dest_dir)
 
         if type(node) == modulegraph.modulegraph.NamespacePackage:  # type: ignore
+            dest_dir = node.identifier.replace(".", os.sep)  # type: ignore
             shutil.copytree(
                 node.packagepath[0],  # type: ignore
-                f"{python_source_path}/{node.identifier}",  # type: ignore
+                f"{python_source_path}/{dest_dir}",  # type: ignore
                 dirs_exist_ok=True,
                 ignore=ignore_specific_dir,
             )
+            _ensure_parent_inits(python_source_path, dest_dir)
 
     py_file_names = list(  # type: ignore
         filter(
@@ -300,10 +307,30 @@ def ignore_specific_dir(dirname: str, filenames: list[str]) -> list[str]:
 
 
 def should_skip_package(node_identifier: str, node_packagepath: str) -> bool:
-    """Skip the installed basilisk package - we use our custom runtime version instead."""
-    if node_identifier == "basilisk" and "site-packages" in node_packagepath:
+    """Skip the top-level installed basilisk package (compiler, bosh, etc.)
+    but allow canister-side subpackages like basilisk.os through."""
+    if "site-packages" not in node_packagepath:
+        return False
+    # Skip the top-level basilisk package but not its subpackages
+    if node_identifier == "basilisk":
         return True
     return False
+
+
+def _ensure_parent_inits(python_source_path: str, dest_dir: str):
+    """Create empty __init__.py in parent directories for nested packages.
+
+    E.g. for dest_dir='basilisk/os', ensures basilisk/__init__.py exists
+    so that 'from basilisk.os import ...' works at runtime.
+    """
+    parts = dest_dir.split(os.sep)
+    for i in range(1, len(parts)):
+        parent = os.path.join(python_source_path, *parts[:i])
+        init_file = os.path.join(parent, "__init__.py")
+        if not os.path.exists(init_file):
+            os.makedirs(parent, exist_ok=True)
+            with open(init_file, "w") as f:
+                f.write("")
 
 
 def parse_basilisk_generate_error(stdout: bytes) -> str:
