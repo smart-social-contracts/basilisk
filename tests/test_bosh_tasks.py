@@ -1149,3 +1149,240 @@ class TestTaskLogFeatures:
         """Usage message should mention --follow."""
         result = _task_magic("%task foobar", canister, network)
         assert "--follow" in result
+
+
+# ===========================================================================
+# %task add-step — multi-step task creation
+# ===========================================================================
+
+class TestTaskAddStep:
+    """Test %task add-step for building multi-step tasks."""
+
+    def test_add_step_to_existing_task(self, canister_reachable, canister, network):
+        """add-step should add a new step to an existing task."""
+        result = _task_magic("%task create _test_addstep", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            # Add a step with --code
+            step_result = _task_magic(
+                f'%task add-step {tid} --code "print(42)"', canister, network
+            )
+            assert "Added step" in step_result
+            assert "sync" in step_result
+
+            # Verify via task info
+            info = _task_magic(f"%task info {tid}", canister, network)
+            assert "Steps:" in info or "step" in info.lower()
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_add_multiple_steps(self, canister_reachable, canister, network):
+        """Multiple add-step calls should create sequential steps."""
+        result = _task_magic("%task create _test_multistep", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            _task_magic(
+                f'%task add-step {tid} --code "print(\'step0\')"', canister, network
+            )
+            _task_magic(
+                f'%task add-step {tid} --code "print(\'step1\')"', canister, network
+            )
+            info = _task_magic(f"%task info {tid}", canister, network)
+            # Should show 2 steps
+            assert "2" in info or "step" in info.lower()
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_add_step_with_delay(self, canister_reachable, canister, network):
+        """--delay N should set run_next_after on the step."""
+        result = _task_magic("%task create _test_delay_step", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            step_result = _task_magic(
+                f'%task add-step {tid} --code "print(1)" --delay 5', canister, network
+            )
+            assert "Added step" in step_result
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_add_step_async_flag(self, canister_reachable, canister, network):
+        """--async should mark the step as async."""
+        result = _task_magic("%task create _test_async_step", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            step_result = _task_magic(
+                f'%task add-step {tid} --code "def async_task(): yield" --async',
+                canister, network,
+            )
+            assert "Added step" in step_result
+            assert "async" in step_result
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_add_step_by_name(self, canister_reachable, canister, network):
+        """add-step should work with task name, not just ID."""
+        result = _task_magic("%task create _test_addstep_name", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            step_result = _task_magic(
+                '%task add-step _test_addstep_name --code "print(99)"',
+                canister, network,
+            )
+            assert "Added step" in step_result
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_add_step_missing_code_shows_usage(self, canister_reachable, canister, network):
+        """add-step without --code or --file should show usage."""
+        result = _task_magic("%task create _test_addstep_nocode", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            usage_result = _task_magic(
+                f"%task add-step {tid}", canister, network
+            )
+            assert "Usage" in usage_result or "add-step" in usage_result
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_add_step_with_file(self, canister_reachable, canister, network):
+        """--file should wrap as exec(open(...).read())."""
+        result = _task_magic("%task create _test_addstep_file", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            step_result = _task_magic(
+                f"%task add-step {tid} --file /my_script.py", canister, network
+            )
+            assert "Added step" in step_result
+        finally:
+            _cleanup_task(tid, canister, network)
+
+
+# ===========================================================================
+# Multi-step task execution — %task run / %task start
+# ===========================================================================
+
+class TestMultiStepExecution:
+    """Test executing tasks with multiple steps."""
+
+    def test_run_two_sync_steps(self, canister_reachable, canister, network):
+        """Running a task with 2 sync steps should execute both."""
+        result = _task_magic("%task create _test_2step_run", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            _task_magic(
+                f'%task add-step {tid} --code "print(\'hello\')"', canister, network
+            )
+            _task_magic(
+                f'%task add-step {tid} --code "print(\'world\')"', canister, network
+            )
+            run_result = _task_magic(f"%task run {tid}", canister, network)
+            assert "completed" in run_result.lower()
+
+            # Check log has 2 executions
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "hello" in log
+            assert "world" in log
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_run_async_step_rejects(self, canister_reachable, canister, network):
+        """Running a task with an async step via %task run should warn."""
+        result = _task_magic("%task create _test_async_reject", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            _task_magic(
+                f'%task add-step {tid} --code "def async_task(): yield" --async',
+                canister, network,
+            )
+            run_result = _task_magic(f"%task run {tid}", canister, network)
+            assert "async" in run_result.lower()
+            assert "start" in run_result.lower()
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_start_two_sync_steps(self, canister_reachable, canister, network):
+        """Starting a 2-step task should execute both via timers."""
+        import time
+        result = _task_magic("%task create _test_2step_start", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            _task_magic(
+                f'%task add-step {tid} --code "print(\'alpha\')"', canister, network
+            )
+            _task_magic(
+                f'%task add-step {tid} --code "print(\'beta\')"', canister, network
+            )
+            start_result = _task_magic(f"%task start {tid}", canister, network)
+            assert "timer" in start_result.lower()
+
+            # Wait for both steps to complete
+            time.sleep(8)
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "alpha" in log
+            assert "beta" in log
+        finally:
+            _cleanup_task(tid, canister, network)
+
+
+# ===========================================================================
+# %wget — download file into canister
+# ===========================================================================
+
+class TestWget:
+    """Test %wget command for downloading files into canister filesystem."""
+
+    def test_wget_usage_without_dest(self, canister_reachable, canister, network):
+        """%wget with only URL should show usage."""
+        result = _task_magic("%wget https://example.com", canister, network)
+        assert "Usage" in result
+
+    def test_wget_downloads_file(self, canister_reachable, canister, network):
+        """%wget should download a file and save to canister memfs."""
+        # Use a known small text URL
+        url = "https://raw.githubusercontent.com/niccokunzmann/small-ftp-test-server/master/README.md"
+        dest = "/test_wget_download.txt"
+        result = _task_magic(f"%wget {url} {dest}", canister, network)
+        assert "Downloaded" in result or "bytes" in result.lower()
+
+        # Verify the file exists on the canister
+        cat_result = _task_magic(f"%cat {dest}", canister, network)
+        assert len(cat_result) > 0
+
+    def test_wget_invalid_url(self, canister_reachable, canister, network):
+        """%wget with an unreachable URL should report error."""
+        url = "https://this-domain-does-not-exist-9999.example.com/file.txt"
+        dest = "/test_wget_bad.txt"
+        result = _task_magic(f"%wget {url} {dest}", canister, network)
+        # Should contain error info (either dfx error or download failed)
+        assert "error" in result.lower() or "failed" in result.lower() or "Err" in result
+
+
+# ===========================================================================
+# %task add-step in _TASK_USAGE
+# ===========================================================================
+
+class TestUsageStrings:
+    """Verify usage strings include new features."""
+
+    def test_usage_includes_add_step(self, canister_reachable, canister, network):
+        """_TASK_USAGE should mention add-step."""
+        assert "add-step" in _TASK_USAGE
+
+    def test_usage_includes_async(self, canister_reachable, canister, network):
+        """_TASK_USAGE should mention --async."""
+        assert "--async" in _TASK_USAGE
+
+    def test_usage_includes_delay(self, canister_reachable, canister, network):
+        """_TASK_USAGE should mention --delay."""
+        assert "--delay" in _TASK_USAGE

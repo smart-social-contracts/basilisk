@@ -15,7 +15,8 @@ Shell commands:
     %ls [path]    List canister filesystem
     %cat <file>   Show file contents on canister
     %mkdir <path> Create directory on canister
-    %task         Task management (create, start, stop, etc.)
+    %wget <url> <dest>  Download a URL into canister filesystem
+    %task         Task management (create, add-step, start, stop, etc.)
     %run <file>   Read a local file and execute it on the canister
     %who          List variables in the remote namespace
     %db dump      Dump the canister database as JSON
@@ -368,6 +369,73 @@ def _task_create_code(rest: str) -> str:
     return code
 
 
+def _task_add_step_code(rest: str) -> str:
+    """Code for: %task add-step <id|name> [--code "..."|--file <path>] [--delay Ns] [--async]
+
+    Adds a new step to an existing task: Codex → Call → TaskStep.
+    --async marks the step for async execution (code must define async_task()).
+    --delay N inserts a wait of N seconds before this step runs.
+    """
+    # Parse --async flag
+    is_async = '--async' in rest
+    if is_async:
+        rest = rest.replace('--async', '', 1).strip()
+
+    # Parse --delay N
+    delay_match = re.search(r'--delay\s+(\d+)', rest)
+    delay = int(delay_match.group(1)) if delay_match else 0
+    if delay_match:
+        rest = rest[:delay_match.start()] + rest[delay_match.end():]
+
+    # Parse --file <path>
+    file_match = re.search(r'--file\s+(\S+)', rest)
+    task_file = None
+    if file_match:
+        task_file = file_match.group(1)
+        rest = rest[:file_match.start()] + rest[file_match.end():]
+
+    # Parse --code "..." (supports single or double quotes)
+    code_match = re.search(r"""--code\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')""", rest)
+    task_code = None
+    if code_match:
+        task_code = code_match.group(1) if code_match.group(1) is not None else code_match.group(2)
+        task_code = task_code.replace('\\"', '"').replace("\\'", "'")
+        rest = rest[:code_match.start()] + rest[code_match.end():]
+
+    # --file generates an exec(open(...).read()) wrapper
+    if task_file and not task_code:
+        esc_file = task_file.replace("'", "\\'")
+        task_code = f"exec(open('{esc_file}').read())"
+
+    tid = rest.strip()
+    if not tid or task_code is None:
+        return None  # signal usage error
+
+    esc_tid = tid.replace("'", "\\'")
+
+    import base64
+    b64 = base64.b64encode(task_code.encode()).decode()
+    code = (
+        _TASK_RESOLVE + _TASK_UNAVAILABLE +
+        "if 'Task' in dir():\n"
+        + _TASK_FIND.format(tid=esc_tid) +
+        "    if not _t:\n"
+        f"        print('Task not found: {esc_tid}')\n"
+        "    else:\n"
+        "        import base64 as _b64\n"
+        f"        _code_bytes = _b64.b64decode('{b64}')\n"
+        "        _code_str = _code_bytes.decode()\n"
+        "        _step_n = len(list(_t.steps))\n"
+        "        _codex = Codex(name=f'codex_{_t.name}_step{_step_n}')\n"
+        "        _codex.code = _code_str\n"
+        f"        _call = Call(codex=_codex, is_async={'True' if is_async else 'False'})\n"
+        f"        _step = TaskStep(call=_call, task=_t, status='pending', run_next_after={delay})\n"
+        "        _kind = 'async' if _call.is_async else 'sync'\n"
+        "        print(f'Added step {_step_n} ({_kind}) to task {_t._id}: {_t.name}')\n"
+    )
+    return code
+
+
 def _task_info_code(tid: str) -> str:
     """Code for: %task info <id|name>"""
     esc_tid = tid.replace("'", "\\'")
@@ -459,6 +527,11 @@ def _task_run_code(tid: str) -> str:
         "            _t.status = 'running'\n"
         "            _all_ok = True\n"
         "            for _si, _cur in enumerate(_steps):\n"
+        "                _is_async = _cur.call.is_async if _cur.call else False\n"
+        "                if _is_async:\n"
+        "                    print(f'Step {_si} is async — use %task start for async steps')\n"
+        "                    _all_ok = False\n"
+        "                    break\n"
         "                _code_str = _cur.call.codex.code if _cur.call and _cur.call.codex else None\n"
         "                _exec_name = f'taskexec_{_t._id}_{_si}'\n"
         "                _te = TaskExecution(name=_exec_name, task=_t, status='running', result='')\n"
@@ -498,6 +571,8 @@ def _task_start_code(tid: str) -> str:
 
     If the task has steps with code (Codex → Call → TaskStep), sets up a real
     ic.set_timer() callback that executes the code and records the result.
+    Supports both sync and async steps — async steps define async_task()
+    which returns a generator driven by the IC runtime (HTTP outcalls, etc.).
     For recurring tasks the callback self-reschedules.
     """
     esc_tid = tid.replace("'", "\\'")
@@ -523,7 +598,34 @@ def _task_start_code(tid: str) -> str:
         "                _has_code = True\n"
         "        if _has_code:\n"
         "            _tid = str(_t._id)\n"
-        "            def _bosh_exec_task():\n"
+        #
+        # Helper: advance to next step or complete the task
+        #
+        "            def _bosh_chain_next(_task, _si, _all_steps):\n"
+        "                _task.step_to_execute = _si + 1\n"
+        "                if _task.step_to_execute < len(_all_steps):\n"
+        "                    _next = _all_steps[_task.step_to_execute]\n"
+        "                    _delay = _next.run_next_after or 0\n"
+        "                    _next_async = _next.call.is_async if _next.call else False\n"
+        "                    if _next_async:\n"
+        "                        ic.set_timer(_delay, _bosh_exec_async)\n"
+        "                    else:\n"
+        "                        ic.set_timer(_delay, _bosh_exec_sync)\n"
+        "                else:\n"
+        "                    _task.status = 'completed'\n"
+        "                    _task.step_to_execute = 0\n"
+        "                    for _s2 in _all_steps: _s2.status = 'pending'\n"
+        "                    for _sched in _task.schedules:\n"
+        "                        if _sched.repeat_every and _sched.repeat_every > 0 and not _sched.disabled:\n"
+        "                            _task.status = 'pending'\n"
+        "                            _first_async = _all_steps[0].call.is_async if _all_steps[0].call else False\n"
+        "                            _cb = _bosh_exec_async if _first_async else _bosh_exec_sync\n"
+        "                            ic.set_timer(_sched.repeat_every, _cb)\n"
+        "                            break\n"
+        #
+        # Sync step callback — executes code with exec()
+        #
+        "            def _bosh_exec_sync():\n"
         "                import io, sys, traceback\n"
         "                _task = Task.load(_tid)\n"
         "                if not _task or _task.status == 'cancelled':\n"
@@ -561,21 +663,58 @@ def _task_start_code(tid: str) -> str:
         "                    _cur.status = 'failed'\n"
         "                    _task.status = 'failed'\n"
         "                    return\n"
-        "                _task.step_to_execute = _si + 1\n"
-        "                if _task.step_to_execute < len(_all_steps):\n"
-        "                    _next = _all_steps[_task.step_to_execute]\n"
-        "                    _delay = _next.run_next_after or 0\n"
-        "                    ic.set_timer(_delay, _bosh_exec_task)\n"
-        "                else:\n"
-        "                    _task.status = 'completed'\n"
-        "                    _task.step_to_execute = 0\n"
-        "                    for _s2 in _all_steps: _s2.status = 'pending'\n"
-        "                    for _sched in _task.schedules:\n"
-        "                        if _sched.repeat_every and _sched.repeat_every > 0 and not _sched.disabled:\n"
-        "                            _task.status = 'pending'\n"
-        "                            ic.set_timer(_sched.repeat_every, _bosh_exec_task)\n"
-        "                            break\n"
-        "            ic.set_timer(0, _bosh_exec_task)\n"
+        "                _bosh_chain_next(_task, _si, _all_steps)\n"
+        #
+        # Async step callback — generator that yields to IC runtime
+        # The code must define async_task() which returns a generator.
+        # The IC runtime drives the generator (handles management_canister calls).
+        #
+        "            def _bosh_exec_async():\n"
+        "                import traceback\n"
+        "                _task = Task.load(_tid)\n"
+        "                if not _task or _task.status == 'cancelled':\n"
+        "                    return\n"
+        "                _task.status = 'running'\n"
+        "                _si = _task.step_to_execute\n"
+        "                _all_steps = list(_task.steps)\n"
+        "                if _si >= len(_all_steps):\n"
+        "                    _si = 0\n"
+        "                _cur = _all_steps[_si]\n"
+        "                _code_str = _cur.call.codex.code if _cur.call and _cur.call.codex else None\n"
+        "                _exec_name = f'taskexec_{_tid}_{_si}'\n"
+        "                _te = TaskExecution(name=_exec_name, task=_task, status='running', result='')\n"
+        "                _te._timestamp_created = ic.time()\n"
+        "                if not _code_str:\n"
+        "                    _te.status = 'failed'\n"
+        "                    _te.result = 'No code to execute'\n"
+        "                    _cur.status = 'failed'\n"
+        "                    _task.status = 'failed'\n"
+        "                    return\n"
+        "                try:\n"
+        "                    _ns = {'ic': ic, 'Task': Task, 'TaskExecution': TaskExecution}\n"
+        "                    exec(_code_str, _ns)\n"
+        "                    if 'async_task' not in _ns:\n"
+        "                        _te.status = 'failed'\n"
+        "                        _te.result = 'Async step must define async_task()'\n"
+        "                        _cur.status = 'failed'\n"
+        "                        _task.status = 'failed'\n"
+        "                        return\n"
+        "                    _result = yield _ns['async_task']()\n"
+        "                    _te.status = 'completed'\n"
+        "                    _te.result = str(_result)[:4999]\n"
+        "                    _cur.status = 'completed'\n"
+        "                    _bosh_chain_next(_task, _si, _all_steps)\n"
+        "                except Exception:\n"
+        "                    _te.status = 'failed'\n"
+        "                    _te.result = traceback.format_exc()[:4999]\n"
+        "                    _cur.status = 'failed'\n"
+        "                    _task.status = 'failed'\n"
+        #
+        # Schedule the first step
+        #
+        "            _first_async = _steps[0].call.is_async if _steps[0].call else False\n"
+        "            _cb = _bosh_exec_async if _first_async else _bosh_exec_sync\n"
+        "            ic.set_timer(0, _cb)\n"
         "            print(f'Started: {_t.name} ({_t._id}) — timer scheduled')\n"
         "        else:\n"
         "            print(f'Started: {_t.name} ({_t._id})')\n"
@@ -627,6 +766,8 @@ _TASK_USAGE = (
     '  %task                                                    List all tasks\n'
     '  %task list                                               List all tasks\n'
     '  %task create <name> [every Ns] [--code "..."|--file <f>] Create a task\n'
+    '  %task add-step <id|name> [--code "..."|--file <f>]       Add step to task\n'
+    '           [--delay N] [--async]\n'
     '  %task info <id|name>                                     Show task details\n'
     '  %task log <id|name> [--follow|-f]                        Show execution history\n'
     '  %task run <id|name>                                      Execute task code now\n'
@@ -703,6 +844,26 @@ def _task_log_follow(tid: str, canister: str, network: str):
         print("\nStopped following.")
 
 
+def _wget(url: str, dest: str, canister: str, network: str) -> str:
+    """Call the canister's download_to_file endpoint directly via dfx."""
+    escaped_url = url.replace('"', '\\"')
+    escaped_dest = dest.replace('"', '\\"')
+    cmd = ["dfx", "canister", "call"]
+    if network:
+        cmd.extend(["--network", network])
+    cmd.extend([canister, "download_to_file", f'("{escaped_url}", "{escaped_dest}")'])
+
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            return f"[dfx error] {r.stderr.strip()}"
+        return _parse_candid(r.stdout)
+    except subprocess.TimeoutExpired:
+        return "[error] download timed out (120s)"
+    except FileNotFoundError:
+        return "[error] dfx not found — install the DFINITY SDK"
+
+
 def _handle_task(args: str, canister: str, network: str) -> str:
     """Dispatch %task subcommands. Returns canister output string."""
     parts = args.strip().split(None, 1)
@@ -716,6 +877,14 @@ def _handle_task(args: str, canister: str, network: str) -> str:
         if not rest:
             return _TASK_USAGE
         code = _task_create_code(rest)
+        if code is None:
+            return _TASK_USAGE
+        return canister_exec(code, canister, network)
+
+    if subcmd == "add-step":
+        if not rest:
+            return _TASK_USAGE
+        code = _task_add_step_code(rest)
         if code is None:
             return _TASK_USAGE
         return canister_exec(code, canister, network)
@@ -792,6 +961,13 @@ def _handle_magic(line: str, canister: str, network: str) -> str:
         if not path:
             return "Usage: %mkdir <path>"
         return canister_exec(_fs_mkdir_code(path), canister, network)
+
+    # %wget <url> <dest> — download a file from URL into canister filesystem
+    if stripped.startswith("%wget "):
+        parts = stripped[6:].strip().split(None, 1)
+        if len(parts) < 2:
+            return "Usage: %wget <url> <dest_path>"
+        return _wget(parts[0], parts[1], canister, network)
 
     # %task subcommand system
     if stripped == "%task" or stripped.startswith("%task "):
@@ -979,8 +1155,10 @@ print('__BOSH_INFO__' + json.dumps(_info))
     print("    %ls [path]                List canister filesystem")
     print("    %cat <file>               Show file contents")
     print("    %mkdir <path>             Create directory")
+    print("    %wget <url> <dest>        Download URL into canister")
     print("    %task                     List tasks (also %ps)")
     print('    %task create <name> [every Ns] [--code "..."|--file <f>]')
+    print('    %task add-step <id|name> [--code "..."|--file <f>] [--async]')
     print("    %task info|log|start|stop|delete <id|name>")
     print("    %who                      List namespace variables")
     print("    %cycles                   Show cycle balance")
