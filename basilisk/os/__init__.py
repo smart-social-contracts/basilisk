@@ -17,19 +17,25 @@ __all__ = [
     "TaskStatus",
     "TaskExecutionStatus",
     # Entities
+    "Codex",
+    "Call",
     "Task",
     "TaskStep",
     "TaskSchedule",
     "TaskExecution",
     # Task manager
     "TaskManager",
+    # Execution
+    "run_code",
+    "create_task_entity_class",
 ]
 
 # These imports will only work inside a canister (they depend on ic-python-db).
 # When used client-side (e.g. in tests), import individual modules directly.
 try:
     from .status import TaskStatus, TaskExecutionStatus
-    from .entities import Task, TaskStep, TaskSchedule, TaskExecution
+    from .entities import Codex, Call, Task, TaskStep, TaskSchedule, TaskExecution
     from .task_manager import TaskManager
+    from .execution import run_code, create_task_entity_class
 except ImportError:
     pass
