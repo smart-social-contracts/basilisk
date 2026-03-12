@@ -99,6 +99,7 @@ def download_to_file(url: str, dest: str) -> Async[str]:
             "method": {"get": None},
             "headers": [
                 {"name": "User-Agent", "value": "Basilisk/1.0"},
+                {"name": "Accept-Encoding", "value": "identity"},
             ],
             "body": None,
             "transform": {

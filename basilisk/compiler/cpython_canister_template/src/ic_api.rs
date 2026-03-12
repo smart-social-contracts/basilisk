@@ -395,6 +395,110 @@ unsafe extern "C" fn ic_candid_decode(
     }
 }
 
+/// Read an unsigned LEB128 value from `bytes` starting at `*pos`, advancing `*pos`.
+fn read_leb128(bytes: &[u8], pos: &mut usize) -> u64 {
+    let mut result: u64 = 0;
+    let mut shift = 0;
+    loop {
+        if *pos >= bytes.len() { break; }
+        let byte = bytes[*pos];
+        *pos += 1;
+        result |= ((byte & 0x7f) as u64) << shift;
+        if byte & 0x80 == 0 { break; }
+        shift += 7;
+    }
+    result
+}
+
+/// Read a signed LEB128 (SLEB128) value from `bytes` starting at `*pos`, advancing `*pos`.
+fn read_sleb128(bytes: &[u8], pos: &mut usize) -> i64 {
+    let mut result: i64 = 0;
+    let mut shift = 0;
+    loop {
+        if *pos >= bytes.len() { break; }
+        let byte = bytes[*pos];
+        *pos += 1;
+        result |= ((byte & 0x7f) as i64) << shift;
+        shift += 7;
+        if byte & 0x80 == 0 {
+            if shift < 64 && (byte & 0x40) != 0 {
+                result |= !0i64 << shift;
+            }
+            break;
+        }
+    }
+    result
+}
+
+/// Patch Candid binary: add `query` annotation (0x01) to any func types in the
+/// type table that have zero annotations.  This is needed because
+/// `IDLValue::Func` / `parse_idl_args` produce func types without annotations,
+/// but the IC management canister expects `func query` for HTTP transforms.
+fn patch_candid_func_query(mut bytes: Vec<u8>) -> Vec<u8> {
+    if bytes.len() < 5 || &bytes[0..4] != b"DIDL" {
+        return bytes;
+    }
+    let mut pos = 4;
+    let type_count = read_leb128(&bytes, &mut pos);
+
+    // Positions where annotation_count == 0 for func types
+    let mut func_ann_positions: Vec<usize> = Vec::new();
+
+    for _ in 0..type_count {
+        if pos >= bytes.len() { return bytes; }
+        let opcode = read_sleb128(&bytes, &mut pos);
+        match opcode {
+            -18 | -19 => {
+                // opt / vec: one type index follows
+                read_sleb128(&bytes, &mut pos);
+            }
+            -20 | -21 => {
+                // record / variant: field_count × (hash + type)
+                let field_count = read_leb128(&bytes, &mut pos);
+                for _ in 0..field_count {
+                    read_leb128(&bytes, &mut pos);  // field hash
+                    read_sleb128(&bytes, &mut pos);  // field type
+                }
+            }
+            -22 => {
+                // func: arg types, ret types, annotations
+                let arg_count = read_leb128(&bytes, &mut pos);
+                for _ in 0..arg_count { read_sleb128(&bytes, &mut pos); }
+                let ret_count = read_leb128(&bytes, &mut pos);
+                for _ in 0..ret_count { read_sleb128(&bytes, &mut pos); }
+                let ann_pos = pos;
+                let ann_count = read_leb128(&bytes, &mut pos);
+                for _ in 0..ann_count { pos += 1; }
+                if ann_count == 0 {
+                    func_ann_positions.push(ann_pos);
+                }
+            }
+            -23 => {
+                // service: method_count × (name_len + name + type)
+                let method_count = read_leb128(&bytes, &mut pos);
+                for _ in 0..method_count {
+                    let name_len = read_leb128(&bytes, &mut pos);
+                    pos += name_len as usize;
+                    read_sleb128(&bytes, &mut pos);
+                }
+            }
+            _ => {
+                // Unknown compound type — bail out, return unmodified
+                return bytes;
+            }
+        }
+    }
+
+    // Patch in reverse order so earlier positions stay valid
+    for &ann_pos in func_ann_positions.iter().rev() {
+        // Change annotation count from 0 to 1 and insert query annotation byte
+        bytes[ann_pos] = 0x01; // annotation count = 1
+        bytes.insert(ann_pos + 1, 0x01); // query annotation value
+    }
+
+    bytes
+}
+
 unsafe extern "C" fn ic_candid_encode(
     _self: *mut ffi::PyObject,
     arg: *mut ffi::PyObject,
@@ -410,6 +514,8 @@ unsafe extern "C" fn ic_candid_encode(
     match candid_parser::parse_idl_args(&s) {
         Ok(args) => {
             let bytes = args.to_bytes().unwrap_or_default();
+            // Patch func types to include query annotation for IC HTTP transforms
+            let bytes = patch_candid_func_query(bytes);
             match PyObjectRef::from_bytes(&bytes) {
                 Ok(obj) => obj.into_ptr(),
                 Err(_) => core::ptr::null_mut(),

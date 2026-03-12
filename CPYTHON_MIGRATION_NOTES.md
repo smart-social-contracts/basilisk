@@ -930,6 +930,166 @@ Once the enhanced posix stub is implemented:
 - `stable-fs`: https://github.com/wasm-forge/stable-fs
 - Polyfill source (local): `~/.cargo/registry/src/index.crates.io-*/ic-wasi-polyfill-0.6.4/src/lib.rs`
 
+## 12. HTTP Outcall Consensus — `func query` Candid Encoding Bug (Mar 2026)
+
+### Problem
+
+HTTP outcalls from the test canister (`ru4ga-siaaa-aaaai-q7f3a-cai`) always failed with:
+
+```
+No consensus could be reached. Replicas had different responses.
+Details: hashes: [<13 unique hashes>: 1 each]
+```
+
+All 13 replicas on the subnet produced different response hashes — consensus was never reached.
+
+### Background: how IC HTTP outcalls work
+
+1. All replicas independently fetch the URL
+2. Each replica runs the canister's **transform function** to normalize the response
+   (strip varying headers like `Date`, `X-Request-Id`, `Server`, etc.)
+3. Replicas compare transformed response hashes — they must all match
+4. Match → consensus → success. Mismatch → error.
+
+### Root cause: the `http_transform` function was never invoked
+
+**Proof:** Making `http_transform` return a completely static response (`b"STATIC_TRANSFORM_OK"`)
+still produced 13 unique hashes. If it were called, all replicas would hash the same bytes.
+
+The transform function wasn't being called because the Candid binary encoding of the
+`transform` parameter had an incorrect `func` type, causing the IC management canister
+to discard it via Candid subtype coercion.
+
+### Detailed analysis: three bugs in the Candid `func` encoding pipeline
+
+The `transform` field in `HttpRequestArgs` is `opt record { function : HttpTransformFunc; context : blob }`,
+where `HttpTransformFunc = func (HttpTransformArgs) -> (HttpResponse) query`.
+
+When encoded to Candid binary, the management canister expects the type table to contain:
+```
+func (record { response : record { ... }; context : blob }) -> (record { ... }) query
+```
+
+But the actual encoding produced:
+```
+func    ← no args, no rets, no annotations
+```
+
+This happened due to three compounding issues:
+
+#### Bug 1: `_arg_types` type string truncated func signature
+
+The hardcoded `_arg_types` for `http_request` in `python_init.rs` had:
+```python
+'transform : opt record { function : func; context : blob }'
+#                                     ^^^^
+#                          bare "func" — no args, rets, or query annotation
+```
+
+Should have been:
+```python
+'transform : opt record { function : func (record { response : record { status : nat; '
+'headers : vec record { name : text; value : text }; body : blob }; context : blob }) '
+'-> (record { status : nat; headers : vec record { name : text; value : text }; '
+'body : blob }) query; context : blob }'
+```
+
+#### Bug 2: text-based encoding path loses type information
+
+The encoding path was: Python `_to_candid_text()` → Candid text → `candid_parser::parse_idl_args()`
+→ `IDLArgs::to_bytes()`. The `IDLValue::Func` produced by the parser carries only the principal
+and method name — no arg/ret types or annotations. `to_bytes()` writes a bare `func` type entry
+(0 args, 0 rets, 0 annotations) into the Candid type table.
+
+#### Bug 3: Candid subtype coercion silently discards the transform
+
+Because the `transform` field is `opt HttpTransform`, the Candid decoder applies the **opt fixup
+rule**: if the actual type doesn't subtype the expected type, coerce to `null`. Since
+`func` (no annotations) is NOT a subtype of `func (...) -> (...) query`, the decoder
+silently discards the transform value — the management canister proceeds without a transform.
+
+### Fix (3 changes)
+
+#### 1. Fixed `_arg_types` type string (`python_init.rs`)
+
+Replaced bare `func` with the full expanded func signature including args, rets, and `query`:
+
+```python
+'http_request': 'record { ... transform : opt record { function : func (record { '
+'response : record { status : nat; headers : vec record { name : text; value : text }; '
+'body : blob }; context : blob }) -> (record { status : nat; headers : vec record { '
+'name : text; value : text }; body : blob }) query; context : blob } }'
+```
+
+#### 2. Added typed Candid encoding path (`method_dispatch.rs`)
+
+Modified `encode_service_call_args()` to try **typed encoding** first when `_python_call_args`
+and `_candid_arg_type` are available on the `_ServiceCall`:
+
+```
+Priority 1: python_to_idl_value() + to_bytes_with_types()  ← correct type table
+Priority 2: _raw_args from text path                        ← fallback
+Priority 3: generic fallback                                ← last resort
+```
+
+The typed path uses `type_str_to_candid_type()` (which handles `func` signatures via
+`parse_func_signature()` including `query`/`oneway`/`composite_query` modes) to build
+a `candid::types::Type`, then calls `IDLArgs::to_bytes_with_types()` which writes the
+full type information into the Candid binary's type table.
+
+#### 3. Stored Python args on `_ServiceCall` (`python_init.rs`)
+
+Added `_python_call_args` and `_candid_arg_type` attributes to `_ServiceCall.__init__()` so
+the Rust-side typed encoding path has access to the original Python objects and type string.
+
+#### 4. Binary patching defense-in-depth (`ic_api.rs`)
+
+Added `patch_candid_func_query()` which walks the Candid binary type table and adds `query`
+annotation (byte `0x01`) to any `func` types with zero annotations. This is a defense-in-depth
+measure for the text-based fallback path. Uses LEB128/SLEB128 parsing to navigate the type table.
+
+### Additional fix: func detection in `_to_candid_text` (`python_init.rs`)
+
+Changed func type detection from strict `type_hint == 'func'` to shape-based detection:
+```python
+# Before: required exact type_hint match
+if type_hint and type_hint.strip() == 'func' and len(v) == 2 and isinstance(v[1], str):
+
+# After: detect by shape (Principal, str) — works regardless of type_hint
+if len(v) == 2 and isinstance(v[1], str) and isinstance(v[0], Principal):
+```
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `compiler/cpython_canister_template/src/python_init.rs` | Full func signature in `_arg_types`; `_python_call_args`/`_candid_arg_type` on `_ServiceCall`; shape-based func detection |
+| `compiler/cpython_canister_template/src/method_dispatch.rs` | Typed encoding priority in `encode_service_call_args()` |
+| `compiler/cpython_canister_template/src/ic_api.rs` | `patch_candid_func_query()` binary patching + `read_leb128`/`read_sleb128` helpers |
+| `tests/test_canister/src/main.py` | `http_transform` strips headers for consensus |
+
+### Verified
+
+```bash
+# example.com — static site, no CDN
+%wget https://example.com /test_example.txt
+# → Downloaded 528 bytes to /test_example.txt  ✅
+
+# GitHub raw (Fastly CDN, commit-pinned)
+%wget https://raw.githubusercontent.com/smart-social-contracts/realms/3d863b4d/.../codex.py aaa2.py
+# → Downloaded 1393 bytes to aaa2.py  ✅
+```
+
+### Key takeaway
+
+The Candid `func` type has three components: **arg types**, **ret types**, and **annotations**
+(query/oneway). All three must be present in the Candid binary's type table for the IC management
+canister to accept the value. `IDLValue::Func` only carries the principal and method name — it
+does NOT carry type information. Using `to_bytes()` (untyped) always produces a bare `func` entry.
+The fix is to use `to_bytes_with_types()` (typed) with a `Type` that includes the full func signature.
+
+---
+
 ## Open items
 
 1. ~~Rebuild CPython with modules disabled~~ → replaced by custom `config.c` approach

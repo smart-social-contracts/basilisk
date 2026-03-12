@@ -426,33 +426,77 @@ async fn perform_service_call(
 }
 
 /// Encode the args from a _ServiceCall to Candid bytes.
-/// If _raw_args is present (from ic.call_raw), use those bytes directly.
-/// Otherwise, args is a Python tuple — encode generically.
+///
+/// Encoding priority:
+/// 1. **Typed encoding** — if `_python_call_args` and `_candid_arg_type` are set,
+///    encode via `python_to_idl_value` + `to_bytes_with_types`.  This produces a
+///    Candid binary whose type table faithfully reflects the full type, including
+///    `func ... query` annotations required by the IC management canister for HTTP
+///    transform functions.
+/// 2. **Pre-encoded raw bytes** — `_raw_args` from the text-based encoding path
+///    (via `_to_candid_text` → `candid_encode`).  Used as fallback or for
+///    `ic.call_raw` / `ic.call_raw128`.
+/// 3. **Generic fallback** — iterate over `.args` and encode each as text.
 pub fn encode_service_call_args(service_call: &basilisk_cpython::PyObjectRef) -> Vec<u8> {
-    // Check for pre-encoded raw args (from ic.call_raw / ic.call_raw128)
+    // --- Priority 1: typed encoding via _python_call_args + _candid_arg_type ---
+    if let (Ok(call_args), Ok(arg_type_obj)) = (
+        service_call.get_attr("_python_call_args"),
+        service_call.get_attr("_candid_arg_type"),
+    ) {
+        if let Ok(arg_type_str) = arg_type_obj.extract_str() {
+            let length = unsafe { basilisk_cpython::ffi::PyObject_Length(call_args.as_ptr()) };
+            if length > 0 {
+                let type_defs = unsafe { TYPE_DEFS.as_ref() }.cloned().unwrap_or_default();
+                let mut idl_values = Vec::new();
+                let mut all_ok = true;
+                for i in 0..length {
+                    let idx = basilisk_cpython::PyObjectRef::from_i64(i as i64).unwrap();
+                    if let Ok(item) = call_args.get_item(&idx) {
+                        match python_to_idl_value(&item, &arg_type_str) {
+                            Ok(val) => idl_values.push(val),
+                            Err(_) => { all_ok = false; break; }
+                        }
+                    } else {
+                        all_ok = false;
+                        break;
+                    }
+                }
+                if all_ok && !idl_values.is_empty() {
+                    if let Some(candid_type) = type_str_to_candid_type(&arg_type_str, &type_defs) {
+                        let types: Vec<candid::types::Type> = idl_values.iter().map(|_| candid_type.clone()).collect();
+                        let idl_args = candid::IDLArgs::new(&idl_values);
+                        let env = candid::TypeEnv::new();
+                        if let Ok(bytes) = idl_args.to_bytes_with_types(&env, &types) {
+                            return bytes;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Priority 2: pre-encoded raw args (from text path or ic.call_raw) ---
     if let Ok(raw_args) = service_call.get_attr("_raw_args") {
         if let Ok(bytes) = raw_args.extract_bytes() {
             return bytes;
         }
     }
 
+    // --- Priority 3: generic fallback ---
     let py_args = match service_call.get_attr("args") {
         Ok(a) => a,
         Err(_) => return vec![0x44, 0x49, 0x44, 0x4c, 0x00, 0x00], // DIDL empty
     };
 
-    // Check if args tuple is empty
     let length = unsafe { basilisk_cpython::ffi::PyObject_Length(py_args.as_ptr()) };
     if length <= 0 {
         return vec![0x44, 0x49, 0x44, 0x4c, 0x00, 0x00]; // DIDL empty
     }
 
-    // Convert each Python arg to an IDLValue and encode
     let mut idl_values = Vec::new();
     for i in 0..length {
         let idx = basilisk_cpython::PyObjectRef::from_i64(i as i64).unwrap();
         if let Ok(item) = py_args.get_item(&idx) {
-            // Use "text" as fallback type for generic encoding
             if let Ok(val) = python_to_idl_value(&item, "text") {
                 idl_values.push(val);
             }

@@ -530,6 +530,14 @@ del _register_json
 def _install_memfs():
     _MEMFS = {}          # absolute path (str) -> bytes content
     _MEMFS_DIRS = {"/"}  # set of directory paths
+    _MEMFS_MTIMES = {}   # absolute path (str) -> mtime in seconds (float)
+
+    def _now():
+        """Current time in seconds. Uses ic.time() (nanoseconds) if available."""
+        try:
+            return ic.time() / 1_000_000_000
+        except Exception:
+            return 0.0
 
     # ---- helpers ----
     def _normpath(path):
@@ -692,6 +700,7 @@ def _install_memfs():
         def close(self):
             if not self.closed:
                 _MEMFS[self._path] = bytes(self._data)
+                _MEMFS_MTIMES[self._path] = _now()
                 self.closed = True
 
         def __enter__(self):
@@ -968,6 +977,7 @@ def _install_memfs():
                 raise FileNotFoundError(
                     f"[Errno 2] No such file or directory: '{path}'")
             del _MEMFS[path]
+            _MEMFS_MTIMES.pop(path, None)
 
         def _rmdir(path):
             path = _normpath(path)
@@ -992,16 +1002,18 @@ def _install_memfs():
                 raise FileNotFoundError(
                     f"[Errno 2] No such file or directory: '{src}'")
             _MEMFS[dst] = _MEMFS.pop(src)
+            _MEMFS_MTIMES[dst] = _MEMFS_MTIMES.pop(src, _now())
 
         def _stat(path):
             path = _normpath(path)
             if path in _MEMFS:
+                _mt = _MEMFS_MTIMES.get(path, 0.0)
                 class _stat_result:
                     st_mode = 0o100644
                     st_size = len(_MEMFS[path])
-                    st_mtime = 0.0
-                    st_atime = 0.0
-                    st_ctime = 0.0
+                    st_mtime = _mt
+                    st_atime = _mt
+                    st_ctime = _mt
                 return _stat_result()
             if path in _MEMFS_DIRS:
                 class _stat_result:
@@ -1014,12 +1026,23 @@ def _install_memfs():
             raise FileNotFoundError(
                 f"[Errno 2] No such file or directory: '{path}'")
 
+        def _utime(path, times=None):
+            path = _normpath(path)
+            if path not in _MEMFS and path not in _MEMFS_DIRS:
+                raise FileNotFoundError(
+                    f"[Errno 2] No such file or directory: '{path}'")
+            if times is not None:
+                _MEMFS_MTIMES[path] = float(times[1])
+            else:
+                _MEMFS_MTIMES[path] = _now()
+
         m.listdir = _listdir
         m.remove = _remove
         m.unlink = _remove
         m.rmdir = _rmdir
         m.rename = _rename
         m.stat = _stat
+        m.utime = _utime
         m.makedirs = _makedirs
 
         def _mkdir(path, mode=0o777):
@@ -1166,6 +1189,7 @@ def _install_memfs():
             name = _mktemp(suffix=_suffix, prefix=_prefix, dir=_dir)
             mode = "w+" if text else "w+b"
             _MEMFS[name] = b""
+            _MEMFS_MTIMES[name] = _now()
             return (None, name)
 
         def gettempdir():
@@ -1303,6 +1327,7 @@ def _install_memfs():
                             f"[Errno 2] No such file or directory: '{path}'")
                     return
                 del _MEMFS[path]
+                _MEMFS_MTIMES.pop(path, None)
 
             def rmdir(self):
                 path = _normpath(self._path)
@@ -1353,6 +1378,7 @@ def _install_memfs():
                 dst = _normpath(str(target))
                 if src in _MEMFS:
                     _MEMFS[dst] = _MEMFS.pop(src)
+                    _MEMFS_MTIMES[dst] = _MEMFS_MTIMES.pop(src, _now())
                 elif src in _MEMFS_DIRS:
                     _MEMFS_DIRS.discard(src)
                     _MEMFS_DIRS.add(dst)

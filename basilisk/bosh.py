@@ -22,7 +22,7 @@ Shell commands:
     %db dump      Dump the canister database as JSON
     %db clear     Clear the canister database
     %db count     Count total entities in the database
-    %cycles       Show canister cycle balance
+    %info         Show canister info (principal, cycles, status, deploy)
     !<cmd>        Run a local OS command (e.g. !ls, !cat file.py)
     :q / exit     Quit the shell
     :help         Show this help
@@ -233,8 +233,79 @@ _MAGIC_MAP = {
         "from ic_python_db import Database; db = Database.get_instance(); "
         "print(f'{sum(1 for k in db._db_storage.keys() if not k.startswith(\"_\"))} entries')"
     ),
-    "%cycles": "print(f'{ic.canister_balance():,} cycles')",
 }
+
+
+def _canister_info(canister: str, network: str) -> str:
+    """Gather comprehensive canister information from on-canister data + dfx."""
+    lines = []
+
+    # 1) On-canister info: principal, cycles, IC time
+    on_canister_code = (
+        "import json as _json\n"
+        "_d = {}\n"
+        "_d['principal'] = str(ic.caller())\n"
+        "_d['cycles'] = ic.canister_balance()\n"
+        "_d['ic_time'] = ic.time()\n"
+        "print('__INFO__' + _json.dumps(_d))\n"
+    )
+    result = canister_exec(on_canister_code, canister, network)
+    info = {}
+    for ln in (result or "").split("\n"):
+        if ln.startswith("__INFO__"):
+            try:
+                import json
+                info = json.loads(ln[len("__INFO__"):])
+            except Exception:
+                pass
+            break
+
+    lines.append(f"  Canister  : {canister}")
+    lines.append(f"  Network   : {network or 'local'}")
+    lines.append(f"  Principal : {info.get('principal', 'unknown')}")
+    cycles = info.get("cycles")
+    if cycles is not None:
+        lines.append(f"  Cycles    : {cycles:,}")
+
+    # 2) dfx canister info — module hash, controllers
+    cmd_info = ["dfx", "canister", "info"]
+    if network:
+        cmd_info.extend(["--network", network])
+    cmd_info.append(canister)
+    try:
+        r = subprocess.run(cmd_info, capture_output=True, text=True, timeout=30)
+        if r.returncode == 0:
+            for sline in (r.stdout + r.stderr).splitlines():
+                lo = sline.strip().lower()
+                val = sline.strip().split(":", 1)[1].strip() if ":" in sline else ""
+                if lo.startswith("controllers:"):
+                    lines.append(f"  Controllers: {val}")
+                elif lo.startswith("module hash:"):
+                    lines.append(f"  Module    : {val}")
+    except Exception:
+        pass
+
+    # 3) dfx canister status — status, memory, idle burn
+    cmd_status = ["dfx", "canister", "status"]
+    if network:
+        cmd_status.extend(["--network", network])
+    cmd_status.append(canister)
+    try:
+        r2 = subprocess.run(cmd_status, capture_output=True, text=True, timeout=30)
+        if r2.returncode == 0:
+            for sline in (r2.stdout + r2.stderr).splitlines():
+                lo = sline.strip().lower()
+                val = sline.strip().split(":", 1)[1].strip() if ":" in sline else ""
+                if lo.startswith("status:"):
+                    lines.append(f"  Status    : {val}")
+                elif lo.startswith("memory size:"):
+                    lines.append(f"  Memory    : {val}")
+                elif lo.startswith("idle cycles burned per day:"):
+                    lines.append(f"  Idle burn : {val}")
+    except Exception:
+        pass
+
+    return "\n".join(lines)
 
 
 def _fs_ls_code(path: str) -> str:
@@ -1087,6 +1158,10 @@ def _handle_magic(line: str, canister: str, network: str) -> str:
         args = stripped[5:].strip()
         return _handle_task(args, canister, network)
 
+    # %info — comprehensive canister information
+    if stripped == "%info":
+        return _canister_info(canister, network)
+
     # Shortcut aliases for backwards compatibility
     if stripped == "%ps" or stripped == "%tasks":
         return canister_exec(_task_list_code(), canister, network)
@@ -1274,7 +1349,7 @@ print('__BOSH_INFO__' + json.dumps(_info))
     print('    %task add-step <id|name> [--code "..."|--file <f>] [--async]')
     print("    %task info|log|start|stop|delete <id|name>")
     print("    %who                      List namespace variables")
-    print("    %cycles                   Show cycle balance")
+    print("    %info                     Show canister info")
     print("    %db count|dump|clear      Database operations")
     print("    %run <file>               Execute local file on canister")
     print("    !<cmd>                    Run a local OS command")
@@ -1307,6 +1382,9 @@ def run_interactive(canister: str, network: str):
         stripped = line.strip()
         if stripped in (":q", "exit", "quit"):
             break
+        if stripped == "clear":
+            os.system("clear")
+            continue
         if stripped == ":help":
             print(__doc__)
             continue

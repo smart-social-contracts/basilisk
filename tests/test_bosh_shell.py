@@ -185,9 +185,9 @@ class TestMagicCommands:
         # Should return a list (even if empty)
         assert result.startswith("[")
 
-    def test_cycles(self, canister_reachable, canister, network):
-        result = magic_on_canister("%cycles", canister, network)
-        assert "cycles" in result
+    def test_info(self, canister_reachable, canister, network):
+        result = magic_on_canister("%info", canister, network)
+        assert "Canister" in result and "Principal" in result
 
     def test_db_count(self, canister_reachable, canister, network):
         result = magic_on_canister("%db count", canister, network)
@@ -284,9 +284,9 @@ class TestOneshotMode:
         assert out == "bosh-oneshot"
 
     def test_oneshot_magic(self, canister_reachable, canister, network):
-        out, err, rc = self._run_bosh("%cycles", canister, network)
+        out, err, rc = self._run_bosh("%info", canister, network)
         assert rc == 0
-        assert "cycles" in out
+        assert "Canister" in out
 
     def test_oneshot_ps(self, canister_reachable, canister, network):
         out, err, rc = self._run_bosh("%ps", canister, network)

@@ -88,7 +88,7 @@ pub fn cpython_full_init(python_code: &str) {
              \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_utxos': 'record { address : text; filter : opt variant { min_confirmations : nat32; page : blob }; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',\n\
              \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_get_current_fee_percentiles': 'record { network : variant { Mainnet : null; Testnet : null; Regtest : null } }',\n\
              \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'bitcoin_send_transaction': 'record { transaction : blob; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',\n\
-             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'http_request': 'record { url : text; max_response_bytes : opt nat64; method : variant { get : null; head : null; post : null }; headers : vec record { name : text; value : text }; body : opt blob; transform : opt record { function : func; context : blob } }',\n\
+             \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'http_request': 'record { url : text; max_response_bytes : opt nat64; method : variant { get : null; head : null; post : null }; headers : vec record { name : text; value : text }; body : opt blob; transform : opt record { function : func (record { response : record { status : nat; headers : vec record { name : text; value : text }; body : blob }; context : blob }) -> (record { status : nat; headers : vec record { name : text; value : text }; body : blob }) query; context : blob } }',\n\
              \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'ecdsa_public_key': 'record { canister_id : opt principal; derivation_path : vec blob; key_id : record { curve : variant { secp256k1 : null }; name : text } }',\n\
              \x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20'sign_with_ecdsa': 'record { message_hash : blob; derivation_path : vec blob; key_id : record { curve : variant { secp256k1 : null }; name : text } }',\n\
              \x20\x20\x20\x20\x20\x20\x20\x20}\n\
@@ -672,7 +672,8 @@ def _basilisk_save_files():
         try:
             with open(fpath, 'rb') as f:
                 content = f.read()
-            files[fpath] = _b64.b64encode(content).decode('ascii')
+            _st = os.stat(fpath)
+            files[fpath] = {"b64": _b64.b64encode(content).decode('ascii'), "mtime": _st.st_mtime}
         except Exception:
             pass
     payload = _json.dumps(files).encode('utf-8') if files else b""
@@ -704,14 +705,23 @@ def _basilisk_load_files():
         return
     payload = _basilisk_ic.stable_read(offset + 16, payload_len)
     files = _json.loads(payload.decode('utf-8'))
-    for fpath, b64_content in files.items():
+    for fpath, entry in files.items():
         try:
             parent = os.path.dirname(fpath)
             if parent and parent != '/':
                 os.makedirs(parent, exist_ok=True)
-            content = _b64.b64decode(b64_content)
+            # Backward compat: old format is plain b64 string, new is {"b64": ..., "mtime": ...}
+            if isinstance(entry, str):
+                b64_data = entry
+                mtime = None
+            else:
+                b64_data = entry.get('b64', '')
+                mtime = entry.get('mtime')
+            content = _b64.b64decode(b64_data)
             with open(fpath, 'wb') as f:
                 f.write(content)
+            if mtime is not None:
+                os.utime(fpath, (mtime, mtime))
         except Exception:
             pass
 
@@ -809,10 +819,9 @@ def _to_candid_text(v, type_hint=None):
         fields = [f'{k} = {_to_candid_text(val, ft.get(k))}' for k, val in v.items()]
         return f'record {{ {"; ".join(fields)} }}'
     if isinstance(v, (list, tuple)):
-        # Handle func type: (Principal, method_name_str)
-        if type_hint and type_hint.strip() == 'func' and len(v) == 2 and isinstance(v[1], str):
-            p = v[0]
-            ptxt = p.to_str() if isinstance(p, Principal) else str(p)
+        # Handle func type: (Principal, method_name_str) — detect by shape
+        if len(v) == 2 and isinstance(v[1], str) and isinstance(v[0], Principal):
+            ptxt = v[0].to_str()
             return f'func "{ptxt}".{v[1]}'
         elem_hint = type_hint[3:].strip() if type_hint and type_hint.strip().startswith('vec') else None
         items = [_to_candid_text(item, elem_hint) for item in v]
@@ -824,7 +833,11 @@ class _ServiceCall:
     """Represents a pending cross-canister call to be yielded from a generator.
     Presents itself as a call_raw descriptor for the Rust async handler."""
     def __init__(self, canister_principal, method_name, call_args=None, payment=0, arg_type=None):
-        # Encode call args to Candid bytes
+        # Store original Python args + type for Rust-side typed Candid encoding
+        # (needed for correct func type annotations, e.g. query on HTTP transforms)
+        self._python_call_args = call_args if call_args else ()
+        self._candid_arg_type = arg_type
+        # Also encode via text path as fallback
         if call_args:
             parts = [_to_candid_text(a, arg_type) for a in call_args]
             candid_text = f"({', '.join(parts)})"

@@ -92,7 +92,7 @@ for _name in os.listdir(_path):
     _full = _path.rstrip('/') + '/' + _name
     try:
         _s = os.stat(_full)
-        _entries.append({{"name": _name, "mode": _s.st_mode, "size": _s.st_size}})
+        _entries.append({{"name": _name, "mode": _s.st_mode, "size": _s.st_size, "mtime": int(_s.st_mtime)}})
     except Exception:
         _entries.append({{"name": _name, "mode": 0o100644, "size": 0}})
 print('{_MARKER}' + _j.dumps({{"entries": _entries}}))
@@ -102,7 +102,7 @@ print('{_MARKER}' + _j.dumps({{"entries": _entries}}))
             attrs = SFTPAttrs(
                 size=e.get("size", 0),
                 permissions=e.get("mode", 0o100644),
-                mtime=0,
+                mtime=e.get("mtime", 0),
             )
             result.append(SFTPName(e["name"].encode() if isinstance(e["name"], str) else e["name"], attrs=attrs))
         return result
