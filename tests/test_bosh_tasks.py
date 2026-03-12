@@ -1375,6 +1375,108 @@ class TestWget:
 
 
 # ===========================================================================
+# %task retry / resume
+# ===========================================================================
+
+class TestTaskRetryResume:
+    """Test %task retry and %task resume commands."""
+
+    def test_retry_resets_all_steps(self, canister_reachable, canister, network):
+        """retry should reset all steps to pending and step_to_execute to 0."""
+        result = _task_magic(
+            '%task create _test_retry --code "print(1)"', canister, network
+        )
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            # Run once so it completes
+            _task_magic(f"%task run {tid}", canister, network)
+            info = _task_magic(f"%task info {tid}", canister, network)
+            assert "completed" in info.lower()
+
+            # Retry
+            retry_result = _task_magic(f"%task retry {tid}", canister, network)
+            assert "Reset" in retry_result
+            assert "pending" in retry_result
+
+            # Verify it's pending again
+            info2 = _task_magic(f"%task info {tid}", canister, network)
+            assert "pending" in info2.lower()
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_retry_failed_task(self, canister_reachable, canister, network):
+        """retry should work on a failed task."""
+        result = _task_magic(
+            '%task create _test_retry_fail --code "raise Exception(\'boom\')"',
+            canister, network,
+        )
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            _task_magic(f"%task run {tid}", canister, network)
+            info = _task_magic(f"%task info {tid}", canister, network)
+            assert "failed" in info.lower()
+
+            retry_result = _task_magic(f"%task retry {tid}", canister, network)
+            assert "Reset" in retry_result
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_retry_not_found(self, canister_reachable, canister, network):
+        """retry on non-existent task should report not found."""
+        result = _task_magic("%task retry 99999", canister, network)
+        assert "not found" in result.lower()
+
+    def test_resume_from_failed_step(self, canister_reachable, canister, network):
+        """resume should find the first non-completed step and resume from there."""
+        import time
+
+        result = _task_magic("%task create _test_resume", canister, network)
+        tid = _extract_task_id(result)
+        assert tid
+        try:
+            # Add two steps: step 0 succeeds, step 1 will fail
+            _task_magic(
+                f'%task add-step {tid} --code "print(\'step0_ok\')"',
+                canister, network,
+            )
+            _task_magic(
+                f'%task add-step {tid} --code "raise Exception(\'step1_fail\')"',
+                canister, network,
+            )
+
+            # Start via timer — step 0 succeeds, step 1 fails
+            _task_magic(f"%task start {tid}", canister, network)
+            time.sleep(10)
+
+            info = _task_magic(f"%task info {tid}", canister, network)
+            assert "failed" in info.lower()
+
+            # Resume — should restart from step 1 (the failed one)
+            resume_result = _task_magic(f"%task resume {tid}", canister, network)
+            assert "Resuming" in resume_result
+            assert "step 1" in resume_result
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_resume_not_found(self, canister_reachable, canister, network):
+        """resume on non-existent task should report not found."""
+        result = _task_magic("%task resume 99999", canister, network)
+        assert "not found" in result.lower()
+
+    def test_retry_usage(self, canister_reachable, canister, network):
+        """retry without args should show usage."""
+        result = _task_magic("%task retry", canister, network)
+        assert "Usage" in result or "retry" in result
+
+    def test_resume_usage(self, canister_reachable, canister, network):
+        """resume without args should show usage."""
+        result = _task_magic("%task resume", canister, network)
+        assert "Usage" in result or "resume" in result
+
+
+# ===========================================================================
 # E2E composition tests
 # ===========================================================================
 
@@ -1536,3 +1638,11 @@ class TestUsageStrings:
     def test_usage_includes_delay(self, canister_reachable, canister, network):
         """_TASK_USAGE should mention --delay."""
         assert "--delay" in _TASK_USAGE
+
+    def test_usage_includes_retry(self, canister_reachable, canister, network):
+        """_TASK_USAGE should mention retry."""
+        assert "retry" in _TASK_USAGE
+
+    def test_usage_includes_resume(self, canister_reachable, canister, network):
+        """_TASK_USAGE should mention resume."""
+        assert "resume" in _TASK_USAGE

@@ -648,6 +648,8 @@ def _task_start_code(tid: str) -> str:
         # Helper: advance to next step or complete the task
         #
         "            def _bosh_chain_next(_task, _si, _all_steps):\n"
+        "                if _task.status == 'failed':\n"
+        "                    return\n"
         "                _task.step_to_execute = _si + 1\n"
         "                if _task.step_to_execute < len(_all_steps):\n"
         "                    _next = _all_steps[_task.step_to_execute]\n"
@@ -807,6 +809,59 @@ def _task_delete_code(tid: str) -> str:
     )
 
 
+def _task_retry_code(tid: str) -> str:
+    """Code for: %task retry <id|name>
+
+    Reset ALL steps to pending, set step_to_execute=0, and start from the
+    beginning.  Works for failed or completed tasks.
+    """
+    esc_tid = tid.replace("'", "\\'")
+    return (
+        _TASK_RESOLVE + _TASK_UNAVAILABLE +
+        "if 'Task' in dir():\n"
+        + _TASK_FIND.format(tid=esc_tid) +
+        "    if not _t:\n"
+        f"        print('Task not found: {esc_tid}')\n"
+        "    else:\n"
+        "        _t.status = 'pending'\n"
+        "        _t.step_to_execute = 0\n"
+        "        for _step in _t.steps: _step.status = 'pending'\n"
+        "        for _s in _t.schedules: _s.disabled = False\n"
+        "        print(f'Reset task {_t._id}: {_t.name} — all steps pending, ready to start')\n"
+    )
+
+
+def _task_resume_code(tid: str) -> str:
+    """Code for: %task resume <id|name>
+
+    Find the first non-completed step and restart from there.
+    Only useful for tasks that failed partway through a multi-step chain.
+    """
+    esc_tid = tid.replace("'", "\\'")
+    return (
+        _TASK_RESOLVE + _TASK_UNAVAILABLE +
+        "if 'Task' in dir():\n"
+        + _TASK_FIND.format(tid=esc_tid) +
+        "    if not _t:\n"
+        f"        print('Task not found: {esc_tid}')\n"
+        "    else:\n"
+        "        _steps = list(_t.steps)\n"
+        "        _resume_at = 0\n"
+        "        for _i, _s in enumerate(_steps):\n"
+        "            if _s.status != 'completed':\n"
+        "                _resume_at = _i\n"
+        "                break\n"
+        "        else:\n"
+        "            _resume_at = 0\n"
+        "        _t.status = 'pending'\n"
+        "        _t.step_to_execute = _resume_at\n"
+        "        for _i, _s in enumerate(_steps):\n"
+        "            if _i >= _resume_at: _s.status = 'pending'\n"
+        "        for _s in _t.schedules: _s.disabled = False\n"
+        "        print(f'Resuming task {_t._id}: {_t.name} — from step {_resume_at}')\n"
+    )
+
+
 _TASK_USAGE = (
     "Usage:\n"
     '  %task                                                    List all tasks\n'
@@ -819,6 +874,8 @@ _TASK_USAGE = (
     '  %task run <id|name>                                      Execute task code now\n'
     '  %task start <id|name>                                    Start via timer\n'
     '  %task stop <id|name>                                     Stop a task\n'
+    '  %task retry <id|name>                                    Reset all steps and restart\n'
+    '  %task resume <id|name>                                   Resume from first failed step\n'
     '  %task delete <id|name>                                   Delete task and records'
 )
 
@@ -976,6 +1033,16 @@ def _handle_task(args: str, canister: str, network: str) -> str:
         if not rest:
             return "Usage: %task delete <id>"
         return canister_exec(_task_delete_code(rest), canister, network)
+
+    if subcmd == "retry":
+        if not rest:
+            return "Usage: %task retry <id>"
+        return canister_exec(_task_retry_code(rest), canister, network)
+
+    if subcmd == "resume":
+        if not rest:
+            return "Usage: %task resume <id>"
+        return canister_exec(_task_resume_code(rest), canister, network)
 
     return _TASK_USAGE
 

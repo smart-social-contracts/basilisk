@@ -544,8 +544,6 @@ _STABLE_MAP_MAGIC = b"BSLK_MAP"  # 8-byte magic
 
 def _basilisk_save_stable_maps():
     """Serialize all StableBTreeMap instances to stable memory."""
-    if not _stable_btree_maps:
-        return
     # Build serializable data: { memory_id: { key: value, ... }, ... }
     save_data = {}
     for mem_id, m in _stable_btree_maps.items():
@@ -558,14 +556,14 @@ def _basilisk_save_stable_maps():
             "max_key_size": m._max_key_size,
             "max_value_size": m._max_value_size,
         }
-    payload = _json.dumps(save_data).encode("utf-8")
+    payload = _json.dumps(save_data).encode("utf-8") if save_data else b""
     total_size = 16 + len(payload)  # 8 magic + 8 length + payload
     # Grow stable memory if needed (64KB pages)
     pages_needed = (total_size + 65535) // 65536
     current_pages = _basilisk_ic.stable_size()
     if pages_needed > current_pages:
         _basilisk_ic.stable_grow(pages_needed - current_pages)
-    # Write header + payload
+    # Always write header (even when empty) so file persistence can find its offset
     header = _STABLE_MAP_MAGIC + len(payload).to_bytes(8, 'little')
     _basilisk_ic.stable_write(0, header + payload)
 
@@ -626,6 +624,82 @@ def _from_json_safe(obj):
     if isinstance(obj, list):
         return [_from_json_safe(x) for x in obj]
     return obj
+
+# === Persistent file storage ===
+# Files on the canister memfs are persistent by default — they survive
+# canister upgrades.  Only files under /tmp/ are volatile.
+
+_STABLE_FS_MAGIC = b"BSLK_FS_"  # 8-byte magic
+_VOLATILE_PREFIXES = ["/tmp/", "/proc/", "/dev/"]
+
+def _stable_maps_end_offset():
+    """Return the byte offset where the maps region ends in stable memory."""
+    current_pages = _basilisk_ic.stable_size()
+    if current_pages == 0:
+        return 0
+    header = _basilisk_ic.stable_read(0, 16)
+    if header[:8] != _STABLE_MAP_MAGIC:
+        return 0
+    payload_len = int.from_bytes(header[8:16], 'little')
+    return 16 + payload_len
+
+def _basilisk_save_files():
+    """Serialize memfs files to stable memory (after maps region)."""
+    import os
+    import base64 as _b64
+    files = {}
+    for dirpath, dirnames, filenames in os.walk('/'):
+        full_dir = dirpath if dirpath.endswith('/') else dirpath + '/'
+        skip = any(full_dir.startswith(p) for p in _VOLATILE_PREFIXES)
+        if skip:
+            continue
+        for fname in filenames:
+            fpath = os.path.join(dirpath, fname)
+            try:
+                with open(fpath, 'rb') as f:
+                    content = f.read()
+                files[fpath] = _b64.b64encode(content).decode('ascii')
+            except Exception:
+                pass
+    payload = _json.dumps(files).encode('utf-8') if files else b""
+    offset = _stable_maps_end_offset()
+    total_needed = offset + 16 + len(payload)
+    pages_needed = (total_needed + 65535) // 65536
+    current_pages = _basilisk_ic.stable_size()
+    if pages_needed > current_pages:
+        _basilisk_ic.stable_grow(pages_needed - current_pages)
+    header = _STABLE_FS_MAGIC + len(payload).to_bytes(8, 'little')
+    _basilisk_ic.stable_write(offset, header + payload)
+
+def _basilisk_load_files():
+    """Restore memfs files from stable memory (after maps region)."""
+    import os
+    import base64 as _b64
+    offset = _stable_maps_end_offset()
+    current_pages = _basilisk_ic.stable_size()
+    if current_pages == 0:
+        return
+    total_bytes = current_pages * 65536
+    if offset + 16 > total_bytes:
+        return
+    header = _basilisk_ic.stable_read(offset, 16)
+    if header[:8] != _STABLE_FS_MAGIC:
+        return
+    payload_len = int.from_bytes(header[8:16], 'little')
+    if payload_len == 0:
+        return
+    payload = _basilisk_ic.stable_read(offset + 16, payload_len)
+    files = _json.loads(payload.decode('utf-8'))
+    for fpath, b64_content in files.items():
+        try:
+            parent = os.path.dirname(fpath)
+            if parent and parent != '/':
+                os.makedirs(parent, exist_ok=True)
+            content = _b64.b64decode(b64_content)
+            with open(fpath, 'wb') as f:
+                f.write(content)
+        except Exception:
+            pass
 
 # === Func/Service/Query/Update type stubs ===
 class _FuncType:
