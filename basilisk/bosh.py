@@ -57,6 +57,52 @@ def _parse_candid(output: str) -> str:
 # Canister communication
 # ---------------------------------------------------------------------------
 
+def _is_transient_dfx_error(stderr: str) -> bool:
+    s = (stderr or "").lower()
+    transient_markers = [
+        "temporary failure in name resolution",
+        "failed to lookup address information",
+        "dns error",
+        "client error (connect)",
+        "an error happened during communication with the replica",
+        "error sending request for url",
+        "timed out",
+        "timeout",
+        "connection refused",
+        "network is unreachable",
+        "service unavailable",
+        "gateway timeout",
+    ]
+    return any(m in s for m in transient_markers)
+
+
+def _run_dfx_with_retries(
+    cmd: list[str],
+    *,
+    timeout_s: int,
+    attempts: int = 5,
+) -> subprocess.CompletedProcess:
+    last: subprocess.CompletedProcess | None = None
+    for attempt in range(attempts):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            if attempt >= attempts - 1:
+                raise
+            _time.sleep(min(2**attempt, 8))
+            continue
+
+        last = r
+        if r.returncode == 0:
+            return r
+        if not _is_transient_dfx_error(r.stderr):
+            return r
+        if attempt >= attempts - 1:
+            return r
+        _time.sleep(min(2**attempt, 8))
+
+    return last  # type: ignore[return-value]
+
 def canister_exec(code: str, canister: str, network: str = None) -> str:
     """Send Python code to the canister and return the output."""
     escaped = code.replace('"', '\\"').replace("\n", "\\n")
@@ -66,7 +112,7 @@ def canister_exec(code: str, canister: str, network: str = None) -> str:
     cmd.extend([canister, "execute_code_shell", f'("{escaped}")'])
 
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        r = _run_dfx_with_retries(cmd, timeout_s=120)
         if r.returncode != 0:
             return f"[dfx error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
@@ -287,7 +333,7 @@ def _task_list_code() -> str:
         "    for _t in Task.instances():\n"
         "        _scheds = list(_t.schedules)\n"
         "        _s = _scheds[0] if _scheds else None\n"
-        "        _rep = f'{_s.repeat_every:>6}s' if _s and _s.repeat_every else '     -'\n"
+        "        _rep = f'every {_s.repeat_every}s' if _s and _s.repeat_every else '     -'\n"
         "        _dis = 'disabled' if (_s and _s.disabled) else 'enabled ' if _s else '   -   '\n"
         "        _last = _last_exec_ts(_t)\n"
         "        _last_str = f' | last={_last}' if _last else ''\n"
@@ -854,7 +900,7 @@ def _wget(url: str, dest: str, canister: str, network: str) -> str:
     cmd.extend([canister, "download_to_file", f'("{escaped_url}", "{escaped_dest}")'])
 
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        r = _run_dfx_with_retries(cmd, timeout_s=120)
         if r.returncode != 0:
             return f"[dfx error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
