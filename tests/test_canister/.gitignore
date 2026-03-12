@@ -1,0 +1,4 @@
+.dfx/
+.basilisk/
+node_modules/
+*.did

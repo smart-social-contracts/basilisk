@@ -1,0 +1,26 @@
+{
+    "canisters": {
+        "bosh_test": {
+            "type": "custom",
+            "build": "CANISTER_CANDID_PATH=./bosh_test.did python -m basilisk bosh_test src/main.py",
+            "candid": "bosh_test.did",
+            "wasm": ".basilisk/bosh_test/bosh_test.wasm",
+            "gzip": true,
+            "metadata": [
+                {
+                    "name": "candid:service"
+                }
+            ]
+        }
+    },
+    "networks": {
+        "local": {
+            "bind": "127.0.0.1:4943",
+            "type": "ephemeral"
+        },
+        "ic": {
+            "providers": ["https://icp0.io"],
+            "type": "persistent"
+        }
+    }
+}
