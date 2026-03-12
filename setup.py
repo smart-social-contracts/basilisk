@@ -21,8 +21,12 @@ setup(
         "py.typed",
     ]},
     include_package_data=True,
-    packages=["basilisk"],
+    packages=["basilisk", "basilisk.os"],
     install_requires=["modulegraph==0.19.3"],
+    extras_require={
+        "bosh": ["asyncssh"],
+        "test": ["pytest"],
+    },
     entry_points={
         "console_scripts": [
             "basilisk=basilisk.cli:main",

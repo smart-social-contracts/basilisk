@@ -1,13 +1,24 @@
 """
-Basilisk CLI — scaffold and build IC canister projects in Python.
+Basilisk CLI — scaffold, build, and interact with IC canister projects in Python.
 
 Usage:
     basilisk new [--backend cpython|rustpython] <project_name>
     basilisk build                 Build the canister in the current directory
+    basilisk exec [options] <code> Execute Python code on a deployed canister
+    basilisk shell [options]       Interactive shell (bosh) for a deployed canister
+    basilisk sshd [options]        SSH server proxy to a deployed canister
     basilisk --version             Print version
+
+Exec options:
+    --canister <name_or_id>   Canister name or ID (default: auto-detect from dfx.json)
+    --network <network>       Network: local, ic, or URL (default: local)
+    -f <file>                 Execute a local Python file on the canister
 """
 
+import ast
 import os
+import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -159,6 +170,100 @@ def cmd_build():
                 sys.exit(1)
 
 
+def _parse_candid_string(output: str) -> str:
+    """Parse a Candid-encoded string response from dfx into plain text."""
+    output = output.strip()
+    # General tuple pattern: (  "content"  ) or (  "content",  )
+    m = re.search(r'\(\s*"(.*)"\s*,?\s*\)', output, re.DOTALL)
+    if m:
+        try:
+            return ast.literal_eval(f'"{m.group(1)}"')
+        except (SyntaxError, ValueError):
+            return m.group(1).replace("\\n", "\n").replace('\\"', '"')
+    return output
+
+
+def _detect_canister_from_dfx() -> str | None:
+    """Try to find the first basilisk canister name from dfx.json."""
+    import json
+    if not Path("dfx.json").exists():
+        return None
+    try:
+        with open("dfx.json") as f:
+            dfx = json.load(f)
+        for name, config in dfx.get("canisters", {}).items():
+            if "basilisk" in config.get("build", ""):
+                return name
+    except Exception:
+        pass
+    return None
+
+
+def cmd_exec(args: list[str]):
+    """Execute Python code on a deployed basilisk canister."""
+    canister = None
+    network = None
+    file_path = None
+    code_parts = []
+
+    i = 0
+    while i < len(args):
+        if args[i] == "--canister" and i + 1 < len(args):
+            canister = args[i + 1]; i += 2
+        elif args[i] == "--network" and i + 1 < len(args):
+            network = args[i + 1]; i += 2
+        elif args[i] == "-f" and i + 1 < len(args):
+            file_path = args[i + 1]; i += 2
+        else:
+            code_parts.append(args[i]); i += 1
+
+    # Get code from file or args
+    if file_path:
+        try:
+            code = Path(file_path).read_text()
+        except FileNotFoundError:
+            print(f"Error: file not found: {file_path}", file=sys.stderr)
+            sys.exit(1)
+    elif code_parts:
+        code = " ".join(code_parts)
+    else:
+        # Read from stdin
+        code = sys.stdin.read()
+
+    if not code.strip():
+        print("Error: no code provided. Usage: basilisk exec [--canister <c>] [--network <n>] [-f <file>] <code>", file=sys.stderr)
+        sys.exit(1)
+
+    # Auto-detect canister if not specified
+    if not canister:
+        canister = _detect_canister_from_dfx()
+        if not canister:
+            print("Error: --canister required (could not auto-detect from dfx.json)", file=sys.stderr)
+            sys.exit(1)
+
+    # Build dfx command
+    escaped_code = code.replace('"', '\\"').replace("\n", "\\n")
+    cmd = ["dfx", "canister", "call"]
+    if network:
+        cmd.extend(["--network", network])
+    cmd.extend([canister, "execute_code_shell", f'("{escaped_code}")'])
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode != 0:
+            print(result.stderr.strip(), file=sys.stderr)
+            sys.exit(1)
+        output = _parse_candid_string(result.stdout)
+        if output:
+            print(output, end="" if output.endswith("\n") else "\n")
+    except subprocess.TimeoutExpired:
+        print("Error: canister call timed out (120s)", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError:
+        print("Error: dfx not found. Install the DFINITY SDK.", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__.strip())
@@ -185,6 +290,19 @@ def main():
 
     elif command == "build":
         cmd_build()
+
+    elif command == "exec":
+        cmd_exec(sys.argv[2:])
+
+    elif command == "shell":
+        from basilisk.bosh import main as bosh_main
+        sys.argv = ["bosh"] + sys.argv[2:]
+        bosh_main()
+
+    elif command == "sshd":
+        from basilisk.bosh_sshd import main as sshd_main
+        sys.argv = ["bosh-sshd"] + sys.argv[2:]
+        sshd_main()
 
     elif command in ("-h", "--help", "help"):
         print(__doc__.strip())
