@@ -734,23 +734,18 @@ unsafe extern "C" fn ic_stable64_write(
 
 static mut TIMER_CB_COUNTER: u64 = 0;
 
-/// Resolve a Python callback to a global function name.
-/// For named functions, uses their __name__. For lambdas/closures, stores them
-/// under a generated unique global name so they can be retrieved later.
+/// Resolve a Python callback by storing it in __main__ globals under a unique
+/// generated name.  We always store the actual callback object rather than
+/// trusting __name__, because functions defined inside exec() (e.g. via
+/// execute_code_shell) live in a per-call namespace that is NOT __main__.
+/// Looking them up by __name__ later would fail with a silent trap.
 unsafe fn resolve_timer_callback(callback: &PyObjectRef) -> String {
-    // Try to extract a string name first (if caller passed a string)
+    // If the caller passed a plain string, trust it (explicit name).
     if let Ok(s) = callback.extract_str() {
         return s;
     }
-    // Try __name__ — skip if it's "<lambda>" since that's not a real global
-    if let Ok(name_obj) = callback.get_attr("__name__") {
-        if let Ok(name) = name_obj.extract_str() {
-            if name != "<lambda>" {
-                return name;
-            }
-        }
-    }
-    // Lambda or closure: store under a generated global name
+    // Always store the callback object in __main__ globals so the timer
+    // closure can retrieve it via interpreter.get_global().
     let id = TIMER_CB_COUNTER;
     TIMER_CB_COUNTER += 1;
     let gen_name = format!("_timer_cb_{}", id);
