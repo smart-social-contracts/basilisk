@@ -95,7 +95,7 @@ def download_to_file(url: str, dest: str) -> Async[str]:
     http_result: CallResult[HttpResponse] = yield management_canister.http_request(
         {
             "url": url,
-            "max_response_bytes": 2_097_152,  # 2 MB limit
+            "max_response_bytes": 2_000_000,  # IC limit
             "method": {"get": None},
             "headers": [
                 {"name": "User-Agent", "value": "Basilisk/1.0"},
@@ -106,7 +106,7 @@ def download_to_file(url: str, dest: str) -> Async[str]:
                 "context": bytes(),
             },
         }
-    ).with_cycles(15_000_000_000)
+    ).with_cycles(30_000_000_000)
 
     def _handle_ok(response: HttpResponse) -> str:
         try:

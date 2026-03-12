@@ -1353,6 +1353,12 @@ class TestWget:
         url = "https://raw.githubusercontent.com/niccokunzmann/small-ftp-test-server/master/README.md"
         dest = "/test_wget_download.txt"
         result = _task_magic(f"%wget {url} {dest}", canister, network)
+        if "No consensus" in result:
+            import pytest
+            pytest.skip(
+                "IC HTTP outcall consensus failure (CDN-served content); "
+                "not a code bug — retry later"
+            )
         assert "Downloaded" in result or "bytes" in result.lower()
 
         # Verify the file exists on the canister
@@ -1366,6 +1372,150 @@ class TestWget:
         result = _task_magic(f"%wget {url} {dest}", canister, network)
         # Should contain error info (either dfx error or download failed)
         assert "error" in result.lower() or "failed" in result.lower() or "Err" in result
+
+
+# ===========================================================================
+# E2E composition tests
+# ===========================================================================
+
+# Async step code: downloads a Python file from GitHub via IC HTTP outcall
+# and saves it to /e2e_hello.py on the canister memfs.
+_E2E_DOWNLOAD_STEP_CODE = '''\
+from basilisk.canisters.management import management_canister
+
+def async_task():
+    result = yield management_canister.http_request({
+        "url": "https://raw.githubusercontent.com/smart-social-contracts/basilisk/main/tests/fixtures/e2e_hello.py",
+        "max_response_bytes": 10_000,
+        "method": {"get": None},
+        "headers": [{"name": "User-Agent", "value": "Basilisk/1.0"}],
+        "body": None,
+        "transform": {
+            "function": (ic.id(), "http_transform"),
+            "context": bytes(),
+        },
+    }).with_cycles(30_000_000_000)
+    if "Ok" in result:
+        content = result["Ok"]["body"].decode("utf-8")
+        with open("/e2e_hello.py", "w") as f:
+            f.write(content)
+    return str(result)[:500]
+'''
+
+
+class TestE2EWriteAndRun:
+    """E2E: multi-step task chaining via timer (write step → exec step)."""
+
+    def test_write_and_run(self, canister_reachable, canister, network):
+        """Two sync steps via timer: step 1 writes a .py file, step 2 exec's it."""
+        import time
+
+        # 1. Create the task
+        result = _task_magic("%task create _test_e2e_writerun", canister, network)
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+
+        try:
+            # 2. Step 1: write a Python script to memfs
+            step1 = _task_magic(
+                f'''{"%"}task add-step {tid} --code "with open('/e2e_writerun.py','w') as f: f.write('print(\\\"BASILISK_E2E_OK_42\\\")')"''',
+                canister, network,
+            )
+            assert "Added step" in step1, f"Step 1 failed: {step1}"
+
+            # 3. Step 2: exec the written file
+            step2 = _task_magic(
+                f"%task add-step {tid} --file /e2e_writerun.py",
+                canister, network,
+            )
+            assert "Added step" in step2, f"Step 2 failed: {step2}"
+
+            # 4. Start the task (timer-based)
+            start = _task_magic(f"%task start {tid}", canister, network)
+            assert "timer" in start.lower(), f"Start failed: {start}"
+
+            # 5. Wait for both steps to execute
+            time.sleep(10)
+
+            # 6. Verify output in task log
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "BASILISK_E2E_OK_42" in log, (
+                f"Expected 'BASILISK_E2E_OK_42' in task log but got:\n{log}"
+            )
+        finally:
+            _cleanup_task(tid, canister, network)
+
+
+class TestE2EDownloadAndRun:
+    """E2E: async HTTP download step → sync exec step.
+
+    This test makes a real IC HTTP outcall to raw.githubusercontent.com.
+    It can fail transiently when IC replicas cannot reach consensus on
+    the CDN response (Rejection code 2).  Such failures are NOT bugs in
+    our code — they are an IC infrastructure limitation with CDN-served
+    content.
+    """
+
+    def test_download_and_run(self, canister_reachable, canister, network):
+        """Two-step task: async download a .py via HTTP outcall, then exec it."""
+        import base64
+        import time
+        from tests.conftest import exec_on_canister
+
+        # 1. Upload the async download code to canister memfs
+        b64_src = base64.b64encode(_E2E_DOWNLOAD_STEP_CODE.encode()).decode()
+        upload_code = (
+            "import base64 as _b64\n"
+            f"_src = _b64.b64decode('{b64_src}')\n"
+            "with open('/e2e_download_step.py', 'w') as _f:\n"
+            "    _f.write(_src.decode())\n"
+            "print('uploaded')"
+        )
+        upload_result = exec_on_canister(upload_code, canister, network)
+        assert "uploaded" in upload_result
+
+        # 2. Create the task
+        result = _task_magic("%task create _test_e2e_dlrun", canister, network)
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+
+        try:
+            # 3. Add async step: download the Python file
+            step1 = _task_magic(
+                f"%task add-step {tid} --file /e2e_download_step.py --async",
+                canister, network,
+            )
+            assert "Added step" in step1, f"Step 1 failed: {step1}"
+            assert "async" in step1
+
+            # 4. Add sync step: exec the downloaded file
+            step2 = _task_magic(
+                f"%task add-step {tid} --file /e2e_hello.py",
+                canister, network,
+            )
+            assert "Added step" in step2, f"Step 2 failed: {step2}"
+            assert "sync" in step2
+
+            # 5. Start the task (timer-based execution)
+            start = _task_magic(f"%task start {tid}", canister, network)
+            assert "timer" in start.lower(), f"Start failed: {start}"
+
+            # 6. Wait for HTTP outcall + step execution
+            time.sleep(20)
+
+            # 7. Verify the log — tolerate IC consensus failures
+            log = _task_magic(f"%task log {tid}", canister, network)
+            if "No consensus" in log:
+                import pytest
+                pytest.skip(
+                    "IC HTTP outcall consensus failure (CDN-served content); "
+                    "not a code bug — retry later"
+                )
+            assert "BASILISK_E2E_OK_42" in log, (
+                f"Expected 'BASILISK_E2E_OK_42' in task log but got:\n{log}"
+            )
+        finally:
+            _cleanup_task(tid, canister, network)
 
 
 # ===========================================================================
