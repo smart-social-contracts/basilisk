@@ -1335,6 +1335,85 @@ class TestMultiStepExecution:
         finally:
             _cleanup_task(tid, canister, network)
 
+    def test_start_recurring_accumulates(self, canister_reachable, canister, network):
+        """A recurring task should accumulate multiple executions over time."""
+        import time
+        result = _task_magic(
+            '%task create _test_recur_accum every 3s --code "print(\'tick\')"',
+            canister, network,
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            start_result = _task_magic(f"%task start {tid}", canister, network)
+            assert "timer" in start_result.lower()
+
+            # Wait long enough for at least 2 recurring fires (3s interval)
+            time.sleep(12)
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            # Should have at least 2 executions (initial + 1 recurrence)
+            import re
+            m = re.search(r'(\d+) execution', log)
+            assert m and int(m.group(1)) >= 2, \
+                f"Expected multiple executions, got: {log}"
+            assert "tick" in log
+        finally:
+            _task_magic(f"%task stop {tid}", canister, network)
+            _cleanup_task(tid, canister, network)
+
+    def test_two_recurring_tasks_independent(self, canister_reachable, canister, network):
+        """Two recurring tasks should run independently without interference."""
+        import time
+        result_a = _task_magic(
+            '%task create _test_indep_A every 3s --code "print(\'AAA\')"',
+            canister, network,
+        )
+        tid_a = _extract_task_id(result_a)
+        assert tid_a, f"Failed to create task A: {result_a}"
+
+        result_b = _task_magic(
+            '%task create _test_indep_B every 3s --code "print(\'BBB\')"',
+            canister, network,
+        )
+        tid_b = _extract_task_id(result_b)
+        assert tid_b, f"Failed to create task B: {result_b}"
+        try:
+            # Start both tasks
+            start_a = _task_magic(f"%task start {tid_a}", canister, network)
+            assert "timer" in start_a.lower()
+            start_b = _task_magic(f"%task start {tid_b}", canister, network)
+            assert "timer" in start_b.lower()
+
+            # Wait for several recurring fires
+            time.sleep(12)
+
+            # Both tasks should have accumulated executions
+            log_a = _task_magic(f"%task log {tid_a}", canister, network)
+            log_b = _task_magic(f"%task log {tid_b}", canister, network)
+
+            # Task A should have run and contain only AAA output (not BBB)
+            assert "AAA" in log_a, f"Task A missing AAA output: {log_a}"
+            assert "BBB" not in log_a, f"Task A contains BBB (namespace collision!): {log_a}"
+
+            # Task B should have run and contain only BBB output (not AAA)
+            assert "BBB" in log_b, f"Task B missing BBB output: {log_b}"
+            assert "AAA" not in log_b, f"Task B contains AAA (namespace collision!): {log_b}"
+
+            # Both should have at least 2 executions
+            import re
+            m_a = re.search(r'(\d+) execution', log_a)
+            assert m_a and int(m_a.group(1)) >= 2, \
+                f"Task A should have multiple executions: {log_a}"
+            m_b = re.search(r'(\d+) execution', log_b)
+            assert m_b and int(m_b.group(1)) >= 2, \
+                f"Task B should have multiple executions: {log_b}"
+        finally:
+            _task_magic(f"%task stop {tid_a}", canister, network)
+            _task_magic(f"%task stop {tid_b}", canister, network)
+            _cleanup_task(tid_a, canister, network)
+            _cleanup_task(tid_b, canister, network)
+
 
 # ===========================================================================
 # %wget — download file into canister
