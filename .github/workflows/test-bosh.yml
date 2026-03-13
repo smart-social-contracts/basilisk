@@ -64,6 +64,42 @@ jobs:
               run: |
                   dfx canister call "$BOSH_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BOSH_TEST_NETWORK"
 
+            - name: Diagnostic - debug task list
+              run: |
+                  PYTHONPATH=. python3 -c "
+import os, subprocess
+from basilisk.bosh import canister_exec, _TASK_RESOLVE, _task_list_code, _parse_candid, _run_dfx_with_retries
+
+c = os.environ['BOSH_TEST_CANISTER']
+n = os.environ['BOSH_TEST_NETWORK']
+
+# 1) What's in the namespace?
+r1 = canister_exec(\"print('Task' in dir(), 'Codex' in dir())\", c, n)
+print(f'[DIAG1] namespace: {r1!r}')
+
+# 2) Run _TASK_RESOLVE alone
+r2 = canister_exec(_TASK_RESOLVE + \"print('AFTER_RESOLVE:', 'Task' in dir(), 'Codex' in dir())\", c, n)
+print(f'[DIAG2] after resolve: {r2!r}')
+
+# 3) Try simple Task.count()
+r3 = canister_exec(\"print('count=', Task.count() if 'Task' in dir() else 'N/A')\", c, n)
+print(f'[DIAG3] count: {r3!r}')
+
+# 4) Run full _task_list_code and show raw dfx output
+code = _task_list_code()
+escaped = code.replace('\"', '\\\\\"').replace('\\n', '\\\\n')
+cmd = ['dfx', 'canister', 'call', '--network', n, c, 'execute_code_shell', f'(\"{escaped}\")']
+r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+print(f'[DIAG4] raw stdout: {r.stdout!r}')
+print(f'[DIAG4] raw stderr: {r.stderr!r}')
+print(f'[DIAG4] returncode: {r.returncode}')
+print(f'[DIAG4] parsed: {_parse_candid(r.stdout)!r}')
+
+# 5) Run canister_exec with _task_list_code
+r5 = canister_exec(code, c, n)
+print(f'[DIAG5] canister_exec result: {r5!r}')
+"
+
             - name: Run tests
               run: |
                   FILTER="${{ inputs.test_filter }}"
