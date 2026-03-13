@@ -58,7 +58,7 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  pip install -e ".[test]"
+                  pip install -e ".[bosh,test]"
 
             - name: Verify canister reachable
               run: |

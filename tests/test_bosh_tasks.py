@@ -1704,6 +1704,13 @@ class TestE2EDownloadAndRun:
 # Persistent file storage — survives canister upgrade
 # ===========================================================================
 
+@pytest.mark.skipif(
+    not os.path.isfile(os.path.join(
+        os.path.dirname(__file__),
+        "test_canister", ".basilisk", "bosh_test", "bosh_test.wasm",
+    )),
+    reason="Pre-built WASM not found (requires local build of test canister)",
+)
 class TestPersistentFileStorage:
     """E2E: files on memfs survive canister upgrades via stable memory."""
 

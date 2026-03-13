@@ -26,7 +26,7 @@ import pytest
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from basilisk.bosh import canister_exec, _parse_candid, _handle_magic
+from basilisk.bosh import canister_exec, _parse_candid, _handle_magic, _TASK_RESOLVE
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +79,10 @@ def canister_reachable(canister, network, dfx_available):
     if "error" in result.lower() or "Error" in result:
         pytest.skip(f"Canister {canister} not reachable on {network}: {result}")
     assert result.strip() == "ping", f"Unexpected ping response: {result!r}"
+    # Warm up the task entity classes in this principal's namespace.
+    # The first _TASK_RESOLVE call on a fresh namespace may return empty;
+    # running it here ensures subsequent task tests get a primed namespace.
+    canister_exec(_TASK_RESOLVE + "print('task_entities_ready')", canister, network)
     return True
 
 
