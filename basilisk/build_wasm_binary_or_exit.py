@@ -14,6 +14,12 @@ TEMPLATE_DOWNLOAD_URL = (
     "/v{version}/cpython_canister_template.wasm"
 )
 
+# Fallback: CI uploads the template to the cpython-wasm release (not versioned)
+TEMPLATE_DOWNLOAD_URL_FALLBACK = (
+    "https://github.com/smart-social-contracts/basilisk/releases/download"
+    "/cpython-wasm-3.13.0/cpython_canister_template.wasm"
+)
+
 
 @timed_inline
 def build_wasm_binary_or_exit(
@@ -194,21 +200,27 @@ def find_template_wasm(paths: Paths) -> str | None:
 def _download_template(dest_path: str) -> bool:
     """Download the pre-built template WASM from the GitHub release.
 
+    Tries the versioned release first (v{version}), then falls back to the
+    cpython-wasm release where CI uploads the latest template.
     Returns True if the download succeeded, False otherwise.
     """
-    url = TEMPLATE_DOWNLOAD_URL.format(version=basilisk.__version__)
-    print(f"Downloading CPython canister template from {url} ...")
-    try:
-        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-        urllib.request.urlretrieve(url, dest_path)
-        size_mb = os.path.getsize(dest_path) / (1024 * 1024)
-        print(f"Template downloaded ({size_mb:.1f} MB) -> {dest_path}")
-        return True
-    except Exception as e:
-        print(f"Download failed: {e}")
-        if os.path.exists(dest_path):
-            os.remove(dest_path)
-        return False
+    urls = [
+        TEMPLATE_DOWNLOAD_URL.format(version=basilisk.__version__),
+        TEMPLATE_DOWNLOAD_URL_FALLBACK,
+    ]
+    for url in urls:
+        print(f"Downloading CPython canister template from {url} ...")
+        try:
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            urllib.request.urlretrieve(url, dest_path)
+            size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+            print(f"Template downloaded ({size_mb:.1f} MB) -> {dest_path}")
+            return True
+        except Exception as e:
+            print(f"Download failed: {e}")
+            if os.path.exists(dest_path):
+                os.remove(dest_path)
+    return False
 
 
 def build_template_from_source(

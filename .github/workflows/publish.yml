@@ -72,17 +72,39 @@ jobs:
           git tag -a "v${{ steps.bump_version.outputs.NEW_VERSION }}" -m "Release v${{ steps.bump_version.outputs.NEW_VERSION }}"
           git push origin main --tags
       
+      - name: Download template WASM from cpython-wasm release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The build-cpython-wasm.yml CI uploads the template to cpython-wasm-3.13.0 release.
+          # Download it so we can attach it to the versioned release (v{version}),
+          # which is where find_template_wasm() looks for it.
+          gh release download cpython-wasm-3.13.0 \
+            --pattern 'cpython_canister_template.wasm' \
+            --dir "${{ runner.temp }}" \
+            --clobber || echo "⚠️  Template WASM not found in cpython-wasm-3.13.0 release (skipping)"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
         run: |
+          TEMPLATE_FLAG=""
+          if [ -f "${{ runner.temp }}/cpython_canister_template.wasm" ]; then
+            TEMPLATE_FLAG="${{ runner.temp }}/cpython_canister_template.wasm"
+            echo "✅ Including template WASM in release"
+          else
+            echo "⚠️  No template WASM to include"
+          fi
+
           if [ -n "$RELEASE_NOTES" ]; then
             gh release create "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --title "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
-              --notes "$RELEASE_NOTES"
+              --notes "$RELEASE_NOTES" \
+              $TEMPLATE_FLAG
           else
             gh release create "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --title "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
-              --generate-notes
+              --generate-notes \
+              $TEMPLATE_FLAG
           fi
