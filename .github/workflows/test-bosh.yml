@@ -64,10 +64,6 @@ jobs:
               run: |
                   dfx canister call "$BOSH_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BOSH_TEST_NETWORK"
 
-            - name: Diagnostic - debug task list
-              run: |
-                  PYTHONPATH=. python3 tests/diag_task_list.py
-
             - name: Run tests
               run: |
                   FILTER="${{ inputs.test_filter }}"

@@ -394,7 +394,9 @@ def _task_list_code() -> str:
         _TASK_RESOLVE + _TASK_UNAVAILABLE +
         _FMT_NS + _LAST_EXEC_TS +
         "if 'Task' in dir():\n"
+        "    _any = False\n"
         "    for _t in Task.instances():\n"
+        "        _any = True\n"
         "        _scheds = list(_t.schedules)\n"
         "        _s = _scheds[0] if _scheds else None\n"
         "        _rep = f'every {_s.repeat_every}s' if _s and _s.repeat_every else '     -'\n"
@@ -402,7 +404,7 @@ def _task_list_code() -> str:
         "        _last = _last_exec_ts(_t)\n"
         "        _last_str = f' | last={_last}' if _last else ''\n"
         "        print(f'{str(_t._id):>3} | {_t.status:<10} | repeat={_rep} | {_dis} | {_t.name}{_last_str}')\n"
-        "    if Task.count() == 0: print('No tasks.')\n"
+        "    if not _any: print('No tasks.')\n"
     )
 
 

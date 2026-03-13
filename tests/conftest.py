@@ -80,9 +80,17 @@ def canister_reachable(canister, network, dfx_available):
         pytest.skip(f"Canister {canister} not reachable on {network}: {result}")
     assert result.strip() == "ping", f"Unexpected ping response: {result!r}"
     # Warm up the task entity classes in this principal's namespace.
-    # The first _TASK_RESOLVE call on a fresh namespace may return empty;
-    # running it here ensures subsequent task tests get a primed namespace.
-    canister_exec(_TASK_RESOLVE + "print('task_entities_ready')", canister, network)
+    canister_exec(
+        _TASK_RESOLVE +
+        # Fix stale Task_count counter if it diverged from actual instances.
+        "if 'Task' in dir():\n"
+        "    _actual = len(Task.instances())\n"
+        "    _stored = Task.count()\n"
+        "    if _actual != _stored:\n"
+        "        Task.db().save('_system', Task.get_full_type_name() + '_count', str(_actual))\n"
+        "print('task_entities_ready')\n",
+        canister, network,
+    )
     return True
 
 
