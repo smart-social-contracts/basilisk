@@ -2,11 +2,17 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 
 import basilisk
 from basilisk.colors import red
 from basilisk.timed import timed_inline
 from basilisk.types import Paths
+
+TEMPLATE_DOWNLOAD_URL = (
+    "https://github.com/smart-social-contracts/basilisk/releases/download"
+    "/v{version}/cpython_canister_template.wasm"
+)
 
 
 @timed_inline
@@ -157,26 +163,52 @@ def find_template_wasm(paths: Paths) -> str | None:
 
     Searches in order:
     1. BASILISK_TEMPLATE_WASM env var (explicit path)
-    2. ~/.config/basilisk/<version>/cpython_canister_template.wasm (downloaded artifact)
-    3. <compiler_dir>/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm (local build)
+    2. ~/.config/basilisk/<version>/cpython_canister_template.wasm (cached artifact)
+    3. Download from GitHub release and cache at (2)
+    4. <compiler_dir>/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm (local build)
     """
     # 1. Explicit path
     explicit = os.environ.get("BASILISK_TEMPLATE_WASM")
     if explicit and os.path.exists(explicit):
         return explicit
 
-    # 2. Downloaded artifact
+    # 2. Cached artifact
     artifact_path = f"{paths['global_basilisk_version_dir']}/cpython_canister_template.wasm"
     if os.path.exists(artifact_path):
         return artifact_path
 
-    # 3. Local build
+    # 3. Download from GitHub release
+    downloaded = _download_template(artifact_path)
+    if downloaded:
+        return artifact_path
+
+    # 4. Local build
     compiler_dir = os.path.dirname(basilisk.__file__) + "/compiler"
     local_path = f"{compiler_dir}/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm"
     if os.path.exists(local_path):
         return local_path
 
     return None
+
+
+def _download_template(dest_path: str) -> bool:
+    """Download the pre-built template WASM from the GitHub release.
+
+    Returns True if the download succeeded, False otherwise.
+    """
+    url = TEMPLATE_DOWNLOAD_URL.format(version=basilisk.__version__)
+    print(f"Downloading CPython canister template from {url} ...")
+    try:
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        urllib.request.urlretrieve(url, dest_path)
+        size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+        print(f"Template downloaded ({size_mb:.1f} MB) -> {dest_path}")
+        return True
+    except Exception as e:
+        print(f"Download failed: {e}")
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        return False
 
 
 def build_template_from_source(
