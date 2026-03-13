@@ -17,7 +17,9 @@ Shell commands:
     %mkdir <path> Create directory on canister
     %wget <url> <dest>  Download a URL into canister filesystem
     %task         Task management (create, add-step, start, stop, etc.)
-    %run <file>   Read a local file and execute it on the canister
+    %run <file>   Execute a file from canister filesystem
+    %get <remote> [local]  Download file from canister
+    %put <local> [remote]  Upload file to canister
     %who          List variables in the remote namespace
     %db dump      Dump the canister database as JSON
     %db clear     Clear the canister database
@@ -128,91 +130,82 @@ def canister_exec(code: str, canister: str, network: str = None) -> str:
 
 # ---------------------------------------------------------------------------
 # Code preamble that resolves the Task entity class at runtime.
-# Priority: 1) already in namespace, 2) bos module, 3) ggg module,
-#           4) define from ic_python_db on the fly, 5) unavailable.
+# Priority: 1) already in namespace (injected by downstream app),
+#           2) define from ic_python_db on the fly, 3) unavailable.
 # ---------------------------------------------------------------------------
 _TASK_RESOLVE = (
     "if 'Codex' not in dir() or 'Task' not in dir():\n"
     "    _Task = None\n"
-    "    for _mod in ('bos', 'ggg'):\n"
-    "        try:\n"
-    "            _m = __import__(_mod)\n"
-    "            _Task = getattr(_m, 'Task', None)\n"
-    "            if _Task and not getattr(_m, 'Codex', None): _Task = None\n"
-    "            if _Task: break\n"
-    "        except (ImportError, AttributeError):\n"
-    "            pass\n"
-    "    if _Task is None:\n"
-    "        try:\n"
-    "            from ic_python_db import Entity, String, Integer, Boolean, OneToMany, ManyToOne, OneToOne, TimestampedMixin\n"
-    "            class Codex(Entity, TimestampedMixin):\n"
-    "                __alias__ = 'name'\n"
-    "                name = String()\n"
-    "                url = String()\n"
-    "                checksum = String()\n"
-    "                calls = OneToMany('Call', 'codex')\n"
-    "                @property\n"
-    "                def code(self):\n"
-    "                    pending = getattr(self, '_pending_code', None)\n"
-    "                    if pending is not None: return pending\n"
+    "    try:\n"
+    "        from ic_python_db import Entity, String, Integer, Boolean, OneToMany, ManyToOne, OneToOne, TimestampedMixin\n"
+    "        class Codex(Entity, TimestampedMixin):\n"
+    "            __alias__ = 'name'\n"
+    "            name = String()\n"
+    "            url = String()\n"
+    "            checksum = String()\n"
+    "            calls = OneToMany('Call', 'codex')\n"
+    "            @property\n"
+    "            def code(self):\n"
+    "                pending = getattr(self, '_pending_code', None)\n"
+    "                if pending is not None: return pending\n"
+    "                if self.name:\n"
+    "                    try:\n"
+    "                        with open(f'/{self.name}', 'r') as f: return f.read()\n"
+    "                    except (FileNotFoundError, OSError): pass\n"
+    "                return None\n"
+    "            @code.setter\n"
+    "            def code(self, value):\n"
+    "                if value is not None:\n"
     "                    if self.name:\n"
     "                        try:\n"
-    "                            with open(f'/{self.name}', 'r') as f: return f.read()\n"
-    "                        except (FileNotFoundError, OSError): pass\n"
-    "                    return None\n"
-    "                @code.setter\n"
-    "                def code(self, value):\n"
-    "                    if value is not None:\n"
-    "                        if self.name:\n"
-    "                            try:\n"
-    "                                with open(f'/{self.name}', 'w') as f: f.write(str(value))\n"
-    "                            except OSError: pass\n"
-    "                            if hasattr(self, '_pending_code'): del self._pending_code\n"
-    "                        else: self._pending_code = value\n"
-    "                def _save(self):\n"
-    "                    pending = getattr(self, '_pending_code', None)\n"
-    "                    if pending is not None and self.name:\n"
-    "                        try:\n"
-    "                            with open(f'/{self.name}', 'w') as f: f.write(str(pending))\n"
+    "                            with open(f'/{self.name}', 'w') as f: f.write(str(value))\n"
     "                        except OSError: pass\n"
-    "                        del self._pending_code\n"
-    "                    return super()._save()\n"
-    "            class Call(Entity, TimestampedMixin):\n"
-    "                is_async = Boolean()\n"
-    "                codex = ManyToOne('Codex', 'calls')\n"
-    "                task_step = OneToOne('TaskStep', 'call')\n"
-    "            class TaskExecution(Entity, TimestampedMixin):\n"
-    "                __alias__ = 'name'\n"
-    "                name = String(max_length=256)\n"
-    "                task = ManyToOne('Task', 'executions')\n"
-    "                status = String(max_length=50, default='idle')\n"
-    "                result = String(max_length=5000)\n"
-    "            class TaskStep(Entity, TimestampedMixin):\n"
-    "                call = OneToOne('Call', 'task_step')\n"
-    "                status = String(max_length=32, default='pending')\n"
-    "                run_next_after = Integer(default=0)\n"
-    "                timer_id = Integer()\n"
-    "                task = ManyToOne('Task', 'steps')\n"
-    "            class TaskSchedule(Entity, TimestampedMixin):\n"
-    "                __alias__ = 'name'\n"
-    "                name = String(max_length=256)\n"
-    "                disabled = Boolean()\n"
-    "                task = ManyToOne('Task', 'schedules')\n"
-    "                run_at = Integer()\n"
-    "                repeat_every = Integer()\n"
-    "                last_run_at = Integer()\n"
-    "            class Task(Entity, TimestampedMixin):\n"
-    "                __alias__ = 'name'\n"
-    "                name = String(max_length=256)\n"
-    "                metadata = String(max_length=256)\n"
-    "                status = String(max_length=32, default='pending')\n"
-    "                step_to_execute = Integer(default=0)\n"
-    "                steps = OneToMany('TaskStep', 'task')\n"
-    "                schedules = OneToMany('TaskSchedule', 'task')\n"
-    "                executions = OneToMany('TaskExecution', 'task')\n"
-    "            _Task = Task\n"
-    "        except ImportError:\n"
-    "            pass\n"
+    "                        if hasattr(self, '_pending_code'): del self._pending_code\n"
+    "                    else: self._pending_code = value\n"
+    "            def _save(self):\n"
+    "                pending = getattr(self, '_pending_code', None)\n"
+    "                if pending is not None and self.name:\n"
+    "                    try:\n"
+    "                        with open(f'/{self.name}', 'w') as f: f.write(str(pending))\n"
+    "                    except OSError: pass\n"
+    "                    del self._pending_code\n"
+    "                return super()._save()\n"
+    "        class Call(Entity, TimestampedMixin):\n"
+    "            is_async = Boolean()\n"
+    "            codex = ManyToOne('Codex', 'calls')\n"
+    "            task_step = OneToOne('TaskStep', 'call')\n"
+    "        class TaskExecution(Entity, TimestampedMixin):\n"
+    "            __alias__ = 'name'\n"
+    "            name = String(max_length=256)\n"
+    "            task = ManyToOne('Task', 'executions')\n"
+    "            status = String(max_length=50, default='idle')\n"
+    "            result = String(max_length=5000)\n"
+    "        class TaskStep(Entity, TimestampedMixin):\n"
+    "            call = OneToOne('Call', 'task_step')\n"
+    "            status = String(max_length=32, default='pending')\n"
+    "            run_next_after = Integer(default=0)\n"
+    "            timer_id = Integer()\n"
+    "            task = ManyToOne('Task', 'steps')\n"
+    "        class TaskSchedule(Entity, TimestampedMixin):\n"
+    "            __alias__ = 'name'\n"
+    "            name = String(max_length=256)\n"
+    "            disabled = Boolean()\n"
+    "            task = ManyToOne('Task', 'schedules')\n"
+    "            run_at = Integer()\n"
+    "            repeat_every = Integer()\n"
+    "            last_run_at = Integer()\n"
+    "        class Task(Entity, TimestampedMixin):\n"
+    "            __alias__ = 'name'\n"
+    "            name = String(max_length=256)\n"
+    "            metadata = String(max_length=256)\n"
+    "            status = String(max_length=32, default='pending')\n"
+    "            step_to_execute = Integer(default=0)\n"
+    "            steps = OneToMany('TaskStep', 'task')\n"
+    "            schedules = OneToMany('TaskSchedule', 'task')\n"
+    "            executions = OneToMany('TaskExecution', 'task')\n"
+    "        _Task = Task\n"
+    "    except ImportError:\n"
+    "        pass\n"
     "    if _Task is not None:\n"
     "        Task = _Task\n"
     "        globals()['Task'] = _Task\n"
@@ -1122,14 +1115,78 @@ def _handle_magic(line: str, canister: str, network: str) -> str:
     """Handle % magic commands. Returns output or None if not a magic command."""
     stripped = line.strip()
 
-    # %run <file> — read local file, exec on canister
+    # %run <file> — execute a file from canister memfs
     if stripped.startswith("%run "):
         filepath = stripped[5:].strip()
+        if not filepath:
+            return "Usage: %run <file>"
+        esc = filepath.replace("'", "\\'")
+        run_code = (
+            "try:\n"
+            f"    exec(open('{esc}').read())\n"
+            "except FileNotFoundError:\n"
+            f"    print('run: {esc}: No such file or directory')\n"
+        )
+        return canister_exec(run_code, canister, network)
+
+    # %get <remote> [local] — download file from canister to local filesystem
+    if stripped.startswith("%get "):
+        parts = stripped[5:].strip().split(None, 1)
+        if not parts:
+            return "Usage: %get <remote_path> [local_path]"
+        remote = parts[0]
+        local = parts[1] if len(parts) > 1 else os.path.basename(remote)
+        esc = remote.replace("'", "\\'")
+        dl_code = (
+            "import base64 as _b64\n"
+            "try:\n"
+            f"    _data = open('{esc}', 'rb').read()\n"
+            "    print(_b64.b64encode(_data).decode())\n"
+            "except FileNotFoundError:\n"
+            f"    print('ERROR: {esc}: No such file or directory')\n"
+        )
+        result = canister_exec(dl_code, canister, network)
+        if result is None:
+            return "[error] no response from canister"
+        result = result.strip()
+        if result.startswith("ERROR:"):
+            return f"[error] {result[7:]}"
         try:
-            code = open(filepath).read()
-            return canister_exec(code, canister, network)
+            import base64
+            data = base64.b64decode(result)
+            os.makedirs(os.path.dirname(local) or ".", exist_ok=True)
+            with open(local, "wb") as f:
+                f.write(data)
+            return f"Downloaded {remote} -> {local} ({len(data)} bytes)"
+        except Exception as e:
+            return f"[error] failed to save file: {e}"
+
+    # %put <local> [remote] — upload local file to canister memfs
+    if stripped.startswith("%put "):
+        parts = stripped[5:].strip().split(None, 1)
+        if not parts:
+            return "Usage: %put <local_path> [remote_path]"
+        local = parts[0]
+        remote = parts[1] if len(parts) > 1 else os.path.basename(local)
+        try:
+            with open(local, "rb") as f:
+                data = f.read()
         except FileNotFoundError:
-            return f"[error] file not found: {filepath}"
+            return f"[error] local file not found: {local}"
+        import base64
+        b64 = base64.b64encode(data).decode()
+        esc = remote.replace("'", "\\'")
+        ul_code = (
+            "import base64 as _b64, os\n"
+            f"_data = _b64.b64decode('{b64}')\n"
+            f"_dir = os.path.dirname('{esc}')\n"
+            "if _dir:\n"
+            "    os.makedirs(_dir, exist_ok=True)\n"
+            f"with open('{esc}', 'wb') as _f:\n"
+            "    _f.write(_data)\n"
+            f"print('Uploaded {len(data)} bytes -> {esc}')\n"
+        )
+        return canister_exec(ul_code, canister, network)
 
     # Filesystem commands — operate on canister's memfs
     if stripped == "%ls" or stripped.startswith("%ls "):
@@ -1351,7 +1408,9 @@ print('__BOSH_INFO__' + json.dumps(_info))
     print("    %who                      List namespace variables")
     print("    %info                     Show canister info")
     print("    %db count|dump|clear      Database operations")
-    print("    %run <file>               Execute local file on canister")
+    print("    %run <file>               Execute file from canister")
+    print("    %get <remote> [local]     Download file from canister")
+    print("    %put <local> [remote]     Upload file to canister")
     print("    !<cmd>                    Run a local OS command")
     print("    :help                     Full help    :q  Quit")
     print("=" * 60)

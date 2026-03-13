@@ -254,7 +254,135 @@ class TestMagicCommands:
 
     def test_run_nonexistent_file(self, canister, network):
         result = _handle_magic("%run /nonexistent/file.py", canister, network)
+        assert "no such file" in result.lower()
+
+    def test_run_file_on_canister(self, canister_reachable, canister, network):
+        """%run should execute a file from the canister's memfs."""
+        # Write a script to the canister
+        exec_on_canister(
+            "with open('_test_run_file.py', 'w') as f: f.write('print(7*6)')",
+            canister, network,
+        )
+        result = magic_on_canister("%run _test_run_file.py", canister, network)
+        assert result == "42"
+
+    def test_run_no_path_returns_none(self, canister, network):
+        """%run without a file is not recognized as a magic command (like %cat, %mkdir)."""
+        result = _handle_magic("%run ", canister, network)
+        assert result is None
+
+    def test_get_file_from_canister(self, canister_reachable, canister, network):
+        """%get should download a file from canister memfs to local filesystem."""
+        tag = "get_test_abc123"
+        # Write a known file on the canister
+        exec_on_canister(
+            f"with open('{tag}', 'w') as f: f.write('hello-from-canister')",
+            canister, network,
+        )
+        local_path = os.path.join(tempfile.gettempdir(), tag)
+        try:
+            result = magic_on_canister(f"%get {tag} {local_path}", canister, network)
+            assert "Downloaded" in result
+            assert os.path.exists(local_path)
+            with open(local_path) as f:
+                assert f.read() == "hello-from-canister"
+        finally:
+            if os.path.exists(local_path):
+                os.unlink(local_path)
+
+    def test_get_nonexistent_file(self, canister_reachable, canister, network):
+        """%get on a nonexistent canister file should report an error."""
+        result = magic_on_canister("%get /nonexistent_xyz", canister, network)
+        assert "no such file" in result.lower() or "error" in result.lower()
+
+    def test_get_defaults_to_basename(self, canister_reachable, canister, network):
+        """%get without a local path should use the remote file's basename."""
+        tag = "_get_basename_test"
+        exec_on_canister(
+            f"with open('{tag}', 'w') as f: f.write('basename-test')",
+            canister, network,
+        )
+        # Run from a temp directory so the default basename lands there
+        orig_cwd = os.getcwd()
+        tmpdir = tempfile.mkdtemp()
+        try:
+            os.chdir(tmpdir)
+            result = magic_on_canister(f"%get {tag}", canister, network)
+            assert "Downloaded" in result
+            local_file = os.path.join(tmpdir, tag)
+            assert os.path.exists(local_file)
+            with open(local_file) as f:
+                assert f.read() == "basename-test"
+        finally:
+            os.chdir(orig_cwd)
+            import shutil
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+    def test_put_file_to_canister(self, canister_reachable, canister, network):
+        """%put should upload a local file to the canister's memfs."""
+        tag = "_put_test_abc123"
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".txt", delete=False
+        ) as f:
+            f.write("hello-from-local")
+            local_path = f.name
+        try:
+            result = magic_on_canister(
+                f"%put {local_path} {tag}", canister, network
+            )
+            assert "Uploaded" in result
+            # Verify the file is on the canister
+            cat_result = magic_on_canister(f"%cat {tag}", canister, network)
+            assert cat_result == "hello-from-local"
+        finally:
+            os.unlink(local_path)
+
+    def test_put_nonexistent_local_file(self, canister, network):
+        """%put with a nonexistent local file should report an error."""
+        result = _handle_magic("%put /nonexistent/local.txt remote.txt", canister, network)
         assert "error" in result.lower()
+
+    def test_put_defaults_to_basename(self, canister_reachable, canister, network):
+        """%put without a remote path should use the local file's basename."""
+        with tempfile.NamedTemporaryFile(
+            mode="w", prefix="_put_bn_", suffix=".txt", delete=False
+        ) as f:
+            f.write("basename-put")
+            local_path = f.name
+            remote_name = os.path.basename(local_path)
+        try:
+            result = magic_on_canister(f"%put {local_path}", canister, network)
+            assert "Uploaded" in result
+            cat_result = magic_on_canister(f"%cat {remote_name}", canister, network)
+            assert cat_result == "basename-put"
+        finally:
+            os.unlink(local_path)
+
+    def test_put_get_binary_roundtrip(self, canister_reachable, canister, network):
+        """%put and %get should handle binary data correctly."""
+        tag = "_binrt_test"
+        data = bytes(range(256))
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            f.write(data)
+            local_up = f.name
+        local_down = local_up + ".down"
+        try:
+            # Upload
+            result = magic_on_canister(
+                f"%put {local_up} {tag}", canister, network
+            )
+            assert "Uploaded" in result
+            # Download
+            result = magic_on_canister(
+                f"%get {tag} {local_down}", canister, network
+            )
+            assert "Downloaded" in result
+            with open(local_down, "rb") as f:
+                assert f.read() == data
+        finally:
+            for p in [local_up, local_down]:
+                if os.path.exists(p):
+                    os.unlink(p)
 
 
 # ===========================================================================

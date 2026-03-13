@@ -252,9 +252,13 @@ def bundle_python_code(paths: Paths):
             )
 
         if type(node) == modulegraph.modulegraph.SourceModule:  # type: ignore
-            shutil.copy(
-                node.filename, f"{python_source_path}/{os.path.basename(node.filename)}"  # type: ignore
-            )
+            # Use dotted identifier to build path so modules with the same
+            # basename (e.g. _pytest.main vs the entry-point main) don't
+            # overwrite each other.
+            dest_name = node.identifier.replace(".", os.sep) + ".py"  # type: ignore
+            dest_path = f"{python_source_path}/{dest_name}"
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            shutil.copy(node.filename, dest_path)  # type: ignore
 
         if type(node) == modulegraph.modulegraph.Package:  # type: ignore
             # Skip the installed basilisk package (compiler, bosh, etc.)

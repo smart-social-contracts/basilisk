@@ -9,26 +9,26 @@
 [![PyPI](https://img.shields.io/pypi/v/ic-basilisk)](https://pypi.org/project/ic-basilisk/)
 [![Test](https://github.com/smart-social-contracts/basilisk/actions/workflows/test.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test.yml)
 
-Write **Python canisters** for the [Internet Computer](https://internetcomputer.org/). Forked from [Kybra](https://github.com/demergent-labs/kybra).
+Write **Python canisters** for the [Internet Computer](https://internetcomputer.org/). Deploy in seconds, connect via SSH/SFTP. Forked from [Kybra](https://github.com/demergent-labs/kybra).
 
 ## Features
 
 - Write IC canisters in pure Python using `@query` and `@update` decorators
-- **Two backends**: CPython 3.13 (default, fast builds) and RustPython
-- **Fast template builds**: CPython canisters build in seconds, not minutes
+- **Builds in seconds** — pre-compiled CPython 3.13 WASM template, no Rust toolchain needed
+- **SSH & SFTP access** — connect to any deployed canister with standard `ssh` and `sftp` clients
+- **Interactive shell (bosh)** — Python REPL running inside the canister
+- **Basilisk OS** — task scheduling, code management (Codex), and process execution on-chain
+- **In-memory filesystem** — standard `os` and `open()` calls, accessible via SFTP
+- **Persistent storage** — `StableBTreeMap` survives canister upgrades
 - IC system APIs: `ic.caller()`, `ic.time()`, `ic.print()`, `ic.canister_balance()`, etc.
-- **In-memory filesystem**: `os.mkdir`, `os.path.exists`, `os.rename`, `os.makedirs`, `open()` for file I/O
-- **Chunked code upload** for canisters larger than 10MB
-- `StableBTreeMap` for persistent key-value storage across upgrades
 - `Principal`, `Opt`, `Vec`, `Record`, `Variant` type support
 
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
 - [dfx](https://internetcomputer.org/docs/current/developer-docs/setup/install/) (IC SDK)
 - Python 3.10+
-- [WASI SDK](https://github.com/aspect-build/aspect-workflows-releases/blob/main/wasi-sdk/README.md) (for CPython backend)
 
 ### Install
 
@@ -36,19 +36,28 @@ Write **Python canisters** for the [Internet Computer](https://internetcomputer.
 pip install ic-basilisk
 ```
 
-### Create a new project
+### Create, deploy, and connect
 
 ```bash
+# 1. Scaffold a new project
 basilisk new my_project
 cd my_project
-```
 
-This creates a ready-to-deploy project:
+# 2. Start the local replica and deploy (builds in ~2 seconds)
+dfx start --background
+dfx deploy
 
-```
-my_project/
-  src/main.py    -- your canister code
-  dfx.json       -- IC project config
+# 3. Call your canister
+dfx canister call my_project greet '("World")'
+# ("Hello, World! The counter is at 0.")
+
+# 4. Open an interactive Python shell inside the canister
+basilisk shell --canister my_project
+
+# 5. Or connect via SSH and SFTP
+basilisk sshd --canister my_project
+ssh -p 2222 localhost              # Python shell over SSH
+sftp -P 2222 localhost             # browse the canister filesystem
 ```
 
 ### The generated canister code
@@ -56,86 +65,196 @@ my_project/
 ```python
 from basilisk import query, update, text, nat64, ic
 
-# A simple counter stored in a global variable.
-# State persists across calls but resets on canister upgrade.
 counter = 0
 
 @query
 def greet(name: text) -> text:
-    """Return a greeting message."""
     return f"Hello, {name}! The counter is at {counter}."
 
 @query
 def get_counter() -> nat64:
-    """Read the current counter value."""
     return counter
 
 @update
 def increment() -> nat64:
-    """Increment the counter and return the new value."""
     global counter
     counter += 1
     return counter
 
 @query
 def get_time() -> nat64:
-    """Return the current IC timestamp in nanoseconds."""
     return ic.time()
 
 @query
 def whoami() -> text:
-    """Return the caller's principal ID."""
     return str(ic.caller())
 ```
 
-### Deploy and call
+## SSH & SFTP Access
+
+Every Basilisk canister is accessible over SSH and SFTP. Start the proxy and connect with any standard client.
+
+### Start the SSH server
 
 ```bash
-dfx start --background
-dfx deploy
+# Local replica
+basilisk sshd --canister my_project
 
-dfx canister call my_project greet '("World")'
-# ("Hello, World! The counter is at 0.")
+# IC mainnet
+basilisk sshd --canister my_project --network ic
 
-dfx canister call my_project increment
-# (1 : nat64)
+# Custom port
+basilisk sshd --canister my_project --port 3333
+```
 
-dfx canister call my_project whoami
-# ("2vxsx-fae")
+### Connect via SSH
+
+```bash
+ssh -p 2222 -o StrictHostKeyChecking=no localhost
+```
+
+This drops you into **bosh** (Basilisk OS Shell) — a Python REPL running inside the canister:
+
+```
+bosh 🐍 ic> print("Hello from the IC!")
+Hello from the IC!
+bosh 🐍 ic> import os; os.listdir("/")
+['data', 'config.json']
+bosh 🐍 ic> 1 + 1
+2
+```
+
+Run a single command over SSH:
+
+```bash
+ssh -p 2222 localhost 'print(ic.time())'
+```
+
+### Connect via SFTP
+
+```bash
+sftp -P 2222 -o StrictHostKeyChecking=no localhost
+```
+
+Browse, upload, and download files on the canister's in-memory filesystem:
+
+```
+sftp> ls /
+data        config.json
+sftp> put local_script.py /scripts/myscript.py
+sftp> get /data/results.json ./results.json
+sftp> mkdir /logs
+```
+
+### Shell commands (bosh)
+
+| Command | Description |
+|---|---|
+| `%ls [path]` | List canister filesystem |
+| `%cat <file>` | Show file contents |
+| `%mkdir <path>` | Create directory |
+| `%wget <url> <dest>` | Download URL into canister filesystem |
+| `%run <file>` | Execute a local file on the canister |
+| `%task create/run/list` | Create and manage scheduled tasks |
+| `%db dump/clear/count` | Inspect the canister database |
+| `%info` | Show canister info (principal, cycles, status) |
+| `!<cmd>` | Run a local OS command |
+
+## Basilisk OS
+
+Basilisk OS provides operating-system-like services for IC canisters: **task management**, **code storage**, **scheduled execution**, and **persistent storage** — all running on-chain.
+
+```
+┌─────────────────────────────────────────────┐
+│                 Basilisk OS                  │
+├──────────────┬──────────────┬───────────────┤
+│ Task Manager │  Filesystem  │   Database    │
+│  Task        │  POSIX-like  │  ic-python-db │
+│  TaskStep    │  in-memory   │  Entity ORM   │
+│  TaskSchedule│  os / open() │  StableBTree  │
+│  Codex/Call  │              │               │
+├──────────────┴──────────────┴───────────────┤
+│           Basilisk CDK (Python → WASM)      │
+├─────────────────────────────────────────────┤
+│         Internet Computer (IC)              │
+└─────────────────────────────────────────────┘
+```
+
+### Entities
+
+- **Codex** — Stores executable Python code on the canister filesystem. Code is read/written transparently via the `code` property.
+- **Call** — Links a Codex to a TaskStep for execution (sync or async).
+- **Task** — A unit of work with one or more steps.
+- **TaskStep** — A single step in a multi-step task workflow.
+- **TaskSchedule** — Defines when and how often a Task runs (one-shot or recurring).
+- **TaskExecution** — Records the result of each execution attempt.
+
+### Task management via bosh
+
+```bash
+# Create a task with inline code
+bosh> %task create my_report --code "print('Generating report...'); result = 42"
+
+# Run it immediately
+bosh> %task run 1
+
+# Schedule a recurring task (every 60 seconds)
+bosh> %task create heartbeat every 60s --code "print('alive at', ic.time())"
+
+# View task details and list all tasks
+bosh> %task info 1
+bosh> %task list
+```
+
+### Using Basilisk OS entities in canister code
+
+```python
+from basilisk.os import Task, TaskStep, Codex, Call, TaskSchedule
+
+@update
+def create_pipeline() -> text:
+    codex = Codex(name="etl_script")
+    codex.code = "data = [x * 2 for x in range(10)]; print(f'Processed {len(data)} items')"
+
+    task = Task(name="ETL Pipeline")
+    step = TaskStep(task=task)
+    call = Call(codex=codex, task_step=step)
+    schedule = TaskSchedule(name="hourly", task=task, repeat_every=3600)
+
+    return f"Created task: {task.name}"
+```
+
+## Remote Code Execution
+
+Execute Python on a deployed canister without redeploying:
+
+```bash
+# One-liner
+basilisk exec --canister my_project 'print(1 + 1)'
+
+# Run a local script on the canister
+basilisk exec --canister my_project -f analysis.py
+
+# Pipe code
+echo "import os; print(os.listdir('/'))" | basilisk exec --canister my_project
+
+# Target IC mainnet
+basilisk exec --canister my_project --network ic 'print(ic.canister_balance())'
 ```
 
 ## Filesystem
 
-Basilisk provides an in-memory filesystem via the WASI polyfill. You can use standard Python `os` operations and `open()` for file I/O — no special imports needed.
-
-### Directory operations
+Standard Python `os` operations and `open()` work inside the canister. The filesystem is also accessible via SFTP (see above).
 
 ```python
 import os
 
 @update
-def create_workspace() -> text:
+def setup() -> text:
     os.makedirs("/data/reports", exist_ok=True)
-    os.mkdir("/data/logs")
-    return f"exists={os.path.exists('/data/reports')} is_dir={os.path.isdir('/data/logs')}"
-
-@update
-def cleanup(path: text) -> text:
-    os.rename("/data/logs", "/data/archive")
-    os.rmdir("/data/archive")
-    return f"renamed and removed, gone={not os.path.exists('/data/archive')}"
-```
-
-Supported: `os.mkdir`, `os.makedirs`, `os.rmdir`, `os.rename`, `os.path.exists`, `os.path.isdir`, `os.path.isfile`, `os.stat`.
-
-### File I/O
-
-```python
-@update
-def save_config(data: text) -> text:
     with open("/data/config.json", "w") as f:
-        f.write(data)
-    return "saved"
+        f.write('{"version": 1}')
+    return f"exists={os.path.exists('/data/config.json')}"
 
 @query
 def load_config() -> text:
@@ -147,31 +266,25 @@ def load_config() -> text:
 
 ## StableBTreeMap
 
-`StableBTreeMap` provides key-value storage that survives canister upgrades using IC stable memory.
+Key-value storage that survives canister upgrades using IC stable memory:
 
 ```python
-from basilisk import query, update, text, nat64, Opt, StableBTreeMap
+from basilisk import query, update, text, Opt, StableBTreeMap
 
 db = StableBTreeMap[str, str](memory_id=0, max_key_size=100, max_value_size=100)
 
 @update
 def db_set(key: text, value: text) -> text:
-    old = db.insert(key, value)
-    return f"set {key}={value} (old={old})"
+    db.insert(key, value)
+    return f"set {key}={value}"
 
 @query
 def db_get(key: text) -> Opt[text]:
     return db.get(key)
-
-@query
-def db_len() -> nat64:
-    return db.len()
 ```
 
 ```bash
 dfx canister call my_project db_set '("name", "Alice")'
-# ("set name=Alice (old=None)")
-
 dfx canister call my_project db_get '("name")'
 # (opt "Alice")
 
@@ -223,6 +336,17 @@ Full CI logs: [CPython run](https://github.com/smart-social-contracts/basilisk/a
 > **Run it yourself:** trigger the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) from the Actions tab — select `cpython`, `rustpython`, or `both` as the backend, and `local` or `ic` as the network.
 
 The benchmark source is in [`benchmarks/counter/`](benchmarks/counter/).
+
+## CLI Reference
+
+```
+basilisk new [--backend cpython|rustpython] <name>   Create a new project
+basilisk build                                       Build the canister
+basilisk exec [--canister <c>] [--network <n>] <code> Execute code on a deployed canister
+basilisk shell [--canister <c>] [--network <n>]      Interactive shell (bosh)
+basilisk sshd [--canister <c>] [--network <n>] [--port <p>]  SSH/SFTP server
+basilisk --version                                   Print version
+```
 
 ## Disclaimer
 
