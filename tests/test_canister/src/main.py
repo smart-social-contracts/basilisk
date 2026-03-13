@@ -9,8 +9,17 @@ The frozen_stdlib_preamble automatically provides the in-memory filesystem (memf
 ic-python-db provides the entity ORM for task/entity tests.
 """
 
-from basilisk import query, update, text, ic, Async, Tuple, match, CallResult, Principal
+from basilisk import query, update, text, ic, Async, Tuple, match, CallResult, Principal, StableBTreeMap
 from basilisk.canisters.management import management_canister, HttpResponse, HttpTransformArgs
+import ic_python_db
+from ic_python_db import Database
+
+# ---------------------------------------------------------------------------
+# Persistent database storage (survives canister upgrades)
+# ---------------------------------------------------------------------------
+
+storage = StableBTreeMap[str, str](memory_id=1, max_key_size=100, max_value_size=10000)
+Database.init(db_storage=storage, audit_enabled=True)
 
 # ---------------------------------------------------------------------------
 # Persistent shell namespace (per principal)
@@ -37,12 +46,7 @@ def execute_code_shell(code: str) -> str:
         _shell_ns_by_principal[caller].update({
             "ic": ic,
         })
-        # Try to add ic-python-db if available
-        try:
-            import ic_python_db
-            _shell_ns_by_principal[caller]["ic_python_db"] = ic_python_db
-        except ImportError:
-            pass
+        _shell_ns_by_principal[caller]["ic_python_db"] = ic_python_db
     ns = _shell_ns_by_principal[caller]
 
     stdout = io.StringIO()

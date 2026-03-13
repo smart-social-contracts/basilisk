@@ -159,13 +159,6 @@ def run_code(source_code, locals={}, task: Optional["Task"] = None, task_executi
     except ImportError:
         pass
 
-    # Try to import the application's entity module (ggg for realms, or basilisk.os)
-    try:
-        import ggg
-        safe_globals["ggg"] = ggg
-    except ImportError:
-        pass
-
     # Create specific logger if task_execution is provided
     if task_execution:
         execution_logger = task_execution.logger()

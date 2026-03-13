@@ -266,9 +266,7 @@ class TaskSchedule(Entity, TimestampedMixin):
 
 class Task(Entity, TimestampedMixin):
     """
-    Task entity — part of the GGG (Generalized Global Governance) standard.
-
-    Represents a unit of work that can be scheduled and executed.
+    Task entity — represents a unit of work that can be scheduled and executed.
     """
 
     __alias__ = "name"

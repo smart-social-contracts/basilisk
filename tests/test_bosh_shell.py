@@ -195,7 +195,7 @@ class TestMagicCommands:
 
     def test_ps(self, canister_reachable, canister, network):
         result = magic_on_canister("%ps", canister, network)
-        # Either shows tasks, "No tasks.", or ImportError if ggg not available
+        # Either shows tasks, "No tasks.", or ImportError if entities not available
         assert "|" in result or "No tasks" in result or "ImportError" in result
 
     def test_ls_root(self, canister_reachable, canister, network):
@@ -614,3 +614,70 @@ class TestEdgeCases:
             results.append(r)
         for i in range(5):
             assert results[i] == str(i), f"Call {i} returned {results[i]!r}"
+
+
+# ===========================================================================
+# Database persistence — StableBTreeMap-backed storage
+# ===========================================================================
+
+class TestDatabasePersistence:
+    """Test that ic_python_db entities use persistent StableBTreeMap storage."""
+
+    def test_entity_persists_across_calls(self, canister_reachable, canister, network):
+        """Create an entity in one call, verify it exists in a subsequent call."""
+        import time
+        tag = f"persist_{int(time.time())}"
+
+        # Create entity
+        create_code = (
+            "from ic_python_db import Entity, String, TimestampedMixin\n"
+            "class PersistTest(Entity, TimestampedMixin):\n"
+            "    __alias__ = 'name'\n"
+            "    name = String()\n"
+            f"e = PersistTest(name='{tag}')\n"
+            "e._save()\n"
+            "print(f'created:{e._id}')"
+        )
+        result = exec_on_canister(create_code, canister, network)
+        assert result.startswith("created:"), f"Create failed: {result}"
+        entity_id = result.split(":", 1)[1]
+
+        # Retrieve entity in a separate call
+        read_code = (
+            "from ic_python_db import Entity, String, TimestampedMixin\n"
+            "class PersistTest(Entity, TimestampedMixin):\n"
+            "    __alias__ = 'name'\n"
+            "    name = String()\n"
+            f"e = PersistTest.load('{entity_id}')\n"
+            "print(f'found:{e.name}')"
+        )
+        result = exec_on_canister(read_code, canister, network)
+        assert result == f"found:{tag}", f"Read-back failed: {result}"
+
+        # Cleanup
+        cleanup_code = (
+            "from ic_python_db import Entity, String, TimestampedMixin\n"
+            "class PersistTest(Entity, TimestampedMixin):\n"
+            "    __alias__ = 'name'\n"
+            "    name = String()\n"
+            f"PersistTest.load('{entity_id}').delete()\n"
+            "print('deleted')"
+        )
+        result = exec_on_canister(cleanup_code, canister, network)
+        assert "deleted" in result, f"Cleanup failed: {result}"
+
+    def test_db_uses_stable_storage(self, canister_reachable, canister, network):
+        """Verify the database is backed by StableBTreeMap, not a plain dict."""
+        code = (
+            "from ic_python_db import Database\n"
+            "db = Database.get_instance()\n"
+            "stype = type(db._db_storage).__name__\n"
+            "print(f'storage:{stype}')"
+        )
+        result = exec_on_canister(code, canister, network)
+        assert "storage:" in result, f"Unexpected output: {result}"
+        storage_type = result.split(":", 1)[1]
+        assert storage_type != "dict", (
+            f"Database is using plain dict (ephemeral) instead of StableBTreeMap. "
+            f"Got: {storage_type}"
+        )

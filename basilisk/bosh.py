@@ -1303,10 +1303,6 @@ except Exception as _e:
 # Available libraries
 _libs = []
 try:
-    import ggg
-    _libs.append('ggg')
-except: pass
-try:
     import _cdk
     _libs.append('basilisk (_cdk)')
 except: pass
