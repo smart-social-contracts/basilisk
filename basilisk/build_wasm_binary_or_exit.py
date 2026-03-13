@@ -303,8 +303,10 @@ def _bundle_all_modules(source_dir: str, entry_module: str) -> str:
             if mod_name == entry_module:
                 continue
 
-            # Skip the basilisk package - provided by the Rust BASILISK_PYTHON_SHIM
-            if mod_name == "basilisk" or mod_name.startswith("basilisk."):
+            # Skip the top-level basilisk __init__ - provided by the Rust
+            # BASILISK_PYTHON_SHIM.  Subpackages like basilisk.os are pure-Python
+            # and must be bundled so canister code can import them.
+            if mod_name == "basilisk":
                 continue
 
             with open(filepath, "r") as f:
