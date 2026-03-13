@@ -1,0 +1,74 @@
+# On-demand integration tests for Basilisk OS (bosh shell, filesystem, SFTP, tasks).
+# These run against a LIVE canister on IC mainnet — they are not local unit tests.
+
+name: Bosh Integration Tests
+
+on:
+    workflow_dispatch:
+        inputs:
+            test_filter:
+                description: "Pytest filter (-k expression), leave empty to run all"
+                required: false
+                type: string
+                default: ""
+            canister:
+                description: "Canister ID to test against"
+                required: false
+                type: string
+                default: "ru4ga-siaaa-aaaai-q7f3a-cai"
+            network:
+                description: "IC network"
+                required: false
+                type: choice
+                default: ic
+                options:
+                    - ic
+                    - local
+
+jobs:
+    bosh-tests:
+        runs-on: ubuntu-latest
+        env:
+            DFX_WARNING: -mainnet_plaintext_identity
+            BOSH_TEST_CANISTER: ${{ inputs.canister }}
+            BOSH_TEST_NETWORK: ${{ inputs.network }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install dfx
+              run: |
+                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Import DFX identity
+              run: |
+                  if [ -z "${{ secrets.IC_IDENTITY_PEM }}" ]; then
+                    echo "::error::IC_IDENTITY_PEM secret is not set."
+                    exit 1
+                  fi
+                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  rm /tmp/ci-identity.pem
+                  dfx identity use ci-deploy
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.10"
+
+            - name: Install dependencies
+              run: |
+                  pip install -e ".[test]"
+
+            - name: Verify canister reachable
+              run: |
+                  dfx canister call "$BOSH_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BOSH_TEST_NETWORK"
+
+            - name: Run tests
+              run: |
+                  FILTER="${{ inputs.test_filter }}"
+                  if [ -n "$FILTER" ]; then
+                    PYTHONPATH=. python -m pytest tests/ -v -k "$FILTER"
+                  else
+                    PYTHONPATH=. python -m pytest tests/ -v
+                  fi
