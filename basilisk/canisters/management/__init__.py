@@ -184,7 +184,9 @@ class ManagementCanister(Service):
         ...
 
 
-ManagementCanister._arg_types = {
+management_canister = ManagementCanister(Principal.from_str("aaaaa-aa"))
+
+setattr(ManagementCanister, '_arg_types', {
     'create_canister': 'record { settings : opt record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
     'update_settings': 'record { canister_id : principal; settings : record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
     'install_code': 'record { mode : variant { install : null; reinstall : null; upgrade : null }; canister_id : principal; wasm_module : blob; arg : blob }',
@@ -203,8 +205,8 @@ ManagementCanister._arg_types = {
     'bitcoin_get_utxos': 'record { address : text; filter : opt variant { min_confirmations : nat32; page : blob }; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
     'bitcoin_get_current_fee_percentiles': 'record { network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
     'bitcoin_send_transaction': 'record { transaction : blob; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
-}
-ManagementCanister._return_types = {
+})
+setattr(ManagementCanister, '_return_types', {
     'create_canister': 'record { canister_id : principal }',
     'canister_status': 'record { status : variant { running : null; stopping : null; stopped : null }; settings : record { controllers : vec principal; compute_allocation : nat; memory_allocation : nat; freezing_threshold : nat }; module_hash : opt blob; memory_size : nat; cycles : nat }',
     'raw_rand': 'blob',
@@ -214,6 +216,4 @@ ManagementCanister._return_types = {
     'bitcoin_get_balance': 'nat64',
     'bitcoin_get_utxos': 'record { next_page : opt blob; tip_block_hash : blob; tip_height : nat32; utxos : vec record { height : nat32; outpoint : record { txid : blob; vout : nat32 }; value : nat64 } }',
     'bitcoin_get_current_fee_percentiles': 'vec nat64',
-}
-
-management_canister = ManagementCanister(Principal.from_str("aaaaa-aa"))
+})
