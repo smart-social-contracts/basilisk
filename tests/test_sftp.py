@@ -1,15 +1,15 @@
 """
-Integration tests for bosh SFTP — virtual filesystem over SSH.
+Integration tests for Basilisk SFTP — virtual filesystem over SSH.
 
-Tests SFTP operations against a live canister via the bosh-sshd SSH server.
-These tests require bosh-sshd to be running (or test the SFTP server class
+Tests SFTP operations against a live canister via the basilisk sshd SSH server.
+These tests require basilisk sshd to be running (or test the SFTP server class
 directly via canister_exec).
 
-For full SFTP-over-SSH tests, start bosh-sshd first:
-    python -m basilisk.bosh_sshd --canister <id> --network ic
+For full SFTP-over-SSH tests, start sshd first:
+    python -m basilisk.sshd --canister <id> --network ic
 
 Then run:
-    pytest tests/test_bosh_sftp.py -v
+    pytest tests/test_sftp.py -v
 """
 
 import os
@@ -36,43 +36,43 @@ class TestSFTPUtils:
     """Test SFTP utility functions."""
 
     def test_norm_absolute(self):
-        from basilisk.bosh_sftp import _norm
+        from basilisk.sftp import _norm
         assert _norm("/foo/bar") == "/foo/bar"
 
     def test_norm_relative(self):
-        from basilisk.bosh_sftp import _norm
+        from basilisk.sftp import _norm
         assert _norm("foo/bar") == "/foo/bar"
 
     def test_norm_dotdot(self):
-        from basilisk.bosh_sftp import _norm
+        from basilisk.sftp import _norm
         assert _norm("/foo/bar/../baz") == "/foo/baz"
 
     def test_norm_dot(self):
-        from basilisk.bosh_sftp import _norm
+        from basilisk.sftp import _norm
         assert _norm("/foo/./bar") == "/foo/bar"
 
     def test_norm_double_slash(self):
-        from basilisk.bosh_sftp import _norm
+        from basilisk.sftp import _norm
         assert _norm("//foo///bar//") == "/foo/bar"
 
     def test_norm_root(self):
-        from basilisk.bosh_sftp import _norm
+        from basilisk.sftp import _norm
         assert _norm("/") == "/"
 
     def test_norm_bytes(self):
-        from basilisk.bosh_sftp import _norm
+        from basilisk.sftp import _norm
         assert _norm(b"/foo/bar") == "/foo/bar"
 
     def test_esc_single_quote(self):
-        from basilisk.bosh_sftp import _esc
+        from basilisk.sftp import _esc
         assert _esc("it's") == "it\\'s"
 
     def test_esc_backslash(self):
-        from basilisk.bosh_sftp import _esc
+        from basilisk.sftp import _esc
         assert _esc("a\\b") == "a\\\\b"
 
     def test_indent(self):
-        from basilisk.bosh_sftp import _indent
+        from basilisk.sftp import _indent
         result = _indent("line1\nline2", 4)
         assert result == "    line1\n    line2"
 

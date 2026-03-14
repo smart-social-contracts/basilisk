@@ -1,5 +1,5 @@
 """
-bosh SFTP — virtual filesystem backed by a Basilisk OS canister's memfs.
+Basilisk SFTP — virtual filesystem backed by a Basilisk canister's memfs.
 
 Each SFTP operation translates to Python code executed on the canister via
 execute_code_shell. Binary data is base64-encoded for transport.
@@ -13,10 +13,10 @@ import time
 import asyncssh
 from asyncssh.sftp import SFTPAttrs, SFTPName, SFTPError
 
-from basilisk.bosh import canister_exec
+from basilisk.shell import canister_exec
 
 # Marker prefix for structured JSON responses from canister
-_MARKER = "__BOSH_SFTP__"
+_MARKER = "__BASILISK_SFTP__"
 
 
 class CanisterSFTPServer(asyncssh.SFTPServer):

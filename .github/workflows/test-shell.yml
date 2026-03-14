@@ -1,7 +1,7 @@
-# On-demand integration tests for Basilisk OS (bosh shell, filesystem, SFTP, tasks).
+# On-demand integration tests for Basilisk Shell (shell, filesystem, SFTP, tasks).
 # These run against a LIVE canister on IC mainnet — they are not local unit tests.
 
-name: Bosh Integration Tests
+name: Shell Integration Tests
 
 on:
     workflow_dispatch:
@@ -26,12 +26,12 @@ on:
                     - local
 
 jobs:
-    bosh-tests:
+    shell-tests:
         runs-on: ubuntu-latest
         env:
             DFX_WARNING: -mainnet_plaintext_identity
-            BOSH_TEST_CANISTER: ${{ inputs.canister }}
-            BOSH_TEST_NETWORK: ${{ inputs.network }}
+            BASILISK_TEST_CANISTER: ${{ inputs.canister }}
+            BASILISK_TEST_NETWORK: ${{ inputs.network }}
         steps:
             - uses: actions/checkout@v4
 
@@ -58,11 +58,11 @@ jobs:
 
             - name: Install dependencies
               run: |
-                  pip install -e ".[bosh,test]"
+                  pip install -e ".[shell,test]"
 
             - name: Verify canister reachable
               run: |
-                  dfx canister call "$BOSH_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BOSH_TEST_NETWORK"
+                  dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
 
             - name: Run tests
               run: |

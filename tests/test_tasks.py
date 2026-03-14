@@ -1,4 +1,4 @@
-"""Integration tests for Basilisk OS task management via bosh.
+"""Integration tests for Basilisk OS task management via Basilisk Shell.
 
 Tests the %task subcommand system and shortcut aliases (%ps, %start, %kill)
 against a live canister. Tests are self-contained: they create tasks, verify
@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from basilisk.bosh import (
+from basilisk.shell import (
     _handle_magic,
     _handle_task,
     _TASK_RESOLVE,
@@ -1138,7 +1138,7 @@ class TestTaskLogFeatures:
             # We can't test the actual polling loop in CI, but we can verify
             # the flag doesn't cause an error by checking _handle_task directly.
             # The follow loop would run forever, so instead test the query works.
-            from basilisk.bosh import _task_log_follow_query, canister_exec
+            from basilisk.shell import _task_log_follow_query, canister_exec
             query_code = _task_log_follow_query(str(tid))
             query_result = canister_exec(query_code, canister, network)
             # Should contain the task status line
@@ -1707,7 +1707,7 @@ class TestE2EDownloadAndRun:
 @pytest.mark.skipif(
     not os.path.isfile(os.path.join(
         os.path.dirname(__file__),
-        "test_canister", ".basilisk", "bosh_test", "bosh_test.wasm",
+        "test_canister", ".basilisk", "shell_test", "shell_test.wasm",
     )),
     reason="Pre-built WASM not found (requires local build of test canister)",
 )
@@ -1717,7 +1717,7 @@ class TestPersistentFileStorage:
     # Path to the pre-built WASM for triggering upgrades
     _WASM_PATH = os.path.join(
         os.path.dirname(__file__),
-        "test_canister", ".basilisk", "bosh_test", "bosh_test.wasm",
+        "test_canister", ".basilisk", "shell_test", "shell_test.wasm",
     )
 
     def _upgrade_canister(self, canister, network, retries=2):

@@ -7,12 +7,12 @@ Candid encoding, memfs edge cases, or timer callbacks.
 
 Configuration:
     Set environment variables or use defaults:
-        BOSH_TEST_CANISTER  — canister ID (default: 3bohd-2yaaa-aaaac-qcyla-cai)
-        BOSH_TEST_NETWORK   — network (default: ic)
+        BASILISK_TEST_CANISTER  — canister ID (default: ru4ga-siaaa-aaaai-q7f3a-cai)
+        BASILISK_TEST_NETWORK   — network (default: ic)
 
 Usage:
     pytest tests/ -v
-    pytest tests/test_bosh_shell.py -v -k "test_simple_print"
+    pytest tests/test_shell.py -v -k "test_simple_print"
 """
 
 import os
@@ -26,7 +26,7 @@ import pytest
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from basilisk.bosh import canister_exec, _parse_candid, _handle_magic, _TASK_RESOLVE
+from basilisk.shell import canister_exec, _parse_candid, _handle_magic, _TASK_RESOLVE
 
 
 # ---------------------------------------------------------------------------
@@ -38,11 +38,11 @@ DEFAULT_NETWORK = "ic"
 
 
 def _get_canister():
-    return os.environ.get("BOSH_TEST_CANISTER", DEFAULT_CANISTER)
+    return os.environ.get("BASILISK_TEST_CANISTER", DEFAULT_CANISTER)
 
 
 def _get_network():
-    return os.environ.get("BOSH_TEST_NETWORK", DEFAULT_NETWORK)
+    return os.environ.get("BASILISK_TEST_NETWORK", DEFAULT_NETWORK)
 
 
 # ---------------------------------------------------------------------------

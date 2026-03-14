@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-bosh — Basilisk OS Shell
+Basilisk Shell
 
 A shell interpreter for IC canisters running basilisk.
 Commands are executed inside the canister via execute_code_shell.
 
 Usage:
-    bosh --canister <id> [--network <net>]           Interactive mode
-    bosh --canister <id> [--network <net>] -c "code" One-shot mode
-    bosh --canister <id> [--network <net>] script.py  File mode
-    echo "print(42)" | bosh --canister <id>           Pipe mode
+    basilisk shell --canister <id> [--network <net>]           Interactive mode
+    basilisk shell --canister <id> [--network <net>] -c "code" One-shot mode
+    basilisk shell --canister <id> [--network <net>] script.py  File mode
+    echo "print(42)" | basilisk shell --canister <id>           Pipe mode
 
 Shell commands:
     %ls [path]    List canister filesystem
@@ -1266,7 +1266,7 @@ def _welcome_banner(canister: str, network: str):
     net_label = network or "local"
 
     print("=" * 60)
-    print("  bosh — Basilisk OS Shell")
+    print("  Basilisk Shell")
     print("=" * 60)
     print(f"  Canister : {canister}")
     print(f"  Network  : {net_label}")
@@ -1337,17 +1337,17 @@ try:
 except:
     _info['extensions'] = []
 
-print('__BOSH_INFO__' + json.dumps(_info))
+print('__BASILISK_INFO__' + json.dumps(_info))
 """
     result = canister_exec(info_code, canister, network)
 
     # Parse the info JSON from the output
     info = {}
     for line in (result or "").split("\n"):
-        if line.startswith("__BOSH_INFO__"):
+        if line.startswith("__BASILISK_INFO__"):
             try:
                 import json
-                info = json.loads(line[len("__BOSH_INFO__"):])
+                info = json.loads(line[len("__BASILISK_INFO__"):])
             except Exception:
                 pass
             break
@@ -1436,7 +1436,7 @@ def run_interactive(canister: str, network: str):
 
     while True:
         try:
-            prompt = "bosh>>> " if not buffer else "...     "
+            prompt = "basilisk>>> " if not buffer else "...        "
             line = input(prompt)
         except (EOFError, KeyboardInterrupt):
             print()
@@ -1505,7 +1505,7 @@ def run_file(filepath: str, canister: str, network: str):
     try:
         code = open(filepath).read()
     except FileNotFoundError:
-        print(f"bosh: {filepath}: No such file", file=sys.stderr)
+        print(f"basilisk: {filepath}: No such file", file=sys.stderr)
         sys.exit(1)
     _print_output(canister_exec(code, canister, network))
 
@@ -1522,8 +1522,8 @@ def run_watch(canister: str, network: str, inbox: str, outbox: str):
 
     Protocol:
         1. Caller writes Python code to <inbox>
-        2. bosh executes it on the canister
-        3. bosh writes result + READY marker to <outbox>
+        2. basilisk shell executes it on the canister
+        3. basilisk shell writes result + READY marker to <outbox>
         4. Caller reads <outbox>, waits for READY marker, repeats
     """
     READY = "---READY---"
@@ -1535,7 +1535,7 @@ def run_watch(canister: str, network: str, inbox: str, outbox: str):
         f.write(f"{READY}\n")
 
     net_label = network or "local"
-    print(f"bosh watch mode started", file=sys.stderr)
+    print(f"basilisk shell watch mode started", file=sys.stderr)
     print(f"  Canister: {canister}", file=sys.stderr)
     print(f"  Network:  {net_label}", file=sys.stderr)
     print(f"  Inbox:    {inbox}", file=sys.stderr)
@@ -1583,7 +1583,7 @@ def run_watch(canister: str, network: str, inbox: str, outbox: str):
             break
         except Exception as e:
             with open(outbox, "w") as f:
-                f.write(f"[bosh error] {e}\n{READY}\n")
+                f.write(f"[basilisk shell error] {e}\n{READY}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -1592,8 +1592,8 @@ def run_watch(canister: str, network: str, inbox: str, outbox: str):
 
 def main():
     parser = argparse.ArgumentParser(
-        prog="bosh",
-        description="Basilisk OS Shell — a shell interpreter for IC canisters",
+        prog="basilisk-shell",
+        description="Basilisk Shell \u2014 a shell interpreter for IC canisters",
         add_help=False,
     )
     parser.add_argument("--canister", required=True, help="Canister name or ID")
@@ -1601,10 +1601,10 @@ def main():
     parser.add_argument("-c", dest="code", default=None, help="Execute code string")
     parser.add_argument("--watch", default=None, metavar="INBOX",
                         help="Watch mode: read commands from INBOX file")
-    parser.add_argument("--outbox", default="/tmp/bosh_out",
-                        help="Output file for watch mode (default: /tmp/bosh_out)")
+    parser.add_argument("--outbox", default="/tmp/basilisk_shell_out",
+                        help="Output file for watch mode (default: /tmp/basilisk_shell_out)")
     parser.add_argument("--login", action="store_true",
-                        help="Force interactive mode (used by bosh-sshd)")
+                        help="Force interactive mode (used by basilisk sshd)")
     parser.add_argument("file", nargs="?", default=None, help="Script file to execute")
     parser.add_argument("-h", "--help", action="store_true", help="Show help")
 

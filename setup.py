@@ -24,7 +24,7 @@ setup(
     packages=["basilisk", "basilisk.os"],
     install_requires=["modulegraph==0.19.3"],
     extras_require={
-        "bosh": ["asyncssh"],
+        "shell": ["asyncssh"],
         "test": ["pytest"],
     },
     entry_points={

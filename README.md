@@ -16,7 +16,7 @@ Write **Python canisters** for the [Internet Computer](https://internetcomputer.
 - Write IC canisters in pure Python using `@query` and `@update` decorators
 - **Builds in seconds** — pre-compiled CPython 3.13 WASM template, no Rust toolchain needed
 - **SSH & SFTP access** — connect to any deployed canister with standard `ssh` and `sftp` clients
-- **Interactive shell (bosh)** — Python REPL running inside the canister
+- **Interactive shell** — Python REPL running inside the canister
 - **Basilisk OS** — task scheduling, code management (Codex), and process execution on-chain
 - **In-memory filesystem** — standard `os` and `open()` calls, accessible via SFTP
 - **Persistent storage** — `StableBTreeMap` survives canister upgrades
@@ -113,14 +113,14 @@ basilisk sshd --canister my_project --port 3333
 ssh -p 2222 -o StrictHostKeyChecking=no localhost
 ```
 
-This drops you into **bosh** (Basilisk OS Shell) — a Python REPL running inside the canister:
+This drops you into **Basilisk Shell** — a Python REPL running inside the canister:
 
 ```
-bosh 🐍 ic> print("Hello from the IC!")
+basilisk>>> print("Hello from the IC!")
 Hello from the IC!
-bosh 🐍 ic> import os; os.listdir("/")
+basilisk>>> import os; os.listdir("/")
 ['data', 'config.json']
-bosh 🐍 ic> 1 + 1
+basilisk>>> 1 + 1
 2
 ```
 
@@ -146,7 +146,7 @@ sftp> get /data/results.json ./results.json
 sftp> mkdir /logs
 ```
 
-### Shell commands (bosh)
+### Shell commands
 
 | Command | Description |
 |---|---|
@@ -189,21 +189,21 @@ Basilisk OS provides operating-system-like services for IC canisters: **task man
 - **TaskSchedule** — Defines when and how often a Task runs (one-shot or recurring).
 - **TaskExecution** — Records the result of each execution attempt.
 
-### Task management via bosh
+### Task management
 
 ```bash
 # Create a task with inline code
-bosh> %task create my_report --code "print('Generating report...'); result = 42"
+basilisk>>> %task create my_report --code "print('Generating report...'); result = 42"
 
 # Run it immediately
-bosh> %task run 1
+basilisk>>> %task run 1
 
 # Schedule a recurring task (every 60 seconds)
-bosh> %task create heartbeat every 60s --code "print('alive at', ic.time())"
+basilisk>>> %task create heartbeat every 60s --code "print('alive at', ic.time())"
 
 # View task details and list all tasks
-bosh> %task info 1
-bosh> %task list
+basilisk>>> %task info 1
+basilisk>>> %task list
 ```
 
 ### Using Basilisk OS entities in canister code
@@ -343,7 +343,7 @@ The benchmark source is in [`benchmarks/counter/`](benchmarks/counter/).
 basilisk new [--backend cpython|rustpython] <name>   Create a new project
 basilisk build                                       Build the canister
 basilisk exec [--canister <c>] [--network <n>] <code> Execute code on a deployed canister
-basilisk shell [--canister <c>] [--network <n>]      Interactive shell (bosh)
+basilisk shell [--canister <c>] [--network <n>]      Interactive shell
 basilisk sshd [--canister <c>] [--network <n>] [--port <p>]  SSH/SFTP server
 basilisk --version                                   Print version
 ```

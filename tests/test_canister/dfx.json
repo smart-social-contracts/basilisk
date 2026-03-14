@@ -1,10 +1,10 @@
 {
     "canisters": {
-        "bosh_test": {
+        "shell_test": {
             "type": "custom",
-            "build": "CANISTER_CANDID_PATH=./bosh_test.did python -m basilisk bosh_test src/main.py",
-            "candid": "bosh_test.did",
-            "wasm": ".basilisk/bosh_test/bosh_test.wasm",
+            "build": "CANISTER_CANDID_PATH=./shell_test.did python -m basilisk shell_test src/main.py",
+            "candid": "shell_test.did",
+            "wasm": ".basilisk/shell_test/shell_test.wasm",
             "gzip": true,
             "metadata": [
                 {

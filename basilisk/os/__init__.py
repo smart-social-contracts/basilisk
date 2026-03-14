@@ -9,7 +9,7 @@ Provides POSIX-like abstractions on top of the Basilisk CDK:
   - Logging (via ic-python-logging)
 
 Canister-side code: entities and task_manager run *inside* the canister.
-Client-side code: bosh, bosh_sshd, bosh_sftp run on the developer machine.
+Client-side code: shell, sshd, sftp run on the developer machine.
 """
 
 __all__ = [

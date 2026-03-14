@@ -1,5 +1,5 @@
 """
-Integration tests for bosh shell — exec, Candid parsing, magic commands, modes.
+Integration tests for Basilisk Shell — exec, Candid parsing, magic commands, modes.
 
 Tests run against a live canister to verify end-to-end reliability.
 """
@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from basilisk.bosh import canister_exec, _parse_candid, _handle_magic
+from basilisk.shell import canister_exec, _parse_candid, _handle_magic
 from tests.conftest import exec_on_canister, magic_on_canister
 
 
@@ -136,21 +136,21 @@ class TestPersistentVariables:
 
     IMPORTANT FINDING: Variables do NOT persist across separate dfx canister
     calls. Each call gets a fresh execution context. This is a known Basilisk
-    OS limitation — within one interactive bosh session the canister maintains
+    OS limitation — within one interactive basilisk shell session the canister maintains
     state, but each `dfx canister call` is independent.
     """
 
     def test_variable_within_single_call(self, canister_reachable, canister, network):
         """Variables defined and used in the same call should work."""
         result = exec_on_canister(
-            "boshtestvar = 42\nprint(boshtestvar)", canister, network
+            "shelltestvar = 42\nprint(shelltestvar)", canister, network
         )
         assert result == "42"
 
     def test_function_within_single_call(self, canister_reachable, canister, network):
         """Functions defined and called in the same execution work."""
         result = exec_on_canister(
-            "def boshtestfn(x): return x * 2\nprint(boshtestfn(21))",
+            "def shelltestfn(x): return x * 2\nprint(shelltestfn(21))",
             canister, network,
         )
         assert result == "42"
@@ -158,7 +158,7 @@ class TestPersistentVariables:
     def test_import_within_single_call(self, canister_reachable, canister, network):
         """Imports used in the same call work."""
         result = exec_on_canister(
-            "import json as boshtestjson\nprint(boshtestjson.dumps([1,2,3]))",
+            "import json as shelltestjson\nprint(shelltestjson.dumps([1,2,3]))",
             canister, network,
         )
         assert result in ("[1, 2, 3]", "[1,2,3]")
@@ -168,8 +168,8 @@ class TestPersistentVariables:
         Persistence depends on the canister's execute_code_shell implementation
         maintaining a per-principal namespace.
         """
-        exec_on_canister("boshtestpersist = 42", canister, network)
-        result = exec_on_canister("print(boshtestpersist)", canister, network)
+        exec_on_canister("shelltestpersist = 42", canister, network)
+        result = exec_on_canister("print(shelltestpersist)", canister, network)
         assert result == "42"
 
 
@@ -390,12 +390,12 @@ class TestMagicCommands:
 # ===========================================================================
 
 class TestOneshotMode:
-    """Test bosh invocation via subprocess (one-shot mode)."""
+    """Test basilisk shell invocation via subprocess (one-shot mode)."""
 
-    def _run_bosh(self, code, canister, network):
-        """Run bosh -c and return stdout."""
+    def _run_shell(self, code, canister, network):
+        """Run basilisk shell -c and return stdout."""
         cmd = [
-            sys.executable, "-m", "basilisk.bosh",
+            sys.executable, "-m", "basilisk.shell",
             "--canister", canister,
             "--network", network,
             "-c", code,
@@ -407,22 +407,22 @@ class TestOneshotMode:
         return r.stdout.strip(), r.stderr.strip(), r.returncode
 
     def test_oneshot_print(self, canister_reachable, canister, network):
-        out, err, rc = self._run_bosh("print('bosh-oneshot')", canister, network)
+        out, err, rc = self._run_shell("print('shell-oneshot')", canister, network)
         assert rc == 0
-        assert out == "bosh-oneshot"
+        assert out == "shell-oneshot"
 
     def test_oneshot_magic(self, canister_reachable, canister, network):
-        out, err, rc = self._run_bosh("%info", canister, network)
+        out, err, rc = self._run_shell("%info", canister, network)
         assert rc == 0
         assert "Canister" in out
 
     def test_oneshot_ps(self, canister_reachable, canister, network):
-        out, err, rc = self._run_bosh("%ps", canister, network)
+        out, err, rc = self._run_shell("%ps", canister, network)
         assert rc == 0
         assert "|" in out or "No tasks" in out or "ImportError" in out
 
     def test_oneshot_local_command(self, canister_reachable, canister, network):
-        out, err, rc = self._run_bosh("!echo local-test", canister, network)
+        out, err, rc = self._run_shell("!echo local-test", canister, network)
         assert rc == 0
         assert "local-test" in out
 
@@ -432,7 +432,7 @@ class TestOneshotMode:
 # ===========================================================================
 
 class TestFileMode:
-    """Test bosh with a script file argument."""
+    """Test basilisk shell with a script file argument."""
 
     def test_file_execution(self, canister_reachable, canister, network):
         with tempfile.NamedTemporaryFile(
@@ -444,7 +444,7 @@ class TestFileMode:
 
         try:
             cmd = [
-                sys.executable, "-m", "basilisk.bosh",
+                sys.executable, "-m", "basilisk.shell",
                 "--canister", canister,
                 "--network", network,
                 tmppath,
@@ -460,7 +460,7 @@ class TestFileMode:
 
     def test_file_not_found(self, canister, network):
         cmd = [
-            sys.executable, "-m", "basilisk.bosh",
+            sys.executable, "-m", "basilisk.shell",
             "--canister", canister,
             "--network", network,
             "/nonexistent/script.py",
@@ -478,11 +478,11 @@ class TestFileMode:
 # ===========================================================================
 
 class TestPipeMode:
-    """Test bosh reading from stdin pipe."""
+    """Test basilisk shell reading from stdin pipe."""
 
     def test_pipe_execution(self, canister_reachable, canister, network):
         cmd = [
-            sys.executable, "-m", "basilisk.bosh",
+            sys.executable, "-m", "basilisk.shell",
             "--canister", canister,
             "--network", network,
         ]
@@ -501,21 +501,21 @@ class TestPipeMode:
 # ===========================================================================
 
 class TestWatchMode:
-    """Test bosh --watch mode (file-based session)."""
+    """Test basilisk shell --watch mode (file-based session)."""
 
     def test_watch_round_trip(self, canister_reachable, canister, network):
         inbox = tempfile.mktemp(suffix="_inbox")
         outbox = tempfile.mktemp(suffix="_outbox")
 
         cmd = [
-            sys.executable, "-m", "basilisk.bosh",
+            sys.executable, "-m", "basilisk.shell",
             "--canister", canister,
             "--network", network,
             "--watch", inbox,
             "--outbox", outbox,
         ]
 
-        # Start bosh in watch mode
+        # Start basilisk shell in watch mode
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             cwd=os.path.join(os.path.dirname(__file__), ".."),

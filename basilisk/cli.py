@@ -5,7 +5,7 @@ Usage:
     basilisk new [--backend cpython|rustpython] <project_name>
     basilisk build                 Build the canister in the current directory
     basilisk exec [options] <code> Execute Python code on a deployed canister
-    basilisk shell [options]       Interactive shell (bosh) for a deployed canister
+    basilisk shell [options]       Interactive shell for a deployed canister
     basilisk sshd [options]        SSH server proxy to a deployed canister
     basilisk --version             Print version
 
@@ -295,13 +295,13 @@ def main():
         cmd_exec(sys.argv[2:])
 
     elif command == "shell":
-        from basilisk.bosh import main as bosh_main
-        sys.argv = ["bosh"] + sys.argv[2:]
-        bosh_main()
+        from basilisk.shell import main as shell_main
+        sys.argv = ["basilisk-shell"] + sys.argv[2:]
+        shell_main()
 
     elif command == "sshd":
-        from basilisk.bosh_sshd import main as sshd_main
-        sys.argv = ["bosh-sshd"] + sys.argv[2:]
+        from basilisk.sshd import main as sshd_main
+        sys.argv = ["basilisk-sshd"] + sys.argv[2:]
         sshd_main()
 
     elif command in ("-h", "--help", "help"):

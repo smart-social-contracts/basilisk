@@ -2,7 +2,7 @@
 Basilisk OS Test Canister — minimal canister for integration testing.
 
 Provides:
-  - execute_code_shell: Execute Python code and return output (the core bosh endpoint)
+  - execute_code_shell: Execute Python code and return output (the core shell endpoint)
   - status: Health check
 
 The frozen_stdlib_preamble automatically provides the in-memory filesystem (memfs).
@@ -33,7 +33,7 @@ def execute_code_shell(code: str) -> str:
     """Execute Python code in a persistent namespace and return the output.
 
     Each caller principal gets its own isolated namespace that persists
-    across calls. This is the core endpoint that bosh uses.
+    across calls. This is the core endpoint that basilisk shell uses.
     """
     import io
     import sys

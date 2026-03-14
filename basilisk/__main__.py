@@ -261,7 +261,7 @@ def bundle_python_code(paths: Paths):
             shutil.copy(node.filename, dest_path)  # type: ignore
 
         if type(node) == modulegraph.modulegraph.Package:  # type: ignore
-            # Skip the installed basilisk package (compiler, bosh, etc.)
+            # Skip the installed basilisk package (compiler, shell, etc.)
             # but allow canister-side subpackages like basilisk.os
             if should_skip_package(node.identifier, node.packagepath[0]):  # type: ignore
                 continue
@@ -311,7 +311,7 @@ def ignore_specific_dir(dirname: str, filenames: list[str]) -> list[str]:
 
 
 def should_skip_package(node_identifier: str, node_packagepath: str) -> bool:
-    """Skip the top-level installed basilisk package (compiler, bosh, etc.)
+    """Skip the top-level installed basilisk package (compiler, shell, etc.)
     but allow canister-side subpackages like basilisk.os through."""
     if "site-packages" not in node_packagepath:
         return False
