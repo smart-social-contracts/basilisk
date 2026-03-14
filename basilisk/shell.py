@@ -719,6 +719,7 @@ def _task_start_code(tid: str) -> str:
         # Helper: advance to next step or complete the task
         #
         "                def _chain_next(_task, _si, _all_steps):\n"
+        "                    from _cdk import ic\n"
         "                    if _task.status == 'failed':\n"
         "                        return\n"
         "                    _task.step_to_execute = _si + 1\n"
@@ -745,6 +746,7 @@ def _task_start_code(tid: str) -> str:
         # Sync step callback — executes code with exec()
         #
         "                def _exec_sync():\n"
+        "                    from _cdk import ic\n"
         "                    import io, sys, traceback\n"
         "                    _task = Task.load(_task_id)\n"
         "                    if not _task or _task.status == 'cancelled':\n"
@@ -789,6 +791,7 @@ def _task_start_code(tid: str) -> str:
         # The IC runtime drives the generator (handles management_canister calls).
         #
         "                def _exec_async():\n"
+        "                    from _cdk import ic\n"
         "                    import traceback\n"
         "                    _task = Task.load(_task_id)\n"
         "                    if not _task or _task.status == 'cancelled':\n"
