@@ -377,7 +377,7 @@ def _register_json():
 
     def dumps(obj, ensure_ascii=True, sort_keys=False, indent=None,
               separators=None, default=None, **kw):
-        def _e(o):
+        def _e(o, _lvl=0):
             if o is None: return "null"
             if o is True: return "true"
             if o is False: return "false"
@@ -389,9 +389,22 @@ def _register_json():
                 if o == float("-inf"): return "-Infinity"
                 return repr(o)
             if isinstance(o, (list, tuple)):
+                if indent is not None:
+                    if not o:
+                        return "[]"
+                    sp = " " * (indent * (_lvl + 1)); sp0 = " " * (indent * _lvl)
+                    return "[\n" + (",\n".join(sp + _e(v, _lvl + 1) for v in o)) + "\n" + sp0 + "]"
                 return "[" + ",".join(_e(v) for v in o) + "]"
             if isinstance(o, dict):
                 items = sorted(o.items()) if sort_keys else o.items()
+                if indent is not None:
+                    items = list(items)
+                    if not items:
+                        return "{}"
+                    sp = " " * (indent * (_lvl + 1)); sp0 = " " * (indent * _lvl)
+                    return "{\n" + (",\n".join(
+                        sp + _enc(str(k)) + ": " + _e(v, _lvl + 1) for k, v in items
+                    )) + "\n" + sp0 + "}"
                 return "{" + ",".join(_enc(str(k)) + ":" + _e(v)
                                       for k, v in items) + "}"
             if default is not None: return _e(default(o))
