@@ -4,6 +4,7 @@ Basilisk OS — Operating system services for IC canisters.
 Provides POSIX-like abstractions on top of the Basilisk CDK:
 
   - Task/process management (Task, TaskStep, TaskSchedule, TaskManager)
+  - Wallet (ICRC-1 token registry, transfers, balance tracking)
   - Filesystem (in-memory POSIX fs via frozen_stdlib_preamble)
   - Persistent storage (via ic-python-db entity ORM)
   - Logging (via ic-python-logging)
@@ -16,13 +17,19 @@ __all__ = [
     # Status enums
     "TaskStatus",
     "TaskExecutionStatus",
-    # Entities
+    # Task entities
     "Codex",
     "Call",
     "Task",
     "TaskStep",
     "TaskSchedule",
     "TaskExecution",
+    # Wallet entities
+    "Token",
+    "WalletBalance",
+    "WalletTransfer",
+    # Wallet
+    "Wallet",
     # Task manager
     "TaskManager",
     # Execution
@@ -34,7 +41,11 @@ __all__ = [
 # When used client-side (e.g. in tests), import individual modules directly.
 try:
     from .status import TaskStatus, TaskExecutionStatus
-    from .entities import Codex, Call, Task, TaskStep, TaskSchedule, TaskExecution
+    from .entities import (
+        Codex, Call, Task, TaskStep, TaskSchedule, TaskExecution,
+        Token, WalletBalance, WalletTransfer,
+    )
+    from .wallet import Wallet
     from .task_manager import TaskManager
     from .execution import run_code, create_task_entity_class
 except ImportError:

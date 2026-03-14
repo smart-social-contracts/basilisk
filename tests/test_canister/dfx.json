@@ -11,6 +11,26 @@
                     "name": "candid:service"
                 }
             ]
+        },
+        "ckbtc_ledger": {
+            "type": "custom",
+            "candid": "https://raw.githubusercontent.com/dfinity/ic/master/rs/ledger_suite/icrc1/ledger/ledger.did",
+            "wasm": "https://download.dfinity.systems/ic/d87954601e4b22972899e9957e800406a0a6b929/canisters/ic-icrc1-ledger.wasm.gz",
+            "remote": {
+                "id": {
+                    "ic": "mxzaz-hqaaa-aaaar-qaada-cai"
+                }
+            }
+        },
+        "ckbtc_indexer": {
+            "type": "custom",
+            "candid": "https://raw.githubusercontent.com/dfinity/ic/master/rs/ledger_suite/icrc1/index-ng/index-ng.did",
+            "wasm": "https://download.dfinity.systems/ic/d87954601e4b22972899e9957e800406a0a6b929/canisters/ic-icrc1-index-ng.wasm.gz",
+            "remote": {
+                "id": {
+                    "ic": "n5wcd-faaaa-aaaar-qaaea-cai"
+                }
+            }
         }
     },
     "networks": {

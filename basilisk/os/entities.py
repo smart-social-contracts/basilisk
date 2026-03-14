@@ -288,3 +288,68 @@ class Task(Entity, TimestampedMixin):
             result="",
         )
         return execution
+
+
+# ---------------------------------------------------------------------------
+# Token — registry of ICRC-1 tokens the canister can interact with
+# ---------------------------------------------------------------------------
+
+class Token(Entity, TimestampedMixin):
+    """
+    Registry entry for an ICRC-1 token.
+
+    Stores the ledger and indexer canister principals, token metadata,
+    and links to associated balances and transfers.
+
+    Usage::
+
+        Token(name="ckBTC", ledger="mxzaz-hqaaa-aaaar-qaada-cai",
+              indexer="n5wcd-faaaa-aaaar-qaaea-cai", decimals=8, fee=10)
+    """
+
+    __alias__ = "name"
+    name = String(max_length=64)
+    ledger = String(max_length=64)
+    indexer = String(max_length=64)
+    decimals = Integer(default=8)
+    fee = Integer(default=10)
+    balances = OneToMany("WalletBalance", "token")
+    transfers = OneToMany("WalletTransfer", "token")
+
+
+# ---------------------------------------------------------------------------
+# WalletBalance — tracks token balance per principal
+# ---------------------------------------------------------------------------
+
+class WalletBalance(Entity, TimestampedMixin):
+    """
+    Tracks the cached balance of a token for a specific principal.
+
+    Updated automatically by wallet.refresh() and wallet.transfer().
+    """
+
+    principal = String(max_length=64)
+    token = ManyToOne("Token", "balances")
+    amount = Integer(default=0)
+
+
+# ---------------------------------------------------------------------------
+# WalletTransfer — record of a token transfer
+# ---------------------------------------------------------------------------
+
+class WalletTransfer(Entity, TimestampedMixin):
+    """
+    Record of a token transfer (deposit, withdrawal, or mint/burn).
+
+    Created automatically by wallet.refresh() when syncing from the indexer,
+    or by wallet.transfer() when initiating an outgoing transfer.
+    """
+
+    token = ManyToOne("Token", "transfers")
+    tx_id = String(max_length=64)
+    kind = String(max_length=16)  # "transfer", "mint", "burn"
+    principal_from = String(max_length=64)
+    principal_to = String(max_length=64)
+    amount = Integer(default=0)
+    fee = Integer(default=0)
+    timestamp = Integer(default=0)
