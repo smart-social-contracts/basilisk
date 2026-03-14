@@ -9,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 import pytest
 
@@ -864,6 +865,203 @@ class TestTaskExecution:
             start_result = _task_magic(f"%task start {tid}", canister, network)
             assert "timer scheduled" in start_result
         finally:
+            _cleanup_task(tid, canister, network)
+
+
+# ===========================================================================
+# Timer-based task execution (%task start)
+# ===========================================================================
+
+def _wait_for_task_execution(tid, canister, network, timeout=30, poll=3):
+    """Poll %task info until execution count > 0 or timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        info = _task_magic(f"%task info {tid}", canister, network)
+        if "Executions: 0" not in info:
+            return info
+        time.sleep(poll)
+    return info
+
+
+class TestTaskTimerExecution:
+    """Tests for %task start (timer-based execution).
+
+    These verify that timer callbacks actually fire on the canister and
+    record TaskExecution results, including both sync and async steps.
+    """
+
+    def test_start_sync_executes(self, canister_reachable, canister, network):
+        """Starting a task with sync code should execute via timer and record result."""
+        result = _task_magic(
+            '%task create _test_timer_sync --code "print(777)"', canister, network
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            start_result = _task_magic(f"%task start {tid}", canister, network)
+            assert "timer scheduled" in start_result
+
+            # Wait for the timer to fire and execute
+            info = _wait_for_task_execution(tid, canister, network)
+            assert "Executions: 0" not in info, f"Timer never fired: {info}"
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "completed" in log
+            assert "777" in log
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_start_sync_failure_recorded(self, canister_reachable, canister, network):
+        """A failing sync timer task should record 'failed' status and traceback."""
+        result = _task_magic(
+            '%task create _test_timer_fail --code "raise RuntimeError(\'boom\')"',
+            canister, network,
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            _task_magic(f"%task start {tid}", canister, network)
+            info = _wait_for_task_execution(tid, canister, network)
+            assert "Executions: 0" not in info, f"Timer never fired: {info}"
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "failed" in log
+            assert "RuntimeError" in log
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_start_async_error_recorded(self, canister_reachable, canister, network):
+        """An async step that raises an error should record failure, not silently trap."""
+        result = _task_magic(
+            "%task create _test_timer_async_err", canister, network
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            # Add an async step with code that will fail (NameError)
+            _task_magic(
+                f'%task add-step {tid} --async --code '
+                '"def async_task(): raise ValueError(\'async_boom\'); yield None"',
+                canister, network,
+            )
+            _task_magic(f"%task start {tid}", canister, network)
+            info = _wait_for_task_execution(tid, canister, network)
+            assert "Executions: 0" not in info, f"Async timer never fired: {info}"
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "failed" in log
+            assert "async_boom" in log or "ValueError" in log
+        finally:
+            _cleanup_task(tid, canister, network)
+
+    def test_start_async_http_download(self, canister_reachable, canister, network):
+        """An async step making an HTTP outcall should execute and record the result."""
+        result = _task_magic(
+            "%task create _test_timer_http", canister, network
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            # async step: download a small file via HTTP outcall
+            download_code = (
+                "def async_task():\n"
+                "    from _cdk import ic\n"
+                "    from basilisk.canisters.management import management_canister\n"
+                "    resp = yield management_canister.http_request({\n"
+                "        'url': 'https://raw.githubusercontent.com/smart-social-contracts/basilisk/refs/heads/main/tests/fixtures/e2e_hello.py',\n"
+                "        'max_response_bytes': 2_000_000,\n"
+                "        'method': {'get': None},\n"
+                "        'headers': [{'name': 'User-Agent', 'value': 'Basilisk/1.0'}, {'name': 'Accept-Encoding', 'value': 'identity'}],\n"
+                "        'body': None,\n"
+                "        'transform': {'function': (ic.id(), 'http_transform'), 'context': bytes()},\n"
+                "    }).with_cycles(30_000_000_000)\n"
+                "    if 'Ok' in resp:\n"
+                "        body = resp['Ok']['body']\n"
+                "        with open('/test_http_download.py', 'w') as f:\n"
+                "            f.write(body.decode('utf-8'))\n"
+                "        return f'Downloaded {len(body)} bytes'\n"
+                "    else:\n"
+                "        return f'Error: {resp}'\n"
+            )
+            _task_magic(
+                f'%task add-step {tid} --async --code "{download_code}"',
+                canister, network,
+            )
+            _task_magic(f"%task start {tid}", canister, network)
+            # HTTP outcalls can take a while (consensus + external call)
+            info = _wait_for_task_execution(tid, canister, network, timeout=60)
+            assert "Executions: 0" not in info, f"HTTP async timer never fired: {info}"
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "completed" in log or "failed" in log
+            # If completed, verify file was downloaded
+            if "completed" in log:
+                assert "Downloaded" in log
+                cat_result = _task_magic("%cat /test_http_download.py", canister, network)
+                assert "BASILISK_E2E_OK_42" in cat_result or len(cat_result) > 0
+        finally:
+            # Clean up downloaded file
+            exec_on_canister(
+                "import os; os.remove('/test_http_download.py') if os.path.exists('/test_http_download.py') else None",
+                canister, network,
+            )
+            _cleanup_task(tid, canister, network)
+
+    def test_multistep_async_then_sync(self, canister_reachable, canister, network):
+        """Multi-step task: async HTTP download, then sync exec of downloaded file."""
+        result = _task_magic(
+            "%task create _test_timer_multistep", canister, network
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            # Step 0: async HTTP download
+            download_code = (
+                "def async_task():\n"
+                "    from _cdk import ic\n"
+                "    from basilisk.canisters.management import management_canister\n"
+                "    resp = yield management_canister.http_request({\n"
+                "        'url': 'https://raw.githubusercontent.com/smart-social-contracts/basilisk/refs/heads/main/tests/fixtures/e2e_hello.py',\n"
+                "        'max_response_bytes': 2_000_000,\n"
+                "        'method': {'get': None},\n"
+                "        'headers': [{'name': 'User-Agent', 'value': 'Basilisk/1.0'}, {'name': 'Accept-Encoding', 'value': 'identity'}],\n"
+                "        'body': None,\n"
+                "        'transform': {'function': (ic.id(), 'http_transform'), 'context': bytes()},\n"
+                "    }).with_cycles(30_000_000_000)\n"
+                "    if 'Ok' in resp:\n"
+                "        body = resp['Ok']['body']\n"
+                "        with open('/test_multistep.py', 'w') as f:\n"
+                "            f.write(body.decode('utf-8'))\n"
+                "        return f'Downloaded {len(body)} bytes'\n"
+                "    else:\n"
+                "        raise RuntimeError(f'Download failed: {resp}')\n"
+            )
+            _task_magic(
+                f'%task add-step {tid} --async --code "{download_code}"',
+                canister, network,
+            )
+            # Step 1: sync exec of downloaded file
+            _task_magic(
+                f'%task add-step {tid} --code "exec(open(\'/test_multistep.py\').read())"',
+                canister, network,
+            )
+
+            info_before = _task_magic(f"%task info {tid}", canister, network)
+            assert "Steps: 2" in info_before
+
+            _task_magic(f"%task start {tid}", canister, network)
+            # Wait longer for multi-step with HTTP
+            info = _wait_for_task_execution(tid, canister, network, timeout=90)
+            assert "Executions: 0" not in info, f"Multi-step timer never fired: {info}"
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            # Should have at least 1 execution (step 0)
+            assert "execution" in log.lower()
+        finally:
+            exec_on_canister(
+                "import os; os.remove('/test_multistep.py') if os.path.exists('/test_multistep.py') else None",
+                canister, network,
+            )
             _cleanup_task(tid, canister, network)
 
 

@@ -719,7 +719,6 @@ def _task_start_code(tid: str) -> str:
         # Helper: advance to next step or complete the task
         #
         "                def _chain_next(_task, _si, _all_steps):\n"
-        "                    from _cdk import ic\n"
         "                    if _task.status == 'failed':\n"
         "                        return\n"
         "                    _task.step_to_execute = _si + 1\n"
@@ -746,7 +745,6 @@ def _task_start_code(tid: str) -> str:
         # Sync step callback — executes code with exec()
         #
         "                def _exec_sync():\n"
-        "                    from _cdk import ic\n"
         "                    import io, sys, traceback\n"
         "                    _task = Task.load(_task_id)\n"
         "                    if not _task or _task.status == 'cancelled':\n"
@@ -791,7 +789,6 @@ def _task_start_code(tid: str) -> str:
         # The IC runtime drives the generator (handles management_canister calls).
         #
         "                def _exec_async():\n"
-        "                    from _cdk import ic\n"
         "                    import traceback\n"
         "                    _task = Task.load(_task_id)\n"
         "                    if not _task or _task.status == 'cancelled':\n"
@@ -821,9 +818,24 @@ def _task_start_code(tid: str) -> str:
         "                            _cur.status = 'failed'\n"
         "                            _task.status = 'failed'\n"
         "                            return\n"
-        "                        _result = yield _ns['async_task']()\n"
+        #
+        # Drive the inner generator manually so that exceptions raised
+        # inside async_task() are caught by *Python* try/except below,
+        # instead of propagating to drive_generator in Rust which traps
+        # (rolling back all state, including TaskExecution records).
+        # Only _ServiceCall objects are re-yielded to the Rust runtime.
+        #
+        "                        _inner_gen = _ns['async_task']()\n"
+        "                        _send_val = None\n"
+        "                        while True:\n"
+        "                            try:\n"
+        "                                _yielded_val = _inner_gen.send(_send_val)\n"
+        "                                _send_val = yield _yielded_val\n"
+        "                            except StopIteration as _stop:\n"
+        "                                _result = getattr(_stop, 'value', None)\n"
+        "                                break\n"
         "                        _te.status = 'completed'\n"
-        "                        _te.result = str(_result)[:4999]\n"
+        "                        _te.result = str(_result)[:4999] if _result is not None else ''\n"
         "                        _cur.status = 'completed'\n"
         "                        _chain_next(_task, _si, _all_steps)\n"
         "                    except Exception:\n"
