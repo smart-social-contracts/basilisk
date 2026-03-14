@@ -1063,6 +1063,46 @@ class TestTaskTimerExecution:
             )
             _cleanup_task(tid, canister, network)
 
+    def test_command_flag_wget_and_run(self, canister_reachable, canister, network):
+        """--command flag: wget downloads, run executes — two separate steps."""
+        url = "https://raw.githubusercontent.com/smart-social-contracts/basilisk/refs/heads/main/tests/fixtures/e2e_hello.py"
+        result = _task_magic(
+            "%task create _test_cmd_flag", canister, network
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            # Step 0: async wget via --command
+            add0 = _task_magic(
+                f'%task add-step {tid} --command "wget {url} test_cmd_flag.py"',
+                canister, network,
+            )
+            assert "step 0" in add0.lower() or "async" in add0.lower(), f"Unexpected: {add0}"
+
+            # Step 1: sync run via --command
+            add1 = _task_magic(
+                f'%task add-step {tid} --command "run test_cmd_flag.py"',
+                canister, network,
+            )
+            assert "step 1" in add1.lower() or "sync" in add1.lower(), f"Unexpected: {add1}"
+
+            # Verify task has 2 steps
+            info = _task_magic(f"%task info {tid}", canister, network)
+            assert "Steps: 2" in info, f"Expected 2 steps: {info}"
+
+            _task_magic(f"%task start {tid}", canister, network)
+            info = _wait_for_task_execution(tid, canister, network, timeout=90)
+            assert "Executions: 0" not in info, f"Command-flag timer never fired: {info}"
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "completed" in log, f"Expected completed: {log}"
+        finally:
+            exec_on_canister(
+                "import os; os.remove('/test_cmd_flag.py') if os.path.exists('/test_cmd_flag.py') else None",
+                canister, network,
+            )
+            _cleanup_task(tid, canister, network)
+
 
 # ===========================================================================
 # Task lookup by name (not just ID)

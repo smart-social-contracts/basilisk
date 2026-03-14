@@ -515,12 +515,52 @@ def _task_create_code(rest: str) -> str:
     return code
 
 
+def _command_to_code(cmd: str):
+    """Translate a simple shell-like command into (code_str, is_async).
+
+    Supported commands:
+        wget <url> <dest>   → async step that downloads url to /dest
+        run <path>          → sync step that executes /path
+
+    Returns ``(code_string, is_async)`` or ``None`` if the command is
+    not recognised.
+    """
+    parts = cmd.strip().split()
+    if not parts:
+        return None
+    verb = parts[0].lower()
+
+    if verb == "wget" and len(parts) == 3:
+        url = parts[1]
+        dest = parts[2]
+        if not dest.startswith("/"):
+            dest = "/" + dest
+        esc_url = url.replace("'", "\\'")
+        esc_dest = dest.replace("'", "\\'")
+        code = (
+            "def async_task():\n"
+            f"    yield from wget('{esc_url}', '{esc_dest}')\n"
+        )
+        return code, True
+
+    if verb == "run" and len(parts) == 2:
+        path = parts[1]
+        if not path.startswith("/"):
+            path = "/" + path
+        esc_path = path.replace("'", "\\'")
+        code = f"run('{esc_path}')"
+        return code, False
+
+    return None
+
+
 def _task_add_step_code(rest: str) -> str:
-    """Code for: %task add-step <id|name> [--code "..."|--file <path>] [--delay Ns] [--async]
+    """Code for: %task add-step <id|name> [--code "..."|--file <path>|--command "..."] [--delay Ns] [--async]
 
     Adds a new step to an existing task: Codex → Call → TaskStep.
     --async marks the step for async execution (code must define async_task()).
     --delay N inserts a wait of N seconds before this step runs.
+    --command translates a simple command (wget, run) into the appropriate code.
     """
     # Parse --async flag
     is_async = '--async' in rest
@@ -540,6 +580,13 @@ def _task_add_step_code(rest: str) -> str:
         task_file = file_match.group(1)
         rest = rest[:file_match.start()] + rest[file_match.end():]
 
+    # Parse --command "..." (supports single or double quotes)
+    cmd_match = re.search(r"""--command\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')""", rest)
+    task_command = None
+    if cmd_match:
+        task_command = cmd_match.group(1) if cmd_match.group(1) is not None else cmd_match.group(2)
+        rest = rest[:cmd_match.start()] + rest[cmd_match.end():]
+
     # Parse --code "..." (supports single or double quotes)
     code_match = re.search(r"""--code\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')""", rest)
     task_code = None
@@ -547,6 +594,16 @@ def _task_add_step_code(rest: str) -> str:
         task_code = code_match.group(1) if code_match.group(1) is not None else code_match.group(2)
         task_code = task_code.replace('\\"', '"').replace("\\'", "'")
         rest = rest[:code_match.start()] + rest[code_match.end():]
+
+    # --command translates a simple command into code + async flag
+    if task_command and not task_code:
+        result = _command_to_code(task_command)
+        if result is None:
+            return None  # unrecognised command
+        task_code, cmd_is_async = result
+        # Command determines async-ness unless --async was explicit
+        if not is_async:
+            is_async = cmd_is_async
 
     # --file generates an exec(open(...).read()) wrapper
     if task_file and not task_code:
@@ -1020,7 +1077,7 @@ _TASK_USAGE = (
     '  %task list                                               List all tasks\n'
     '  %task create <name> [every Ns] [--code "..."|--file <f>] Create a task\n'
     '  %task add-step <id|name> [--code "..."|--file <f>]       Add step to task\n'
-    '           [--delay N] [--async]\n'
+    '           [--command "..."] [--delay N] [--async]\n'
     '  %task info <id|name>                                     Show task details\n'
     '  %task log <id|name> [--follow|-f]                        Show execution history\n'
     '  %task run <id|name>                                      Execute task code now\n'
