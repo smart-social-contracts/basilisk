@@ -648,3 +648,20 @@ class CandidError(Error):
 
 
 # endregion Exceptions
+
+
+def run(path):
+    """Execute a Python file from the canister filesystem.
+
+    Reads the file at *path*, compiles it, and executes it in the
+    caller's global scope.  This is the canister-side equivalent of
+    running ``python script.py``::
+
+        basilisk.run('/script.py')
+
+    Or simply ``run('/script.py')`` when used inside a task step
+    (the function is auto-injected into the step namespace).
+    """
+    import builtins
+
+    builtins.exec(compile(open(path).read(), path, "exec"))

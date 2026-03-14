@@ -962,26 +962,10 @@ class TestTaskTimerExecution:
         tid = _extract_task_id(result)
         assert tid, f"Failed to create task: {result}"
         try:
-            # async step: download a small file via HTTP outcall
+            # async step: download a small file via wget() helper
             download_code = (
                 "def async_task():\n"
-                "    from _cdk import ic\n"
-                "    from basilisk.canisters.management import management_canister\n"
-                "    resp = yield management_canister.http_request({\n"
-                "        'url': 'https://raw.githubusercontent.com/smart-social-contracts/basilisk/refs/heads/main/tests/fixtures/e2e_hello.py',\n"
-                "        'max_response_bytes': 2_000_000,\n"
-                "        'method': {'get': None},\n"
-                "        'headers': [{'name': 'User-Agent', 'value': 'Basilisk/1.0'}, {'name': 'Accept-Encoding', 'value': 'identity'}],\n"
-                "        'body': None,\n"
-                "        'transform': {'function': (ic.id(), 'http_transform'), 'context': bytes()},\n"
-                "    }).with_cycles(30_000_000_000)\n"
-                "    if 'Ok' in resp:\n"
-                "        body = resp['Ok']['body']\n"
-                "        with open('/test_http_download.py', 'w') as f:\n"
-                "            f.write(body.decode('utf-8'))\n"
-                "        return f'Downloaded {len(body)} bytes'\n"
-                "    else:\n"
-                "        return f'Error: {resp}'\n"
+                "    yield from wget('https://raw.githubusercontent.com/smart-social-contracts/basilisk/refs/heads/main/tests/fixtures/e2e_hello.py', '/test_http_download.py')\n"
             )
             _task_magic(
                 f'%task add-step {tid} --async --code "{download_code}"',
@@ -993,12 +977,10 @@ class TestTaskTimerExecution:
             assert "Executions: 0" not in info, f"HTTP async timer never fired: {info}"
 
             log = _task_magic(f"%task log {tid}", canister, network)
-            assert "completed" in log or "failed" in log
-            # If completed, verify file was downloaded
-            if "completed" in log:
-                assert "Downloaded" in log
-                cat_result = _task_magic("%cat /test_http_download.py", canister, network)
-                assert "BASILISK_E2E_OK_42" in cat_result or len(cat_result) > 0
+            assert "completed" in log, f"Expected completed: {log}"
+            # Verify file was actually downloaded
+            cat_result = _task_magic("%cat /test_http_download.py", canister, network)
+            assert "BASILISK_E2E_OK_42" in cat_result or len(cat_result) > 0
         finally:
             # Clean up downloaded file
             exec_on_canister(
@@ -1015,34 +997,18 @@ class TestTaskTimerExecution:
         tid = _extract_task_id(result)
         assert tid, f"Failed to create task: {result}"
         try:
-            # Step 0: async HTTP download
+            # Step 0: async HTTP download via wget() helper
             download_code = (
                 "def async_task():\n"
-                "    from _cdk import ic\n"
-                "    from basilisk.canisters.management import management_canister\n"
-                "    resp = yield management_canister.http_request({\n"
-                "        'url': 'https://raw.githubusercontent.com/smart-social-contracts/basilisk/refs/heads/main/tests/fixtures/e2e_hello.py',\n"
-                "        'max_response_bytes': 2_000_000,\n"
-                "        'method': {'get': None},\n"
-                "        'headers': [{'name': 'User-Agent', 'value': 'Basilisk/1.0'}, {'name': 'Accept-Encoding', 'value': 'identity'}],\n"
-                "        'body': None,\n"
-                "        'transform': {'function': (ic.id(), 'http_transform'), 'context': bytes()},\n"
-                "    }).with_cycles(30_000_000_000)\n"
-                "    if 'Ok' in resp:\n"
-                "        body = resp['Ok']['body']\n"
-                "        with open('/test_multistep.py', 'w') as f:\n"
-                "            f.write(body.decode('utf-8'))\n"
-                "        return f'Downloaded {len(body)} bytes'\n"
-                "    else:\n"
-                "        raise RuntimeError(f'Download failed: {resp}')\n"
+                "    yield from wget('https://raw.githubusercontent.com/smart-social-contracts/basilisk/refs/heads/main/tests/fixtures/e2e_hello.py', '/test_multistep.py')\n"
             )
             _task_magic(
                 f'%task add-step {tid} --async --code "{download_code}"',
                 canister, network,
             )
-            # Step 1: sync exec of downloaded file
+            # Step 1: sync exec of downloaded file via run() helper
             _task_magic(
-                f'%task add-step {tid} --code "exec(open(\'/test_multistep.py\').read())"',
+                f'%task add-step {tid} --code "run(\'/test_multistep.py\')"',
                 canister, network,
             )
 
@@ -1060,6 +1026,39 @@ class TestTaskTimerExecution:
         finally:
             exec_on_canister(
                 "import os; os.remove('/test_multistep.py') if os.path.exists('/test_multistep.py') else None",
+                canister, network,
+            )
+            _cleanup_task(tid, canister, network)
+
+    def test_wget_and_run_helpers(self, canister_reachable, canister, network):
+        """wget() + run() helpers: download a script then execute it."""
+        result = _task_magic(
+            "%task create _test_wget_run", canister, network
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            # Single async step: wget + run in one generator
+            step_code = (
+                "def async_task():\n"
+                "    yield from wget('https://raw.githubusercontent.com/smart-social-contracts/basilisk/refs/heads/main/tests/fixtures/e2e_hello.py', '/test_wget_run.py')\n"
+                "    run('/test_wget_run.py')\n"
+            )
+            _task_magic(
+                f'%task add-step {tid} --async --code "{step_code}"',
+                canister, network,
+            )
+            _task_magic(f"%task start {tid}", canister, network)
+            info = _wait_for_task_execution(tid, canister, network, timeout=60)
+            assert "Executions: 0" not in info, f"wget+run timer never fired: {info}"
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "completed" in log, f"Expected completed: {log}"
+            # run() executed the fixture which prints BASILISK_E2E_OK_42
+            # but stdout is not captured in async steps — just verify completion
+        finally:
+            exec_on_canister(
+                "import os; os.remove('/test_wget_run.py') if os.path.exists('/test_wget_run.py') else None",
                 canister, network,
             )
             _cleanup_task(tid, canister, network)

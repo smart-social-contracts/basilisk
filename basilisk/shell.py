@@ -742,6 +742,34 @@ def _task_start_code(tid: str) -> str:
         "                                ic.set_timer(_sched.repeat_every, _cb)\n"
         "                                break\n"
         #
+        # Helpers injected into task step namespaces.
+        # Defined inline so they work with any canister WASM version
+        # (the basilisk.io / basilisk.run module-level equivalents
+        # are only available after a canister rebuild).
+        #
+        "                def wget(url, dest, transform_func='http_transform', cycles=30_000_000_000, max_bytes=2_000_000):\n"
+        "                    from basilisk.canisters.management import management_canister\n"
+        "                    resp = yield management_canister.http_request({\n"
+        "                        'url': url, 'max_response_bytes': max_bytes,\n"
+        "                        'method': {'get': None},\n"
+        "                        'headers': [{'name': 'User-Agent', 'value': 'Basilisk/1.0'}, {'name': 'Accept-Encoding', 'value': 'identity'}],\n"
+        "                        'body': None,\n"
+        "                        'transform': {'function': (ic.id(), transform_func), 'context': bytes()},\n"
+        "                    }).with_cycles(cycles)\n"
+        "                    if 'Ok' in resp:\n"
+        "                        body = resp['Ok']['body']\n"
+        "                        import os\n"
+        "                        parent = os.path.dirname(dest)\n"
+        "                        if parent and parent != '/':\n"
+        "                            os.makedirs(parent, exist_ok=True)\n"
+        "                        with open(dest, 'wb') as f:\n"
+        "                            f.write(body if isinstance(body, bytes) else body.encode('utf-8'))\n"
+        "                        return f'Downloaded {len(body)} bytes to {dest}'\n"
+        "                    else:\n"
+        "                        raise RuntimeError(f'Download failed: {resp}')\n"
+        "                def run(path):\n"
+        "                    exec(compile(open(path).read(), path, 'exec'))\n"
+        #
         # Sync step callback — executes code with exec()
         #
         "                def _exec_sync():\n"
@@ -764,7 +792,9 @@ def _task_start_code(tid: str) -> str:
         "                        _old_stdout = sys.stdout\n"
         "                        sys.stdout = _stdout\n"
         "                        try:\n"
-        "                            exec(_code_str)\n"
+        "                            _sync_ns = dict(globals())\n"
+        "                            _sync_ns['run'] = run\n"
+        "                            exec(_code_str, _sync_ns)\n"
         "                            sys.stdout = _old_stdout\n"
         "                            _te.status = 'completed'\n"
         "                            _te.result = _stdout.getvalue()[:4999]\n"
@@ -810,7 +840,7 @@ def _task_start_code(tid: str) -> str:
         "                        _task.status = 'failed'\n"
         "                        return\n"
         "                    try:\n"
-        "                        _ns = {'ic': ic, 'Task': Task, 'TaskExecution': TaskExecution}\n"
+        "                        _ns = {'ic': ic, 'Task': Task, 'TaskExecution': TaskExecution, 'wget': wget, 'run': run}\n"
         "                        exec(_code_str, _ns)\n"
         "                        if 'async_task' not in _ns:\n"
         "                            _te.status = 'failed'\n"
