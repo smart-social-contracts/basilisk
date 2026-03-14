@@ -40,6 +40,40 @@ import time as _time
 
 
 # ---------------------------------------------------------------------------
+# Version / git info (client-side)
+# ---------------------------------------------------------------------------
+
+def _get_basilisk_version() -> str:
+    """Return the installed basilisk package version."""
+    try:
+        from basilisk import __version__
+        return __version__
+    except Exception:
+        return "unknown"
+
+
+def _get_git_info() -> dict:
+    """Return commit hash and datetime from the basilisk package source."""
+    info = {}
+    pkg_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_dir = os.path.dirname(pkg_dir)  # parent of basilisk/
+    try:
+        r = subprocess.run(
+            ["git", "log", "-1", "--format=%H %aI"],
+            capture_output=True, text=True, timeout=5,
+            cwd=repo_dir,
+        )
+        if r.returncode == 0:
+            parts = r.stdout.strip().split(" ", 1)
+            if len(parts) == 2:
+                info["commit"] = parts[0][:8]
+                info["commit_date"] = parts[1]
+    except Exception:
+        pass
+    return info
+
+
+# ---------------------------------------------------------------------------
 # Candid parsing
 # ---------------------------------------------------------------------------
 
@@ -1310,8 +1344,17 @@ def _welcome_banner(canister: str, network: str):
     """Generate a comprehensive welcome banner by querying the canister."""
     net_label = network or "local"
 
+    # Client-side version info
+    ver = _get_basilisk_version()
+    git = _get_git_info()
+    ver_str = f"v{ver}"
+    if git.get("commit"):
+        ver_str += f"  ({git['commit']})"
+    if git.get("commit_date"):
+        ver_str += f"  {git['commit_date']}"
+
     print("=" * 60)
-    print("  Basilisk Shell")
+    print(f"  Basilisk Shell {ver_str}")
     print("=" * 60)
     print(f"  Canister : {canister}")
     print(f"  Network  : {net_label}")
@@ -1354,19 +1397,22 @@ except Exception as _e:
     _info['entity_types'] = {}
     _info['db_error'] = str(_e)
 
-# Available libraries
+# Available libraries with versions
 _libs = []
 try:
-    import _cdk
-    _libs.append('basilisk (_cdk)')
+    import basilisk
+    _v = getattr(basilisk, '__version__', '')
+    _libs.append(f'basilisk {_v}' if _v else 'basilisk')
 except: pass
 try:
     import ic_python_db
-    _libs.append('ic_python_db')
+    _v = getattr(ic_python_db, '__version__', '')
+    _libs.append(f'ic_python_db {_v}' if _v else 'ic_python_db')
 except: pass
 try:
     import ic_python_logging
-    _libs.append('ic_python_logging')
+    _v = getattr(ic_python_logging, '__version__', '')
+    _libs.append(f'ic_python_logging {_v}' if _v else 'ic_python_logging')
 except: pass
 _info['libraries'] = _libs
 
