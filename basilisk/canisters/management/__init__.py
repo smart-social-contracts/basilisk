@@ -86,38 +86,6 @@ from basilisk.canisters.management.bitcoin import (
 
 
 class ManagementCanister(Service):
-    _arg_types = {
-        'create_canister': 'record { settings : opt record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
-        'update_settings': 'record { canister_id : principal; settings : record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
-        'install_code': 'record { mode : variant { install : null; reinstall : null; upgrade : null }; canister_id : principal; wasm_module : blob; arg : blob }',
-        'uninstall_code': 'record { canister_id : principal }',
-        'start_canister': 'record { canister_id : principal }',
-        'stop_canister': 'record { canister_id : principal }',
-        'canister_status': 'record { canister_id : principal }',
-        'delete_canister': 'record { canister_id : principal }',
-        'deposit_cycles': 'record { canister_id : principal }',
-        'provisional_create_canister_with_cycles': 'record { amount : opt nat; settings : opt record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
-        'provisional_top_up_canister': 'record { canister_id : principal; amount : nat }',
-        'http_request': 'record { url : text; max_response_bytes : opt nat64; method : variant { get : null; head : null; post : null }; headers : vec record { name : text; value : text }; body : opt blob; transform : opt record { function : func (record { response : record { status : nat; headers : vec record { name : text; value : text }; body : blob }; context : blob }) -> (record { status : nat; headers : vec record { name : text; value : text }; body : blob }) query; context : blob } }',
-        'ecdsa_public_key': 'record { canister_id : opt principal; derivation_path : vec blob; key_id : record { curve : variant { secp256k1 : null }; name : text } }',
-        'sign_with_ecdsa': 'record { message_hash : blob; derivation_path : vec blob; key_id : record { curve : variant { secp256k1 : null }; name : text } }',
-        'bitcoin_get_balance': 'record { address : text; min_confirmations : opt nat32; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
-        'bitcoin_get_utxos': 'record { address : text; filter : opt variant { min_confirmations : nat32; page : blob }; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
-        'bitcoin_get_current_fee_percentiles': 'record { network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
-        'bitcoin_send_transaction': 'record { transaction : blob; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
-    }
-    _return_types = {
-        'create_canister': 'record { canister_id : principal }',
-        'canister_status': 'record { status : variant { running : null; stopping : null; stopped : null }; settings : record { controllers : vec principal; compute_allocation : nat; memory_allocation : nat; freezing_threshold : nat }; module_hash : opt blob; memory_size : nat; cycles : nat }',
-        'raw_rand': 'blob',
-        'http_request': 'record { status : nat; headers : vec record { name : text; value : text }; body : blob }',
-        'ecdsa_public_key': 'record { public_key : blob; chain_code : blob }',
-        'sign_with_ecdsa': 'record { signature : blob }',
-        'bitcoin_get_balance': 'nat64',
-        'bitcoin_get_utxos': 'record { next_page : opt blob; tip_block_hash : blob; tip_height : nat32; utxos : vec record { height : nat32; outpoint : record { txid : blob; vout : nat32 }; value : nat64 } }',
-        'bitcoin_get_current_fee_percentiles': 'vec nat64',
-    }
-
     @service_update
     def bitcoin_get_balance(self, args: GetBalanceArgs) -> Satoshi:
         ...
@@ -215,5 +183,37 @@ class ManagementCanister(Service):
     def install_chunked_code(self, args: InstallChunkedCodeArgs) -> void:
         ...
 
+
+ManagementCanister._arg_types = {
+    'create_canister': 'record { settings : opt record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
+    'update_settings': 'record { canister_id : principal; settings : record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
+    'install_code': 'record { mode : variant { install : null; reinstall : null; upgrade : null }; canister_id : principal; wasm_module : blob; arg : blob }',
+    'uninstall_code': 'record { canister_id : principal }',
+    'start_canister': 'record { canister_id : principal }',
+    'stop_canister': 'record { canister_id : principal }',
+    'canister_status': 'record { canister_id : principal }',
+    'delete_canister': 'record { canister_id : principal }',
+    'deposit_cycles': 'record { canister_id : principal }',
+    'provisional_create_canister_with_cycles': 'record { amount : opt nat; settings : opt record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
+    'provisional_top_up_canister': 'record { canister_id : principal; amount : nat }',
+    'http_request': 'record { url : text; max_response_bytes : opt nat64; method : variant { get : null; head : null; post : null }; headers : vec record { name : text; value : text }; body : opt blob; transform : opt record { function : func (record { response : record { status : nat; headers : vec record { name : text; value : text }; body : blob }; context : blob }) -> (record { status : nat; headers : vec record { name : text; value : text }; body : blob }) query; context : blob } }',
+    'ecdsa_public_key': 'record { canister_id : opt principal; derivation_path : vec blob; key_id : record { curve : variant { secp256k1 : null }; name : text } }',
+    'sign_with_ecdsa': 'record { message_hash : blob; derivation_path : vec blob; key_id : record { curve : variant { secp256k1 : null }; name : text } }',
+    'bitcoin_get_balance': 'record { address : text; min_confirmations : opt nat32; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
+    'bitcoin_get_utxos': 'record { address : text; filter : opt variant { min_confirmations : nat32; page : blob }; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
+    'bitcoin_get_current_fee_percentiles': 'record { network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
+    'bitcoin_send_transaction': 'record { transaction : blob; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
+}
+ManagementCanister._return_types = {
+    'create_canister': 'record { canister_id : principal }',
+    'canister_status': 'record { status : variant { running : null; stopping : null; stopped : null }; settings : record { controllers : vec principal; compute_allocation : nat; memory_allocation : nat; freezing_threshold : nat }; module_hash : opt blob; memory_size : nat; cycles : nat }',
+    'raw_rand': 'blob',
+    'http_request': 'record { status : nat; headers : vec record { name : text; value : text }; body : blob }',
+    'ecdsa_public_key': 'record { public_key : blob; chain_code : blob }',
+    'sign_with_ecdsa': 'record { signature : blob }',
+    'bitcoin_get_balance': 'nat64',
+    'bitcoin_get_utxos': 'record { next_page : opt blob; tip_block_hash : blob; tip_height : nat32; utxos : vec record { height : nat32; outpoint : record { txid : blob; vout : nat32 }; value : nat64 } }',
+    'bitcoin_get_current_fee_percentiles': 'vec nat64',
+}
 
 management_canister = ManagementCanister(Principal.from_str("aaaaa-aa"))
