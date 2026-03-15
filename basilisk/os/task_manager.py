@@ -241,6 +241,17 @@ class TaskManager:
 
         for task in all_tasks:
             logger.info(f"Checking task {task.name}: {task.status}")
+            if task.status == TaskStatus.RUNNING:
+                # After a canister upgrade, IC timers are lost but task status
+                # remains RUNNING. Reset to PENDING so it gets rescheduled.
+                logger.info(
+                    f"Resetting task {task.name} from RUNNING to PENDING "
+                    f"(timer recovery after canister upgrade)"
+                )
+                task.status = TaskStatus.PENDING
+                task.step_to_execute = 0
+                for step in task.steps:
+                    step.status = TaskStatus.PENDING
             if task.status == TaskStatus.PENDING:
                 for schedule in task.schedules:
                     try:
