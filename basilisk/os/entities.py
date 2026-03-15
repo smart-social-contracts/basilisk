@@ -239,7 +239,7 @@ class TaskSchedule(Entity, TimestampedMixin):
             "_id": str(self._id),
             "_type": "TaskSchedule",
             "name": self.name,
-            "task_id": (
+            "task": (
                 str(self.task._id) if hasattr(self, "task") and self.task else None
             ),
             "disabled": self.disabled,
