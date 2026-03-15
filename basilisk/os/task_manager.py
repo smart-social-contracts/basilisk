@@ -23,7 +23,7 @@ Key Use Case - Sync/Async Separation:
 import traceback
 from typing import Callable, List
 
-from .entities import Task, TaskExecution, TaskSchedule, TaskStep
+from .entities import Call, Task, TaskExecution, TaskSchedule, TaskStep
 from .status import TaskExecutionStatus, TaskStatus
 
 # These imports only work inside the canister runtime
@@ -128,6 +128,7 @@ def _check_and_schedule_next_step(task: Task) -> void:
                     step.timer_id = ic.set_timer(
                         Duration(in_seconds), callback_function
                     )
+                    task.step_to_execute += 1
 
     except Exception as e:
         logger.error(
@@ -153,8 +154,12 @@ def _create_timer_callback(step: TaskStep, task: Task) -> Callable:
         # Python callback raises ANY exception, rolling back all state changes
         # (including TaskExecution records).  We must catch everything here.
         try:
-            # Re-load entities inside callback to avoid stale references
+            # Re-load entities inside callback to avoid stale references.
+            # Eagerly load TaskStep/Call so ManyToOne descriptors populate
+            # task._relations before we access _task.steps.
             _task = Task.load(task_id)
+            list(TaskStep.instances())
+            list(Call.instances())
             _step = list(_task.steps)[
                 [str(s._id) for s in _task.steps].index(step_id)
             ]
@@ -164,10 +169,13 @@ def _create_timer_callback(step: TaskStep, task: Task) -> Callable:
             )
             task_execution = _task.new_task_execution()
             try:
+                task_execution.started_at = get_now()
                 task_execution.status = TaskExecutionStatus.RUNNING
                 result = _step.call._function(task_execution)()
                 logger.info(f"Timer callback completed with result: {result}")
 
+                task_execution.result = str(result)[:4999] if result is not None else ""
+                task_execution.completed_at = get_now()
                 task_execution.status = TaskExecutionStatus.COMPLETED
                 _step.status = TaskStatus.COMPLETED
                 _check_and_schedule_next_step(_task)
@@ -175,6 +183,7 @@ def _create_timer_callback(step: TaskStep, task: Task) -> Callable:
                 logger.error(f"Timer callback failed: {e}")
                 logger.error(traceback.format_exc())
 
+                task_execution.completed_at = get_now()
                 task_execution.status = TaskExecutionStatus.FAILED
                 task_execution.result = str(e)[:4999]
 
@@ -205,6 +214,12 @@ class TaskManager:
 
     def _update_timers(self) -> void:
         logger.info("Updating timers")
+        # Eagerly load related entities so ManyToOne descriptors resolve and
+        # populate bidirectional _relations on Task (steps, schedules).
+        list(TaskStep.instances())
+        list(TaskSchedule.instances())
+        list(Call.instances())
+
         # Load tasks individually from database (not Task.instances() which
         # fails atomically if any related entity is missing)
         all_tasks = []

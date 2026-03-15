@@ -221,7 +221,8 @@ def compile_python_or_exit(
 def bundle_python_code(paths: Paths):
     # Begin module bundling/gathering process
     path = (
-        list(sys.path)
+        list(filter(lambda x: x.startswith(os.getcwd()), sys.path))
+        + [p for p in sys.path if "site-packages" in p or "dist-packages" in p]
         + [
             os.path.dirname(paths["py_entry_file"]),
             os.path.dirname(os.path.dirname(basilisk.__file__)),

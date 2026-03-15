@@ -176,6 +176,8 @@ class TaskExecution(Entity, TimestampedMixin):
     name = String(max_length=256)
     task = ManyToOne("Task", "executions")
     status = String(max_length=50)  # "completed", "failed", "running"
+    started_at = Integer(default=0)
+    completed_at = Integer(default=0)
     result = String(max_length=5000)
 
     def _logger_name(self):
