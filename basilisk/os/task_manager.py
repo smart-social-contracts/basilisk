@@ -149,33 +149,40 @@ def _create_timer_callback(step: TaskStep, task: Task) -> Callable:
     is_async = step.call.is_async
 
     def timer_callback():
-        # Re-load entities inside callback to avoid stale references
-        _task = Task.load(task_id)
-        _step = list(_task.steps)[
-            [str(s._id) for s in _task.steps].index(step_id)
-        ]
-        logger.info(
-            f"Executing {'async' if is_async else 'sync'} timer callback "
-            f"for task {_task.name}"
-        )
-        task_execution = _task.new_task_execution()
+        # CRITICAL: The Rust ic_set_timer closure calls ic_cdk::trap() if the
+        # Python callback raises ANY exception, rolling back all state changes
+        # (including TaskExecution records).  We must catch everything here.
         try:
-            task_execution.status = TaskExecutionStatus.RUNNING
-            result = _step.call._function(task_execution)()
-            logger.info(f"Timer callback completed with result: {result}")
+            # Re-load entities inside callback to avoid stale references
+            _task = Task.load(task_id)
+            _step = list(_task.steps)[
+                [str(s._id) for s in _task.steps].index(step_id)
+            ]
+            logger.info(
+                f"Executing {'async' if is_async else 'sync'} timer callback "
+                f"for task {_task.name}"
+            )
+            task_execution = _task.new_task_execution()
+            try:
+                task_execution.status = TaskExecutionStatus.RUNNING
+                result = _step.call._function(task_execution)()
+                logger.info(f"Timer callback completed with result: {result}")
 
-            task_execution.status = TaskExecutionStatus.COMPLETED
-            _step.status = TaskStatus.COMPLETED
-            _check_and_schedule_next_step(_task)
+                task_execution.status = TaskExecutionStatus.COMPLETED
+                _step.status = TaskStatus.COMPLETED
+                _check_and_schedule_next_step(_task)
+            except Exception as e:
+                logger.error(f"Timer callback failed: {e}")
+                logger.error(traceback.format_exc())
+
+                task_execution.status = TaskExecutionStatus.FAILED
+                task_execution.result = str(e)[:4999]
+
+                _step.status = TaskStatus.FAILED
+                _task.status = TaskStatus.FAILED
         except Exception as e:
-            logger.error(f"Timer callback failed: {e}")
+            logger.error(f"Timer callback setup error: {e}")
             logger.error(traceback.format_exc())
-
-            task_execution.status = TaskExecutionStatus.FAILED
-            task_execution.result = str(e)[:4999]
-
-            _step.status = TaskStatus.FAILED
-            _task.status = TaskStatus.FAILED
 
     return timer_callback
 
