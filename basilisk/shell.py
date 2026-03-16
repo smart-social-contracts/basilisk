@@ -21,9 +21,14 @@ Shell commands:
     %get <remote> [local]  Download file from canister
     %put <local> [remote]  Upload file to canister
     %who          List variables in the remote namespace
-    %db dump      Dump the canister database as JSON
-    %db clear     Clear the canister database
-    %db count     Count total entities in the database
+    %db types     List entity types with counts
+    %db list <Type> [N]  List instances (default 20)
+    %db show <Type> <id> Show full entity as JSON
+    %db search <Type> <field>=<value>  Search entities
+    %db export <Type> [file.json]  Export entities as JSON
+    %db import <file.json>  Import entities from JSON (upsert)
+    %db delete <Type> <id>  Delete a single entity
+    %db count|dump|clear    Count / dump / clear database
     %wallet <token> balance       Check canister token balance
     %wallet <token> deposit       Show deposit address
     %wallet <token> transfer <amount> <to>  Transfer tokens from canister
@@ -258,13 +263,409 @@ _TASK_UNAVAILABLE = (
 
 _MAGIC_MAP = {
     "%who": "print([k for k in dir() if not k.startswith('_')])",
-    "%db dump": "from ic_python_db import Database; print(Database.get_instance().dump_json(pretty=True))",
-    "%db clear": "from ic_python_db import Database; Database.get_instance().clear(); print('Database cleared.')",
-    "%db count": (
-        "from ic_python_db import Database; db = Database.get_instance(); "
-        "print(f'{sum(1 for k in db._db_storage.keys() if not k.startswith(\"_\"))} entries')"
-    ),
 }
+
+
+# ---------------------------------------------------------------------------
+# %db subcommand handlers
+# ---------------------------------------------------------------------------
+
+_DB_USAGE = (
+    "Usage:\n"
+    "  %db types                         List entity types with counts\n"
+    "  %db list <Type> [N]               List instances (default 20)\n"
+    "  %db show <Type> <id>              Show full entity as JSON\n"
+    "  %db search <Type> <field>=<val>   Search entities by field value\n"
+    "  %db export <Type> [file.json]     Export entities as JSON\n"
+    "  %db import <file.json>            Import entities from JSON (upsert)\n"
+    "  %db delete <Type> <id>            Delete a single entity\n"
+    "  %db count                         Count total entries\n"
+    "  %db dump                          Dump entire database as JSON\n"
+    "  %db clear                         Clear entire database\n"
+)
+
+
+def _db_types_code() -> str:
+    """Generate on-canister code for %db types."""
+    return (
+        "import json as _json\n"
+        "from ic_python_db import Database as _DB\n"
+        "_db = _DB.get_instance()\n"
+        "_types = {}\n"
+        "_seen = set()\n"
+        "for _et in _db._entity_types.values():\n"
+        "    _name = _et.__name__\n"
+        "    if _name in _seen:\n"
+        "        continue\n"
+        "    _seen.add(_name)\n"
+        "    if hasattr(_et, 'count'):\n"
+        "        try:\n"
+        "            _types[_name] = _et.count()\n"
+        "        except Exception:\n"
+        "            _types[_name] = 0\n"
+        "_sorted = sorted(_types.items(), key=lambda x: -x[1])\n"
+        "_hdr = '  ' + 'Entity'.ljust(20) + 'Count'.rjust(6)\n"
+        "print(_hdr)\n"
+        "print('  ' + '-' * 28)\n"
+        "for _n, _c in _sorted:\n"
+        "    print('  ' + _n.ljust(20) + str(_c).rjust(6))\n"
+        "_tot = sum(_types.values())\n"
+        "_nt = len(_types)\n"
+        "print()\n"
+        "print('  Total: ' + str(_tot) + ' entities across ' + str(_nt) + ' types')\n"
+    )
+
+
+def _db_list_code(entity_type: str, limit: int = 20) -> str:
+    """Generate on-canister code for %db list <Type> [N]."""
+    esc_type = entity_type.replace("'", "\\'")
+    return (
+        "import json as _json\n"
+        "from ic_python_db import Database as _DB\n"
+        "_db = _DB.get_instance()\n"
+        f"_type_name = '{esc_type}'\n"
+        "_cls = None\n"
+        "for _tn, _tc in _db._entity_types.items():\n"
+        "    if _tc.__name__ == _type_name or _tn == _type_name:\n"
+        "        _cls = _tc\n"
+        "        break\n"
+        "if _cls is None:\n"
+        f"    print('Unknown entity type: {esc_type}')\n"
+        "else:\n"
+        f"    _limit = {limit}\n"
+        "    _instances = _cls.instances()\n"
+        "    _total = len(_instances)\n"
+        "    _shown = _instances[:_limit]\n"
+        "    _alias = getattr(_cls, '__alias__', None)\n"
+        "    for _e in _shown:\n"
+        "        _s = _e.serialize()\n"
+        "        _id = _s.get('_id', '?')\n"
+        "        _alias_val = ''\n"
+        "        if _alias and _alias in _s:\n"
+        "            _alias_val = str(_s[_alias])[:40]\n"
+        "        _fields = []\n"
+        "        for _k, _v in _s.items():\n"
+        "            if _k.startswith('_') or _k == _alias:\n"
+        "                continue\n"
+        "            _sv = str(_v)[:30]\n"
+        "            _fields.append(f'{_k}={_sv}')\n"
+        "            if len(_fields) >= 3:\n"
+        "                break\n"
+        "        _fstr = '  '.join(_fields)\n"
+        "        if _alias_val:\n"
+        "            print(f'  #{_id:<5}  {_alias_val:<40}  {_fstr}')\n"
+        "        else:\n"
+        "            print(f'  #{_id:<5}  {_fstr}')\n"
+        "    if _total > _limit:\n"
+        f"        print(f'  ... and {{_total - _limit}} more ({{_total}} total)')\n"
+        "    elif _total == 0:\n"
+        f"        print('No {esc_type} entities found.')\n"
+        "    else:\n"
+        "        print(f'  ({{_total}} total)')\n"
+    )
+
+
+def _db_show_code(entity_type: str, entity_id: str) -> str:
+    """Generate on-canister code for %db show <Type> <id>."""
+    esc_type = entity_type.replace("'", "\\'")
+    esc_id = entity_id.replace("'", "\\'")
+    return (
+        "import json as _json\n"
+        "from ic_python_db import Database as _DB\n"
+        "_db = _DB.get_instance()\n"
+        f"_type_name = '{esc_type}'\n"
+        f"_eid = '{esc_id}'\n"
+        "_cls = None\n"
+        "for _tn, _tc in _db._entity_types.items():\n"
+        "    if _tc.__name__ == _type_name or _tn == _type_name:\n"
+        "        _cls = _tc\n"
+        "        break\n"
+        "if _cls is None:\n"
+        f"    print('Unknown entity type: {esc_type}')\n"
+        "else:\n"
+        "    _e = _cls[_eid]\n"
+        "    if _e is None:\n"
+        f"        print('{esc_type}#{esc_id} not found.')\n"
+        "    else:\n"
+        "        _s = _e.serialize()\n"
+        "        print(_json.dumps(_s, indent=2, default=str))\n"
+    )
+
+
+def _db_search_code(entity_type: str, field: str, value: str) -> str:
+    """Generate on-canister code for %db search <Type> <field>=<value>."""
+    esc_type = entity_type.replace("'", "\\'")
+    esc_field = field.replace("'", "\\'")
+    esc_value = value.replace("'", "\\'")
+    return (
+        "import json as _json\n"
+        "from ic_python_db import Database as _DB\n"
+        "_db = _DB.get_instance()\n"
+        f"_type_name = '{esc_type}'\n"
+        f"_field = '{esc_field}'\n"
+        f"_value = '{esc_value}'\n"
+        "_cls = None\n"
+        "for _tn, _tc in _db._entity_types.items():\n"
+        "    if _tc.__name__ == _type_name or _tn == _type_name:\n"
+        "        _cls = _tc\n"
+        "        break\n"
+        "if _cls is None:\n"
+        f"    print('Unknown entity type: {esc_type}')\n"
+        "else:\n"
+        "    _results = []\n"
+        "    for _e in _cls.instances():\n"
+        "        _s = _e.serialize()\n"
+        "        _fv = str(_s.get(_field, ''))\n"
+        "        if _fv == _value or _value.lower() in _fv.lower():\n"
+        "            _results.append(_s)\n"
+        "    if not _results:\n"
+        f"        print('No {esc_type} entities matching {esc_field}={esc_value}')\n"
+        "    else:\n"
+        "        print(f'Found {{len(_results)}} match(es):')\n"
+        "        for _s in _results:\n"
+        "            _id = _s.get('_id', '?')\n"
+        "            _fields = [f'{_k}={str(_v)[:30]}' for _k, _v in _s.items() if not _k.startswith('_')][:4]\n"
+        "            print(f'  #{_id}  {\"  \".join(_fields)}')\n"
+    )
+
+
+def _db_export_code(entity_type: str) -> str:
+    """Generate on-canister code for %db export <Type>."""
+    esc_type = entity_type.replace("'", "\\'")
+    return (
+        "import json as _json\n"
+        "from ic_python_db import Database as _DB, Entity as _Entity\n"
+        "_db = _DB.get_instance()\n"
+        f"_type_name = '{esc_type}'\n"
+        "_cls = None\n"
+        "for _tn, _tc in _db._entity_types.items():\n"
+        "    if _tc.__name__ == _type_name or _tn == _type_name:\n"
+        "        _cls = _tc\n"
+        "        break\n"
+        "if _cls is None:\n"
+        f"    print('Unknown entity type: {esc_type}')\n"
+        "else:\n"
+        "    _all = [_e.serialize() for _e in _cls.instances()]\n"
+        "    import base64 as _b64\n"
+        "    _payload = _json.dumps(_all, default=str)\n"
+        "    print('__DB_EXPORT__' + _b64.b64encode(_payload.encode()).decode())\n"
+    )
+
+
+def _db_import_code(b64_data: str) -> str:
+    """Generate on-canister code for %db import. Data is base64-encoded JSON."""
+    return (
+        "import json as _json, base64 as _b64\n"
+        "from ic_python_db import Entity as _Entity\n"
+        f"_raw = _b64.b64decode('{b64_data}').decode()\n"
+        "_records = _json.loads(_raw)\n"
+        "if not isinstance(_records, list):\n"
+        "    _records = [_records]\n"
+        "_ok = 0\n"
+        "_fail = 0\n"
+        "_errors = []\n"
+        "for _rec in _records:\n"
+        "    try:\n"
+        "        _Entity.deserialize(_rec, level=1)\n"
+        "        _ok += 1\n"
+        "    except Exception as _e:\n"
+        "        _fail += 1\n"
+        "        _errors.append(f'{_rec.get(\"_type\",\"?\")}#{_rec.get(\"_id\",\"?\")}: {_e}')\n"
+        "_Entity._context.clear()\n"
+        "print(f'Imported {_ok} entities ({_fail} failed)')\n"
+        "if _errors:\n"
+        "    for _err in _errors[:10]:\n"
+        "        print(f'  ERROR: {_err}')\n"
+    )
+
+
+def _db_delete_code(entity_type: str, entity_id: str) -> str:
+    """Generate on-canister code for %db delete <Type> <id>."""
+    esc_type = entity_type.replace("'", "\\'")
+    esc_id = entity_id.replace("'", "\\'")
+    return (
+        "from ic_python_db import Database as _DB\n"
+        "_db = _DB.get_instance()\n"
+        f"_type_name = '{esc_type}'\n"
+        f"_eid = '{esc_id}'\n"
+        "_cls = None\n"
+        "for _tn, _tc in _db._entity_types.items():\n"
+        "    if _tc.__name__ == _type_name or _tn == _type_name:\n"
+        "        _cls = _tc\n"
+        "        break\n"
+        "if _cls is None:\n"
+        f"    print('Unknown entity type: {esc_type}')\n"
+        "else:\n"
+        "    _e = _cls[_eid]\n"
+        "    if _e is None:\n"
+        f"        print('{esc_type}#{esc_id} not found.')\n"
+        "    else:\n"
+        "        _e.delete()\n"
+        f"        print('Deleted {esc_type}#{esc_id}')\n"
+    )
+
+
+def _handle_db(args: str, canister: str, network: str) -> str:
+    """Dispatch %db subcommands. Returns canister output string."""
+    parts = args.strip().split(None, 2)
+    subcmd = parts[0] if parts else "help"
+    rest = parts[1].strip() if len(parts) > 1 else ""
+    rest2 = parts[2].strip() if len(parts) > 2 else ""
+
+    if subcmd == "help":
+        return _DB_USAGE
+
+    if subcmd == "types":
+        return canister_exec(_db_types_code(), canister, network)
+
+    if subcmd == "count":
+        code = (
+            "from ic_python_db import Database; db = Database.get_instance(); "
+            "print(f'{sum(1 for k in db._db_storage.keys() if not k.startswith(\"_\"))} entries')"
+        )
+        return canister_exec(code, canister, network)
+
+    if subcmd == "dump":
+        code = "from ic_python_db import Database; print(Database.get_instance().dump_json(pretty=True))"
+        return canister_exec(code, canister, network)
+
+    if subcmd == "clear":
+        code = "from ic_python_db import Database; Database.get_instance().clear(); print('Database cleared.')"
+        return canister_exec(code, canister, network)
+
+    if subcmd == "list":
+        if not rest:
+            return "Usage: %db list <Type> [N]"
+        # rest could be "User 20" or just "User"
+        list_parts = rest.split(None, 1)
+        if rest2:
+            list_parts = [rest, rest2]
+        entity_type = list_parts[0]
+        limit = 20
+        if len(list_parts) > 1:
+            try:
+                limit = int(list_parts[1])
+            except ValueError:
+                pass
+        return canister_exec(_db_list_code(entity_type, limit), canister, network)
+
+    if subcmd == "show":
+        if not rest:
+            return "Usage: %db show <Type> <id>"
+        show_parts = rest.split(None, 1)
+        if rest2:
+            show_parts = [rest, rest2]
+        if len(show_parts) < 2:
+            return "Usage: %db show <Type> <id>"
+        return canister_exec(_db_show_code(show_parts[0], show_parts[1]), canister, network)
+
+    if subcmd == "search":
+        if not rest:
+            return "Usage: %db search <Type> <field>=<value>"
+        # Parse: "User name=Alice"
+        search_parts = rest.split(None, 1)
+        if rest2:
+            search_parts = [rest, rest2]
+        if len(search_parts) < 2 or "=" not in search_parts[1]:
+            return "Usage: %db search <Type> <field>=<value>"
+        entity_type = search_parts[0]
+        field, _, value = search_parts[1].partition("=")
+        return canister_exec(_db_search_code(entity_type, field.strip(), value.strip()), canister, network)
+
+    if subcmd == "export":
+        if not rest:
+            return "Usage: %db export <Type> [file.json]"
+        export_parts = rest.split(None, 1)
+        if rest2:
+            export_parts = [rest, rest2]
+        entity_type = export_parts[0]
+        out_file = export_parts[1] if len(export_parts) > 1 else None
+
+        result = canister_exec(_db_export_code(entity_type), canister, network)
+        if result is None:
+            return "[error] no response from canister"
+
+        # Parse the export marker
+        for line in result.strip().split("\n"):
+            if line.startswith("__DB_EXPORT__"):
+                import base64
+                import json
+                payload = base64.b64decode(line[len("__DB_EXPORT__"):]).decode()
+                records = json.loads(payload)
+
+                if out_file:
+                    os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
+                    with open(out_file, "w") as f:
+                        json.dump(records, f, indent=2, default=str)
+                    return f"Exported {len(records)} {entity_type} entities -> {out_file}"
+                else:
+                    return json.dumps(records, indent=2, default=str)
+
+        # No marker found — return raw output (likely an error message)
+        return result
+
+    if subcmd == "import":
+        if not rest:
+            return "Usage: %db import <file.json>"
+        import_file = rest
+        if rest2:
+            import_file = rest  # first arg is the file
+
+        try:
+            with open(import_file, "r") as f:
+                data = f.read()
+        except FileNotFoundError:
+            return f"[error] file not found: {import_file}"
+
+        # Validate JSON
+        import json
+        try:
+            records = json.loads(data)
+        except json.JSONDecodeError as e:
+            return f"[error] invalid JSON: {e}"
+
+        if not isinstance(records, list):
+            records = [records]
+
+        # Import in batches to avoid message size limits
+        batch_size = 50
+        total_ok = 0
+        total_fail = 0
+        all_errors = []
+
+        for i in range(0, len(records), batch_size):
+            batch = records[i:i + batch_size]
+            import base64
+            b64 = base64.b64encode(json.dumps(batch, default=str).encode()).decode()
+            result = canister_exec(_db_import_code(b64), canister, network)
+            if result:
+                for line in result.strip().split("\n"):
+                    if line.startswith("Imported "):
+                        # Parse "Imported N entities (M failed)"
+                        import re as _re
+                        m = _re.match(r"Imported (\d+) entities \((\d+) failed\)", line)
+                        if m:
+                            total_ok += int(m.group(1))
+                            total_fail += int(m.group(2))
+                    elif line.strip().startswith("ERROR:"):
+                        all_errors.append(line.strip())
+
+        summary = f"Imported {total_ok} entities ({total_fail} failed) from {import_file}"
+        if all_errors:
+            summary += "\n" + "\n".join(all_errors[:10])
+        return summary
+
+    if subcmd == "delete":
+        if not rest:
+            return "Usage: %db delete <Type> <id>"
+        del_parts = rest.split(None, 1)
+        if rest2:
+            del_parts = [rest, rest2]
+        if len(del_parts) < 2:
+            return "Usage: %db delete <Type> <id>"
+        return canister_exec(_db_delete_code(del_parts[0], del_parts[1]), canister, network)
+
+    return f"Unknown db command: {subcmd}\n\n" + _DB_USAGE
 
 
 def _canister_info(canister: str, network: str) -> str:
@@ -1835,6 +2236,11 @@ def _handle_magic(line: str, canister: str, network: str) -> str:
             return "Usage: %wget <url> <dest_path>"
         return _wget(parts[0], parts[1], canister, network)
 
+    # %db subcommand system
+    if stripped == "%db" or stripped.startswith("%db "):
+        args = stripped[3:].strip()
+        return _handle_db(args, canister, network)
+
     # %task subcommand system
     if stripped == "%task" or stripped.startswith("%task "):
         args = stripped[5:].strip()
@@ -2045,7 +2451,9 @@ print('__BASILISK_INFO__' + json.dumps(_info))
     print("    %task info|log|start|stop|delete <id|name>")
     print("    %who                      List namespace variables")
     print("    %info                     Show canister info")
-    print("    %db count|dump|clear      Database operations")
+    print("    %db types|list|show|search Database exploration")
+    print("    %db export|import          Import/export entities as JSON")
+    print("    %db count|dump|clear       Database operations")
     print("    %wallet <token> balance   Check token balance (ckbtc, cketh, icp)")
     print("    %wallet <token> transfer <amt> <to>  Transfer tokens")
     print("    %run <file>               Execute file from canister")
