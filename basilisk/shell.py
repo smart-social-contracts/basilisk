@@ -723,7 +723,7 @@ def _task_log_code(tid: str) -> str:
         "                if len(_e.result or '') > 200: _res += '...'\n"
         "                _sa = getattr(_e, 'started_at', 0) or 0\n"
         "                _dt = _fmt_s(_sa) if _sa else _fmt_ns(getattr(_e, '_timestamp_created', None) or getattr(_e, '_timestamp_updated', None))\n"
-        '                print(f\'  #{_e._id} | {_e.status or "idle":<10} | {_dt} | {_e.name}\'\n)'
+        '                print(f\'  #{_e._id} | {_e.status or "idle":<10} | {_dt} | {_e.name}\')\n'
         "                if _res: print(f'    {_res}')\n"
         "                if _get_logs:\n"
         "                    _log_name = 'task_%s_%s' % (_e.task._id, _e._id)\n"
