@@ -1159,6 +1159,14 @@ _LEDGER_SYMBOLS = {
 
 _WALLET_HISTORY_PATH = "/wallet_history.jsonl"
 
+# ICRC-1 Index canister IDs (for transaction history)
+_INDEX_IDS = {
+    "ckbtc":  "n5wcd-faaaa-aaaar-qaaea-cai",
+    "cketh":  "s3zol-vqaaa-aaaar-qacpa-cai",
+    "ckusdc": "xrs4b-hiaaa-aaaar-qafoa-cai",
+    "icp":    "qhbym-qaaaa-aaaaa-aaafq-cai",
+}
+
 
 def _parse_subaccount(args: str):
     """Extract --sub and --from-sub flags from args string.
@@ -1215,7 +1223,7 @@ def _wallet_balance(token: str, canister: str, network: str, subaccount: str = N
     if sub_candid is None:
         return f"Invalid subaccount hex: {subaccount}"
 
-    cmd = ["dfx", "canister", "call", "--query"]
+    cmd = ["dfx", "canister", "call", "--query", "--output", "json"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([
@@ -1224,17 +1232,13 @@ def _wallet_balance(token: str, canister: str, network: str, subaccount: str = N
     ])
 
     try:
+        import json as _json
         r = _run_dfx_with_retries(cmd, timeout_s=30)
         if r.returncode != 0:
             return f"[dfx error] {r.stderr.strip()}"
-        # Parse response like "(1_000 : nat)"
-        raw = r.stdout.strip()
-        m = re.search(r'\(\s*([\d_]+)', raw)
-        if m:
-            amount = int(m.group(1).replace('_', ''))
-            human = amount / (10 ** decimals)
-            return f"{amount} e{decimals} ({human:.{decimals}f} {symbol})"
-        return f"Balance: {raw}"
+        amount = int(_json.loads(r.stdout.strip()).replace('_', ''))
+        human = amount / (10 ** decimals)
+        return f"{amount} e{decimals} ({human:.{decimals}f} {symbol})"
     except subprocess.TimeoutExpired:
         return "[error] balance query timed out"
     except FileNotFoundError:
@@ -1403,79 +1407,106 @@ def _wallet_result(canister: str, network: str) -> str:
     return result or "No wallet result found."
 
 
-def _wallet_history(token: str, canister: str, network: str, count: int = 10) -> str:
-    """Show recent transfer history from the canister's local log."""
-    import json
+def _wallet_history(token: str, canister: str, network: str, count: int = 10,
+                    subaccount: str = None) -> str:
+    """Query the on-chain Index canister for complete transaction history."""
+    import datetime
+    import json as _json
+
+    index = _INDEX_IDS.get(token)
+    if not index:
+        return f"No index canister known for {token}"
+
     symbol = _LEDGER_SYMBOLS.get(token, token.upper())
     decimals = _LEDGER_DECIMALS.get(token, 8)
 
-    history_code = (
-        f"try:\n"
-        f"    with open('{_WALLET_HISTORY_PATH}', 'r') as _f:\n"
-        f"        _lines = [l.strip() for l in _f if l.strip()]\n"
-        f"    print('WALLET_HISTORY:' + chr(10).join(_lines))\n"
-        f"except FileNotFoundError:\n"
-        f"    print('WALLET_HISTORY:')\n"
-    )
-    result = canister_exec(history_code, canister, network)
-    if not result or 'WALLET_HISTORY:' not in result:
-        return "[error] could not read wallet history"
+    sub_candid = _candid_subaccount(subaccount)
+    if sub_candid is None:
+        return f"Invalid subaccount hex: {subaccount}"
 
-    raw = result.split('WALLET_HISTORY:', 1)[1].strip()
-    if not raw:
-        return "No transfer history recorded yet."
+    cmd = ["dfx", "canister", "call", "--query", "--output", "json"]
+    if network:
+        cmd.extend(["--network", network])
+    cmd.extend([
+        index, "get_account_transactions",
+        f'(record {{ max_results = {count} : nat; start = null;'
+        f' account = record {{ owner = principal "{canister}"; subaccount = {sub_candid} }} }})',
+    ])
 
-    lines = raw.split('\n')
-    entries = []
-    for line in lines:
-        try:
-            entry = json.loads(line)
-            if token and entry.get('token') != token:
-                continue
-            entries.append(entry)
-        except json.JSONDecodeError:
-            continue
+    try:
+        r = _run_dfx_with_retries(cmd, timeout_s=30)
+        if r.returncode != 0:
+            return f"[dfx error] {r.stderr.strip()}"
+    except subprocess.TimeoutExpired:
+        return "[error] index query timed out"
+    except FileNotFoundError:
+        return "[error] dfx not found — install the DFINITY SDK"
 
-    if not entries:
-        return f"No {symbol} transfers recorded."
+    try:
+        data = _json.loads(r.stdout)
+    except _json.JSONDecodeError:
+        return f"[error] failed to parse index response"
 
-    # Show last N entries
-    entries = entries[-count:]
+    if "Err" in data:
+        return f"[error] index returned: {data['Err']}"
+
+    ok = data.get("Ok", {})
+    txns = ok.get("transactions", [])
+
+    if not txns:
+        return f"No {symbol} transactions found."
 
     rows = []
-    for e in entries:
-        ts_ns = e.get('ts', 0)
-        ts_s = ts_ns // 1_000_000_000 if ts_ns else 0
-        if ts_s:
-            import datetime
-            dt = datetime.datetime.utcfromtimestamp(ts_s).strftime('%Y-%m-%d %H:%M')
-        else:
-            dt = "?"
-        amt = e.get('amount', 0)
-        human_amt = amt / (10 ** decimals)
-        direction = e.get('dir', '?')
-        arrow = "→" if direction == "out" else "←"
-        target = e.get('to', '?')
-        # Truncate principal for display
-        if len(target) > 20:
-            target_short = target[:10] + "…" + target[-5:]
-        else:
-            target_short = target
-        # Parse result
-        ok = "?"
-        try:
-            res = json.loads(e.get('result', '{}'))
-            ok = "✓" if res.get('ok') else "✗"
-        except (json.JSONDecodeError, TypeError):
-            pass
-        sub_info = ""
-        if e.get('to_sub'):
-            sub_info += f" sub:{e['to_sub'][:8]}…"
-        if e.get('from_sub'):
-            sub_info += f" from:{e['from_sub'][:8]}…"
-        rows.append(f"  {ok} {dt} {arrow} {human_amt:.{decimals}f} {symbol} → {target_short}{sub_info}")
+    for entry in txns:
+        tx_id = entry.get("id", "?").replace("_", "")
+        tx = entry.get("transaction", {})
+        kind = tx.get("kind", "")
+        ts_ns = int(tx.get("timestamp", "0"))
+        ts_s = ts_ns // 1_000_000_000
+        dt = datetime.datetime.utcfromtimestamp(ts_s).strftime('%Y-%m-%d %H:%M') if ts_s else "?"
 
-    header = f"Transfer history ({symbol}, last {len(rows)}):"
+        if kind == "transfer":
+            transfers = tx.get("transfer", [])
+            if not transfers:
+                continue
+            t = transfers[0]
+            from_p = t.get("from", {}).get("owner", "?")
+            to_p = t.get("to", {}).get("owner", "?")
+            amt = int(t.get("amount", "0").replace("_", ""))
+            human_amt = amt / (10 ** decimals)
+
+            if from_p == canister and to_p == canister:
+                arrow = "↔"
+                peer = "self"
+            elif from_p == canister:
+                arrow = "→"
+                peer = to_p
+            else:
+                arrow = "←"
+                peer = from_p
+
+            if len(peer) > 20:
+                peer = peer[:10] + "…" + peer[-5:]
+            rows.append(f"  {dt}  #{tx_id}  {arrow} {human_amt:.{decimals}f} {symbol}  {peer}")
+
+        elif kind == "mint":
+            mints = tx.get("mint", [])
+            if mints:
+                amt = int(mints[0].get("amount", "0").replace("_", ""))
+                human_amt = amt / (10 ** decimals)
+                rows.append(f"  {dt}  #{tx_id}  ⊕ {human_amt:.{decimals}f} {symbol}  mint")
+
+        elif kind == "burn":
+            burns = tx.get("burn", [])
+            if burns:
+                amt = int(burns[0].get("amount", "0").replace("_", ""))
+                human_amt = amt / (10 ** decimals)
+                rows.append(f"  {dt}  #{tx_id}  ⊖ {human_amt:.{decimals}f} {symbol}  burn")
+
+    if not rows:
+        return f"No {symbol} transactions found."
+
+    header = f"{symbol} transaction history (last {len(rows)}):"
     return header + "\n" + "\n".join(rows)
 
 
@@ -1533,7 +1564,7 @@ def _handle_wallet(args: str, canister: str, network: str) -> str:
                 count = int(rest)
             except ValueError:
                 pass
-        return _wallet_history(token, canister, network, count=count)
+        return _wallet_history(token, canister, network, count=count, subaccount=sub)
 
     return f"Unknown wallet command: {subcmd}\n\n" + _WALLET_USAGE
 
