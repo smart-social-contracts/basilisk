@@ -24,6 +24,10 @@ Shell commands:
     %db dump      Dump the canister database as JSON
     %db clear     Clear the canister database
     %db count     Count total entities in the database
+    %wallet <token> balance       Check canister token balance
+    %wallet <token> deposit       Show deposit address
+    %wallet <token> transfer <amount> <to>  Transfer tokens from canister
+    %wallet result                Check last transfer result
     %info         Show canister info (principal, cycles, status, deploy)
     !<cmd>        Run a local OS command (e.g. !ls, !cat file.py)
     :q / exit     Quit the shell
@@ -1119,6 +1123,253 @@ _TASK_USAGE = (
 )
 
 
+# ---------------------------------------------------------------------------
+# %wallet subcommand handlers — ICRC-1 token operations
+# ---------------------------------------------------------------------------
+
+# Well-known ICRC-1 ledger canister IDs on IC mainnet
+_LEDGER_IDS = {
+    "ckbtc": "mxzaz-hqaaa-aaaar-qaada-cai",
+    "cketh": "ss2fx-dyaaa-aaaar-qacoq-cai",
+    "icp":   "ryjl3-tyaaa-aaaaa-aaaba-cai",
+}
+
+# ICRC-1 transfer fees (in smallest unit)
+_LEDGER_FEES = {
+    "ckbtc": 10,       # 10 satoshis
+    "cketh": 2_000_000_000,  # 2 gwei
+    "icp":   10_000,   # 0.0001 ICP
+}
+
+_LEDGER_DECIMALS = {
+    "ckbtc": 8,
+    "cketh": 18,
+    "icp":   8,
+}
+
+_LEDGER_SYMBOLS = {
+    "ckbtc": "ckBTC",
+    "cketh": "ckETH",
+    "icp":   "ICP",
+}
+
+
+def _wallet_balance(token: str, canister: str, network: str) -> str:
+    """Query the token ledger for the canister's balance via dfx (client-side)."""
+    ledger = _LEDGER_IDS.get(token)
+    if not ledger:
+        return f"Unknown token: {token}. Supported: {', '.join(_LEDGER_IDS.keys())}"
+
+    decimals = _LEDGER_DECIMALS.get(token, 8)
+    symbol = _LEDGER_SYMBOLS.get(token, token.upper())
+
+    cmd = ["dfx", "canister", "call", "--query"]
+    if network:
+        cmd.extend(["--network", network])
+    cmd.extend([
+        ledger, "icrc1_balance_of",
+        f'(record {{ owner = principal "{canister}"; subaccount = null }})',
+    ])
+
+    try:
+        r = _run_dfx_with_retries(cmd, timeout_s=30)
+        if r.returncode != 0:
+            return f"[dfx error] {r.stderr.strip()}"
+        # Parse response like "(1_000 : nat)"
+        raw = r.stdout.strip()
+        m = re.search(r'\(\s*([\d_]+)', raw)
+        if m:
+            amount = int(m.group(1).replace('_', ''))
+            human = amount / (10 ** decimals)
+            return f"{amount} e{decimals} ({human:.{decimals}f} {symbol})"
+        return f"Balance: {raw}"
+    except subprocess.TimeoutExpired:
+        return "[error] balance query timed out"
+    except FileNotFoundError:
+        return "[error] dfx not found — install the DFINITY SDK"
+
+
+def _wallet_deposit(token: str, canister: str) -> str:
+    """Show deposit instructions for the canister."""
+    symbol = _LEDGER_SYMBOLS.get(token, token.upper())
+    return (
+        f"To deposit {symbol} to this canister, transfer to:\n"
+        f"  Principal: {canister}\n"
+        f"  (no subaccount needed)\n"
+        f"\n"
+        f"From dfx:\n"
+        f'  dfx canister call {_LEDGER_IDS.get(token, "<ledger>")} icrc1_transfer \\\n'
+        f'    \'(record {{ to = record {{ owner = principal "{canister}"; subaccount = null }};'
+        f' amount = <AMOUNT>; fee = opt {_LEDGER_FEES.get(token, 0)};'
+        f" memo = null; from_subaccount = null; created_at_time = null }})'"
+    )
+
+
+def _wallet_transfer(token: str, rest: str, canister: str, network: str) -> str:
+    """Transfer tokens from the canister to a target principal.
+
+    Uses ic.set_timer(0, generator_callback) so the Rust runtime drives the
+    inter-canister call.  Result is written to /tmp/_wallet_result.txt on the
+    canister's memfs and polled by the client.
+    """
+    parts = rest.strip().split(None, 1)
+    if len(parts) < 2:
+        return f"Usage: %wallet {token} transfer <amount> <principal>"
+    amount_str, target = parts[0], parts[1].strip()
+
+    ledger = _LEDGER_IDS.get(token)
+    if not ledger:
+        return f"Unknown token: {token}"
+
+    fee = _LEDGER_FEES.get(token, 0)
+    decimals = _LEDGER_DECIMALS.get(token, 8)
+    symbol = _LEDGER_SYMBOLS.get(token, token.upper())
+
+    # Allow human-readable amounts like "0.001" or raw integers
+    try:
+        if '.' in amount_str:
+            amount = int(float(amount_str) * (10 ** decimals))
+        else:
+            amount = int(amount_str)
+    except ValueError:
+        return f"Invalid amount: {amount_str}"
+
+    if amount <= 0:
+        return "Amount must be positive"
+
+    human = amount / (10 ** decimals)
+
+    # Generate canister code that sets up a timer callback
+    esc_target = target.replace("'", "\\'")
+    transfer_code = (
+        "import json as _json\n"
+        "def _wallet_transfer_cb():\n"
+        "    try:\n"
+        f"        _args = ic.candid_encode('(record {{ to = record {{ owner = principal \"{esc_target}\"; subaccount = null }}; amount = {amount}; fee = opt {fee}; memo = null; from_subaccount = null; created_at_time = null }})')\n"
+        f"        _result = yield ic.call_raw('{ledger}', 'icrc1_transfer', _args, 0)\n"
+        "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
+        "            _decoded = ic.candid_decode(_result.Ok)\n"
+        "            _out = _json.dumps({'ok': True, 'response': str(_decoded)})\n"
+        "        elif hasattr(_result, 'Err') and _result.Err is not None:\n"
+        "            _out = _json.dumps({'ok': False, 'error': str(_result.Err)})\n"
+        "        else:\n"
+        "            _out = _json.dumps({'ok': True, 'response': str(_result)})\n"
+        "    except Exception as _e:\n"
+        "        _out = _json.dumps({'ok': False, 'error': str(_e)})\n"
+        "    with open('/tmp/_wallet_result.txt', 'w') as _f:\n"
+        "        _f.write(_out)\n"
+        "# Clear previous result\n"
+        "try:\n"
+        "    import os; os.remove('/tmp/_wallet_result.txt')\n"
+        "except OSError:\n"
+        "    pass\n"
+        "ic.set_timer(0, _wallet_transfer_cb)\n"
+        f"print('WALLET_TRANSFER_INITIATED')\n"
+    )
+
+    # Send the code to canister
+    result = canister_exec(transfer_code, canister, network)
+    if result is None or 'WALLET_TRANSFER_INITIATED' not in (result or ''):
+        return f"[error] failed to initiate transfer: {result}"
+
+    print(f"Transferring {human:.{decimals}f} {symbol} ({amount} e{decimals}) to {target}...")
+    sys.stdout.flush()
+
+    # Poll for result (the timer fires almost immediately)
+    poll_code = (
+        "try:\n"
+        "    with open('/tmp/_wallet_result.txt', 'r') as _f:\n"
+        "        print('WALLET_RESULT:' + _f.read())\n"
+        "except FileNotFoundError:\n"
+        "    print('WALLET_PENDING')\n"
+    )
+
+    import json
+    for _ in range(15):
+        _time.sleep(2)
+        poll_result = canister_exec(poll_code, canister, network)
+        if poll_result and 'WALLET_RESULT:' in poll_result:
+            json_str = poll_result.split('WALLET_RESULT:', 1)[1].strip()
+            try:
+                data = json.loads(json_str)
+                if data.get('ok'):
+                    return f"Transfer successful: {data.get('response', '')}"
+                else:
+                    return f"Transfer failed: {data.get('error', 'unknown error')}"
+            except json.JSONDecodeError:
+                return f"Transfer result: {json_str}"
+
+    return "[timeout] Transfer initiated but result not yet available. Use: %wallet result"
+
+
+def _wallet_result(canister: str, network: str) -> str:
+    """Check the result of the last wallet transfer."""
+    import json
+    poll_code = (
+        "try:\n"
+        "    with open('/tmp/_wallet_result.txt', 'r') as _f:\n"
+        "        print('WALLET_RESULT:' + _f.read())\n"
+        "except FileNotFoundError:\n"
+        "    print('No pending wallet result.')\n"
+    )
+    result = canister_exec(poll_code, canister, network)
+    if result and 'WALLET_RESULT:' in result:
+        json_str = result.split('WALLET_RESULT:', 1)[1].strip()
+        try:
+            data = json.loads(json_str)
+            if data.get('ok'):
+                return f"Last transfer: OK — {data.get('response', '')}"
+            else:
+                return f"Last transfer: FAILED — {data.get('error', 'unknown')}"
+        except json.JSONDecodeError:
+            return f"Last transfer result: {json_str}"
+    return result or "No wallet result found."
+
+
+_WALLET_USAGE = (
+    "Usage:\n"
+    "  %wallet <token> balance                 Check canister token balance\n"
+    "  %wallet <token> deposit                 Show deposit address\n"
+    "  %wallet <token> transfer <amt> <to>     Transfer tokens from canister\n"
+    "  %wallet result                          Check last transfer result\n"
+    "\n"
+    "Supported tokens: ckbtc, cketh, icp\n"
+    "Amount can be human-readable (0.001) or raw smallest-unit (100000)"
+)
+
+
+def _handle_wallet(args: str, canister: str, network: str) -> str:
+    """Dispatch %wallet subcommands."""
+    parts = args.strip().split(None, 2)
+
+    if not parts:
+        return _WALLET_USAGE
+
+    # %wallet result — no token needed
+    if parts[0] == "result":
+        return _wallet_result(canister, network)
+
+    token = parts[0].lower()
+    if token not in _LEDGER_IDS:
+        return f"Unknown token: {token}. Supported: {', '.join(_LEDGER_IDS.keys())}\n\n" + _WALLET_USAGE
+
+    subcmd = parts[1] if len(parts) > 1 else "balance"
+    rest = parts[2] if len(parts) > 2 else ""
+
+    if subcmd == "balance":
+        return _wallet_balance(token, canister, network)
+
+    if subcmd == "deposit":
+        return _wallet_deposit(token, canister)
+
+    if subcmd == "transfer":
+        if not rest:
+            return f"Usage: %wallet {token} transfer <amount> <principal>"
+        return _wallet_transfer(token, rest, canister, network)
+
+    return f"Unknown wallet command: {subcmd}\n\n" + _WALLET_USAGE
+
+
 def _task_log_follow_query(tid: str) -> str:
     """Canister code that returns JSON lines of recent executions for polling."""
     esc_tid = tid.replace("'", "\\'")
@@ -1390,6 +1641,11 @@ def _handle_magic(line: str, canister: str, network: str) -> str:
         args = stripped[5:].strip()
         return _handle_task(args, canister, network)
 
+    # %wallet subcommand system
+    if stripped == "%wallet" or stripped.startswith("%wallet "):
+        args = stripped[7:].strip()
+        return _handle_wallet(args, canister, network)
+
     # %info — comprehensive canister information
     if stripped == "%info":
         return _canister_info(canister, network)
@@ -1591,6 +1847,8 @@ print('__BASILISK_INFO__' + json.dumps(_info))
     print("    %who                      List namespace variables")
     print("    %info                     Show canister info")
     print("    %db count|dump|clear      Database operations")
+    print("    %wallet <token> balance   Check token balance (ckbtc, cketh, icp)")
+    print("    %wallet <token> transfer <amt> <to>  Transfer tokens")
     print("    %run <file>               Execute file from canister")
     print("    %get <remote> [local]     Download file from canister")
     print("    %put <local> [remote]     Upload file to canister")
