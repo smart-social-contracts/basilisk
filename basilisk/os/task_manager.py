@@ -155,11 +155,12 @@ def _create_timer_callback(step: TaskStep, task: Task) -> Callable:
         # (including TaskExecution records).  We must catch everything here.
         try:
             # Re-load entities inside callback to avoid stale references.
-            # Eagerly load TaskStep/Call so ManyToOne descriptors populate
-            # task._relations before we access _task.steps.
+            # Load Task FIRST, then children, so ManyToOne descriptors
+            # populate bidirectional _relations on Task (.steps, .schedules).
             _task = Task.load(task_id)
-            list(TaskStep.instances())
             list(Call.instances())
+            list(TaskStep.instances())
+            list(TaskSchedule.instances())
             _step = list(_task.steps)[
                 [str(s._id) for s in _task.steps].index(step_id)
             ]
@@ -214,24 +215,30 @@ class TaskManager:
 
     def _update_timers(self) -> void:
         logger.info("Updating timers")
-        # Eagerly load related entities so ManyToOne descriptors resolve and
-        # populate bidirectional _relations on Task (steps, schedules).
+        # Eagerly load entities in correct order: Task FIRST, then children.
+        # ManyToOne descriptors on children (TaskStep.task, TaskSchedule.task)
+        # populate bidirectional _relations on the parent Task. If Tasks
+        # aren't loaded first, children create isolated Task instances and
+        # the task loaded later has empty .steps / .schedules.
+        all_tasks = list(Task.instances())
+        list(Call.instances())
         list(TaskStep.instances())
         list(TaskSchedule.instances())
-        list(Call.instances())
 
-        # Load tasks individually from database (not Task.instances() which
-        # fails atomically if any related entity is missing)
-        all_tasks = []
-        if Task.count() > 0:
-            max_id = Task.max_id()
-            for tid in range(1, max_id + 1):
-                try:
-                    t = Task.load(str(tid))
-                    if t:
-                        all_tasks.append(t)
-                except Exception:
-                    logger.warning(f"Skipping Task {tid} due to load error")
+        if not all_tasks:
+            # Fallback: Task.instances() may return empty if max_id is 0
+            # (stale counter). Try loading individually.
+            try:
+                max_id = Task.max_id()
+                for tid in range(1, max_id + 1):
+                    try:
+                        t = Task.load(str(tid))
+                        if t:
+                            all_tasks.append(t)
+                    except Exception:
+                        logger.warning(f"Skipping Task {tid} due to load error")
+            except Exception:
+                pass
         if not all_tasks:
             all_tasks = self.tasks
         logger.info(f"Found {len(all_tasks)} tasks in database")

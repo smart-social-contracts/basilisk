@@ -401,6 +401,24 @@ _FMT_NS = (
     "    return f'{y:04}-{mo+1:02}-{d+1:02} {h:02}:{m:02}:{sec:02} UTC'\n"
 )
 
+# Helper snippet: convert seconds timestamp to UTC string.
+_FMT_S = (
+    "def _fmt_s(s):\n"
+    "    if not s: return ''\n"
+    "    d = s // 86400; r = s % 86400\n"
+    "    h = r // 3600; r %= 3600\n"
+    "    m = r // 60; sec = r % 60\n"
+    "    y = 1970; md = [31,28,31,30,31,30,31,31,30,31,30,31]\n"
+    "    while True:\n"
+    "        yd = 366 if (y%4==0 and (y%100!=0 or y%400==0)) else 365\n"
+    "        if d < yd: break\n"
+    "        d -= yd; y += 1\n"
+    "    md[1] = 29 if (y%4==0 and (y%100!=0 or y%400==0)) else 28\n"
+    "    mo = 0\n"
+    "    while mo < 12 and d >= md[mo]: d -= md[mo]; mo += 1\n"
+    "    return f'{y:04}-{mo+1:02}-{d+1:02} {h:02}:{m:02}:{sec:02} UTC'\n"
+)
+
 # Helper snippet: get latest execution timestamp for a task.
 _LAST_EXEC_TS = (
     "def _last_exec_ts(_task):\n"
@@ -681,12 +699,16 @@ def _task_log_code(tid: str) -> str:
     esc_tid = tid.replace("'", "\\'")
     return (
         _TASK_RESOLVE + _TASK_UNAVAILABLE +
-        _FMT_NS +
+        _FMT_NS + _FMT_S +
         "if 'Task' in dir():\n"
         + _TASK_FIND.format(tid=esc_tid) +
         "    if not _t:\n"
         f"        print('Task not found: {esc_tid}')\n"
         "    else:\n"
+        "        try:\n"
+        "            from ic_python_logging import get_logs as _get_logs\n"
+        "        except ImportError:\n"
+        "            _get_logs = None\n"
         "        _execs = list(_t.executions)\n"
         "        if not _execs:\n"
         "            print(f'Task {_t._id}: {_t.name} — no executions')\n"
@@ -699,10 +721,18 @@ def _task_log_code(tid: str) -> str:
         "            for _e in _shown:\n"
         "                _res = (_e.result or '')[:200]\n"
         "                if len(_e.result or '') > 200: _res += '...'\n"
-        "                _ts = getattr(_e, '_timestamp_created', None) or getattr(_e, '_timestamp_updated', None)\n"
-        "                _dt = _fmt_ns(_ts)\n"
-        '                print(f\'  #{_e._id} | {_e.status or "idle":<10} | {_dt} | {_e.name}\')\n'
+        "                _sa = getattr(_e, 'started_at', 0) or 0\n"
+        "                _dt = _fmt_s(_sa) if _sa else _fmt_ns(getattr(_e, '_timestamp_created', None) or getattr(_e, '_timestamp_updated', None))\n"
+        '                print(f\'  #{_e._id} | {_e.status or "idle":<10} | {_dt} | {_e.name}\'\n)'
         "                if _res: print(f'    {_res}')\n"
+        "                if _get_logs:\n"
+        "                    _log_name = 'task_%s_%s' % (_e.task._id, _e._id)\n"
+        "                    _logs = _get_logs(logger_name=_log_name)\n"
+        "                    if _logs:\n"
+        "                        for _l in _logs[-5:]:\n"
+        "                            _msg = _l.get('message', '') if isinstance(_l, dict) else str(_l)\n"
+        "                            _lvl = _l.get('level', '') if isinstance(_l, dict) else ''\n"
+        "                            print(f'      [{_lvl}] {_msg}')\n"
     )
 
 
