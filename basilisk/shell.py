@@ -1245,7 +1245,7 @@ def _wallet_transfer(token: str, rest: str, canister: str, network: str) -> str:
         "import json as _json\n"
         "def _wallet_transfer_cb():\n"
         "    try:\n"
-        f"        _args = ic.candid_encode('(record {{ to = record {{ owner = principal \"{esc_target}\"; subaccount = null }}; amount = {amount}; fee = opt {fee}; memo = null; from_subaccount = null; created_at_time = null }})')\n"
+        f"        _args = ic.candid_encode('(record {{ to = record {{ owner = principal \"{esc_target}\"; subaccount = null }}; amount = {amount} : nat; fee = opt ({fee} : nat); memo = null; from_subaccount = null; created_at_time = null }})')\n"
         f"        _result = yield ic.call_raw('{ledger}', 'icrc1_transfer', _args, 0)\n"
         "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
         "            _decoded = ic.candid_decode(_result.Ok)\n"
