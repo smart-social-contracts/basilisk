@@ -385,17 +385,23 @@ pub fn drive_generator(
 async fn perform_service_call(
     service_call: &basilisk_cpython::PyObjectRef,
 ) -> Result<Vec<u8>, (ic_cdk::api::call::RejectionCode, String)> {
-    // Extract canister_principal — a Principal Python object
+    // Extract canister_principal — may be a plain string (from ic.call_raw)
+    // or a Principal Python object with ._text attribute.
     let py_principal = service_call
         .get_attr("canister_principal")
         .unwrap_or_else(|e| {
             ic_cdk::trap(&format!("_ServiceCall missing canister_principal: {}", e));
         });
 
-    // Get principal text via .to_str() or ._text
+    // Try direct string extraction first (ic.call_raw passes a plain string),
+    // then fall back to ._text (Service-based calls pass a Principal object).
     let principal_text = py_principal
-        .get_attr("_text")
-        .and_then(|t| t.extract_str())
+        .extract_str()
+        .or_else(|_| {
+            py_principal
+                .get_attr("_text")
+                .and_then(|t| t.extract_str())
+        })
         .unwrap_or_else(|e| {
             ic_cdk::trap(&format!("Cannot extract principal text: {}", e));
         });

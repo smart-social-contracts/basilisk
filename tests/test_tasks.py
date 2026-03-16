@@ -1103,6 +1103,42 @@ class TestTaskTimerExecution:
             )
             _cleanup_task(tid, canister, network)
 
+    def test_call_raw_in_async_step(self, canister_reachable, canister, network):
+        """ic.call_raw in a generator timer callback should work (string principal).
+
+        Regression test: perform_service_call in drive_generator previously
+        assumed canister_principal was a Principal object with ._text, but
+        ic.call_raw sets it as a plain string.  This caused ic_cdk::trap(),
+        silently rolling back all state changes.
+        """
+        # Call the canister's own status() method via ic.call_raw
+        call_raw_code = (
+            "def async_task():\n"
+            "    _args = ic.candid_encode('()')\n"
+            "    _result = yield ic.call_raw(ic.id().to_str(), 'status', _args, 0)\n"
+            "    _decoded = ic.candid_decode(_result)\n"
+            "    return 'CALL_RAW_OK:' + str(_decoded)\n"
+        )
+        result = _task_magic(
+            "%task create _test_call_raw_gen", canister, network
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            _task_magic(
+                f'%task add-step {tid} --async --code "{call_raw_code}"',
+                canister, network,
+            )
+            _task_magic(f"%task start {tid}", canister, network)
+            info = _wait_for_task_execution(tid, canister, network, timeout=30)
+            assert "Executions: 0" not in info, f"call_raw timer never fired: {info}"
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "completed" in log, f"Expected completed: {log}"
+            assert "CALL_RAW_OK" in log, f"Expected CALL_RAW_OK in log: {log}"
+        finally:
+            _cleanup_task(tid, canister, network)
+
 
 # ===========================================================================
 # Task lookup by name (not just ID)
