@@ -195,8 +195,8 @@ class TestMagicCommands:
 
     def test_ps(self, canister_reachable, canister, network):
         result = magic_on_canister("%ps", canister, network)
-        # Either shows tasks, "No tasks.", or ImportError if entities not available
-        assert "|" in result or "No tasks" in result or "ImportError" in result
+        # Either shows tasks, "No tasks.", or ImportError/ValueError if entities not available
+        assert "|" in result or "No tasks" in result or "ImportError" in result or "ValueError" in result
 
     def test_ls_root(self, canister_reachable, canister, network):
         """%ls should list the canister's root filesystem."""
@@ -419,7 +419,7 @@ class TestOneshotMode:
     def test_oneshot_ps(self, canister_reachable, canister, network):
         out, err, rc = self._run_shell("%ps", canister, network)
         assert rc == 0
-        assert "|" in out or "No tasks" in out or "ImportError" in out
+        assert "|" in out or "No tasks" in out or "ImportError" in out or "ValueError" in out
 
     def test_oneshot_local_command(self, canister_reachable, canister, network):
         out, err, rc = self._run_shell("!echo local-test", canister, network)

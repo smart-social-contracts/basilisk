@@ -1116,7 +1116,7 @@ class TestTaskTimerExecution:
             "def async_task():\n"
             "    _args = ic.candid_encode('()')\n"
             "    _result = yield ic.call_raw(ic.id().to_str(), 'status', _args, 0)\n"
-            "    _decoded = ic.candid_decode(_result)\n"
+            "    _decoded = ic.candid_decode(_result.Ok)\n"
             "    return 'CALL_RAW_OK:' + str(_decoded)\n"
         )
         result = _task_magic(
