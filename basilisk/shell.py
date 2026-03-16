@@ -1129,32 +1129,80 @@ _TASK_USAGE = (
 
 # Well-known ICRC-1 ledger canister IDs on IC mainnet
 _LEDGER_IDS = {
-    "ckbtc": "mxzaz-hqaaa-aaaar-qaada-cai",
-    "cketh": "ss2fx-dyaaa-aaaar-qacoq-cai",
-    "icp":   "ryjl3-tyaaa-aaaaa-aaaba-cai",
+    "ckbtc":  "mxzaz-hqaaa-aaaar-qaada-cai",
+    "cketh":  "ss2fx-dyaaa-aaaar-qacoq-cai",
+    "ckusdc": "xevnm-gaaaa-aaaar-qafnq-cai",
+    "icp":    "ryjl3-tyaaa-aaaaa-aaaba-cai",
 }
 
 # ICRC-1 transfer fees (in smallest unit)
 _LEDGER_FEES = {
-    "ckbtc": 10,       # 10 satoshis
-    "cketh": 2_000_000_000,  # 2 gwei
-    "icp":   10_000,   # 0.0001 ICP
+    "ckbtc":  10,              # 10 satoshis
+    "cketh":  2_000_000_000,   # 2 gwei
+    "ckusdc": 10_000,          # 0.01 USDC
+    "icp":    10_000,          # 0.0001 ICP
 }
 
 _LEDGER_DECIMALS = {
-    "ckbtc": 8,
-    "cketh": 18,
-    "icp":   8,
+    "ckbtc":  8,
+    "cketh":  18,
+    "ckusdc": 6,
+    "icp":    8,
 }
 
 _LEDGER_SYMBOLS = {
-    "ckbtc": "ckBTC",
-    "cketh": "ckETH",
-    "icp":   "ICP",
+    "ckbtc":  "ckBTC",
+    "cketh":  "ckETH",
+    "ckusdc": "ckUSDC",
+    "icp":    "ICP",
 }
 
+_WALLET_HISTORY_PATH = "/wallet_history.jsonl"
 
-def _wallet_balance(token: str, canister: str, network: str) -> str:
+
+def _parse_subaccount(args: str):
+    """Extract --sub and --from-sub flags from args string.
+
+    Returns (cleaned_args, subaccount_hex_or_None, from_subaccount_hex_or_None).
+    Subaccount hex is validated as a 32-byte (64 char) hex string.
+    """
+    sub = None
+    from_sub = None
+    parts = args.split()
+    cleaned = []
+    i = 0
+    while i < len(parts):
+        if parts[i] == "--sub" and i + 1 < len(parts):
+            sub = parts[i + 1]
+            i += 2
+        elif parts[i] == "--from-sub" and i + 1 < len(parts):
+            from_sub = parts[i + 1]
+            i += 2
+        else:
+            cleaned.append(parts[i])
+            i += 1
+    return " ".join(cleaned), sub, from_sub
+
+
+def _candid_subaccount(hex_str):
+    """Convert a hex subaccount to Candid blob literal, or 'null' if None."""
+    if not hex_str:
+        return "null"
+    # Pad to 64 hex chars (32 bytes) if shorter
+    hex_str = hex_str.strip().lower()
+    if len(hex_str) < 64:
+        hex_str = hex_str.zfill(64)
+    if len(hex_str) != 64:
+        return None  # invalid
+    try:
+        bytes.fromhex(hex_str)
+    except ValueError:
+        return None
+    blob = "blob \"" + "".join(f"\\{hex_str[i:i+2]}" for i in range(0, 64, 2)) + "\""
+    return f"opt {blob}"
+
+
+def _wallet_balance(token: str, canister: str, network: str, subaccount: str = None) -> str:
     """Query the token ledger for the canister's balance via dfx (client-side)."""
     ledger = _LEDGER_IDS.get(token)
     if not ledger:
@@ -1163,12 +1211,16 @@ def _wallet_balance(token: str, canister: str, network: str) -> str:
     decimals = _LEDGER_DECIMALS.get(token, 8)
     symbol = _LEDGER_SYMBOLS.get(token, token.upper())
 
+    sub_candid = _candid_subaccount(subaccount)
+    if sub_candid is None:
+        return f"Invalid subaccount hex: {subaccount}"
+
     cmd = ["dfx", "canister", "call", "--query"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([
         ledger, "icrc1_balance_of",
-        f'(record {{ owner = principal "{canister}"; subaccount = null }})',
+        f'(record {{ owner = principal "{canister}"; subaccount = {sub_candid} }})',
     ])
 
     try:
@@ -1189,23 +1241,28 @@ def _wallet_balance(token: str, canister: str, network: str) -> str:
         return "[error] dfx not found — install the DFINITY SDK"
 
 
-def _wallet_deposit(token: str, canister: str) -> str:
+def _wallet_deposit(token: str, canister: str, subaccount: str = None) -> str:
     """Show deposit instructions for the canister."""
     symbol = _LEDGER_SYMBOLS.get(token, token.upper())
+    sub_candid = _candid_subaccount(subaccount)
+    if sub_candid is None:
+        return f"Invalid subaccount hex: {subaccount}"
+    sub_display = f"  Subaccount: {subaccount}\n" if subaccount else "  (no subaccount)\n"
     return (
         f"To deposit {symbol} to this canister, transfer to:\n"
         f"  Principal: {canister}\n"
-        f"  (no subaccount needed)\n"
+        + sub_display +
         f"\n"
         f"From dfx:\n"
         f'  dfx canister call {_LEDGER_IDS.get(token, "<ledger>")} icrc1_transfer \\\n'
-        f'    \'(record {{ to = record {{ owner = principal "{canister}"; subaccount = null }};'
-        f' amount = <AMOUNT>; fee = opt {_LEDGER_FEES.get(token, 0)};'
+        f'    \'(record {{ to = record {{ owner = principal "{canister}"; subaccount = {sub_candid} }};'
+        f' amount = <AMOUNT> : nat; fee = opt ({_LEDGER_FEES.get(token, 0)} : nat);'
         f" memo = null; from_subaccount = null; created_at_time = null }})'"
     )
 
 
-def _wallet_transfer(token: str, rest: str, canister: str, network: str) -> str:
+def _wallet_transfer(token: str, rest: str, canister: str, network: str,
+                     to_subaccount: str = None, from_subaccount: str = None) -> str:
     """Transfer tokens from the canister to a target principal.
 
     Uses ic.set_timer(0, generator_callback) so the Rust runtime drives the
@@ -1239,13 +1296,27 @@ def _wallet_transfer(token: str, rest: str, canister: str, network: str) -> str:
 
     human = amount / (10 ** decimals)
 
+    to_sub_candid = _candid_subaccount(to_subaccount)
+    if to_sub_candid is None:
+        return f"Invalid target subaccount hex: {to_subaccount}"
+    from_sub_candid = _candid_subaccount(from_subaccount)
+    if from_sub_candid is None:
+        return f"Invalid source subaccount hex: {from_subaccount}"
+
     # Generate canister code that sets up a timer callback
     esc_target = target.replace("'", "\\'")
+    # History record metadata
+    hist_token = token
+    hist_amount = amount
+    hist_target = target
+    hist_to_sub = to_subaccount or ""
+    hist_from_sub = from_subaccount or ""
+
     transfer_code = (
         "import json as _json\n"
         "def _wallet_transfer_cb():\n"
         "    try:\n"
-        f"        _args = ic.candid_encode('(record {{ to = record {{ owner = principal \"{esc_target}\"; subaccount = null }}; amount = {amount} : nat; fee = opt ({fee} : nat); memo = null; from_subaccount = null; created_at_time = null }})')\n"
+        f"        _args = ic.candid_encode('(record {{ to = record {{ owner = principal \"{esc_target}\"; subaccount = {to_sub_candid} }}; amount = {amount} : nat; fee = opt ({fee} : nat); memo = null; from_subaccount = {from_sub_candid}; created_at_time = null }})')\n"
         f"        _result = yield ic.call_raw('{ledger}', 'icrc1_transfer', _args, 0)\n"
         "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
         "            _decoded = ic.candid_decode(_result.Ok)\n"
@@ -1258,6 +1329,12 @@ def _wallet_transfer(token: str, rest: str, canister: str, network: str) -> str:
         "        _out = _json.dumps({'ok': False, 'error': str(_e)})\n"
         "    with open('/tmp/_wallet_result.txt', 'w') as _f:\n"
         "        _f.write(_out)\n"
+        "    try:\n"
+        f"        _rec = _json.dumps({{'dir': 'out', 'token': '{hist_token}', 'amount': {hist_amount}, 'to': '{hist_target}', 'to_sub': '{hist_to_sub}', 'from_sub': '{hist_from_sub}', 'ts': ic.time(), 'result': _out}})\n"
+        f"        with open('{_WALLET_HISTORY_PATH}', 'a') as _hf:\n"
+        "            _hf.write(_rec + chr(10))\n"
+        "    except Exception:\n"
+        "        pass\n"
         "# Clear previous result\n"
         "try:\n"
         "    import os; os.remove('/tmp/_wallet_result.txt')\n"
@@ -1326,21 +1403,102 @@ def _wallet_result(canister: str, network: str) -> str:
     return result or "No wallet result found."
 
 
+def _wallet_history(token: str, canister: str, network: str, count: int = 10) -> str:
+    """Show recent transfer history from the canister's local log."""
+    import json
+    symbol = _LEDGER_SYMBOLS.get(token, token.upper())
+    decimals = _LEDGER_DECIMALS.get(token, 8)
+
+    history_code = (
+        f"try:\n"
+        f"    with open('{_WALLET_HISTORY_PATH}', 'r') as _f:\n"
+        f"        _lines = [l.strip() for l in _f if l.strip()]\n"
+        f"    print('WALLET_HISTORY:' + chr(10).join(_lines))\n"
+        f"except FileNotFoundError:\n"
+        f"    print('WALLET_HISTORY:')\n"
+    )
+    result = canister_exec(history_code, canister, network)
+    if not result or 'WALLET_HISTORY:' not in result:
+        return "[error] could not read wallet history"
+
+    raw = result.split('WALLET_HISTORY:', 1)[1].strip()
+    if not raw:
+        return "No transfer history recorded yet."
+
+    lines = raw.split('\n')
+    entries = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+            if token and entry.get('token') != token:
+                continue
+            entries.append(entry)
+        except json.JSONDecodeError:
+            continue
+
+    if not entries:
+        return f"No {symbol} transfers recorded."
+
+    # Show last N entries
+    entries = entries[-count:]
+
+    rows = []
+    for e in entries:
+        ts_ns = e.get('ts', 0)
+        ts_s = ts_ns // 1_000_000_000 if ts_ns else 0
+        if ts_s:
+            import datetime
+            dt = datetime.datetime.utcfromtimestamp(ts_s).strftime('%Y-%m-%d %H:%M')
+        else:
+            dt = "?"
+        amt = e.get('amount', 0)
+        human_amt = amt / (10 ** decimals)
+        direction = e.get('dir', '?')
+        arrow = "→" if direction == "out" else "←"
+        target = e.get('to', '?')
+        # Truncate principal for display
+        if len(target) > 20:
+            target_short = target[:10] + "…" + target[-5:]
+        else:
+            target_short = target
+        # Parse result
+        ok = "?"
+        try:
+            res = json.loads(e.get('result', '{}'))
+            ok = "✓" if res.get('ok') else "✗"
+        except (json.JSONDecodeError, TypeError):
+            pass
+        sub_info = ""
+        if e.get('to_sub'):
+            sub_info += f" sub:{e['to_sub'][:8]}…"
+        if e.get('from_sub'):
+            sub_info += f" from:{e['from_sub'][:8]}…"
+        rows.append(f"  {ok} {dt} {arrow} {human_amt:.{decimals}f} {symbol} → {target_short}{sub_info}")
+
+    header = f"Transfer history ({symbol}, last {len(rows)}):"
+    return header + "\n" + "\n".join(rows)
+
+
 _WALLET_USAGE = (
     "Usage:\n"
-    "  %wallet <token> balance                 Check canister token balance\n"
-    "  %wallet <token> deposit                 Show deposit address\n"
-    "  %wallet <token> transfer <amt> <to>     Transfer tokens from canister\n"
-    "  %wallet result                          Check last transfer result\n"
+    "  %wallet <token> balance [--sub <hex>]           Check canister token balance\n"
+    "  %wallet <token> deposit [--sub <hex>]           Show deposit address\n"
+    "  %wallet <token> transfer <amt> <to> [--sub <hex>] [--from-sub <hex>]\n"
+    "                                                  Transfer tokens from canister\n"
+    "  %wallet <token> history [--sub <hex>] [<N>]     Show last N transfers (default 10)\n"
+    "  %wallet result                                  Check last transfer result\n"
     "\n"
-    "Supported tokens: ckbtc, cketh, icp\n"
-    "Amount can be human-readable (0.001) or raw smallest-unit (100000)"
+    "Supported tokens: ckbtc, cketh, ckusdc, icp\n"
+    "Amount can be human-readable (0.001) or raw smallest-unit (100000)\n"
+    "Subaccounts: 32-byte hex string (e.g. 00000000000000000000000000000001)"
 )
 
 
 def _handle_wallet(args: str, canister: str, network: str) -> str:
     """Dispatch %wallet subcommands."""
-    parts = args.strip().split(None, 2)
+    # Extract --sub / --from-sub before parsing positional args
+    cleaned_args, sub, from_sub = _parse_subaccount(args)
+    parts = cleaned_args.strip().split(None, 2)
 
     if not parts:
         return _WALLET_USAGE
@@ -1357,15 +1515,25 @@ def _handle_wallet(args: str, canister: str, network: str) -> str:
     rest = parts[2] if len(parts) > 2 else ""
 
     if subcmd == "balance":
-        return _wallet_balance(token, canister, network)
+        return _wallet_balance(token, canister, network, subaccount=sub)
 
     if subcmd == "deposit":
-        return _wallet_deposit(token, canister)
+        return _wallet_deposit(token, canister, subaccount=sub)
 
     if subcmd == "transfer":
         if not rest:
             return f"Usage: %wallet {token} transfer <amount> <principal>"
-        return _wallet_transfer(token, rest, canister, network)
+        return _wallet_transfer(token, rest, canister, network,
+                                to_subaccount=sub, from_subaccount=from_sub)
+
+    if subcmd == "history":
+        count = 10
+        if rest:
+            try:
+                count = int(rest)
+            except ValueError:
+                pass
+        return _wallet_history(token, canister, network, count=count)
 
     return f"Unknown wallet command: {subcmd}\n\n" + _WALLET_USAGE
 
