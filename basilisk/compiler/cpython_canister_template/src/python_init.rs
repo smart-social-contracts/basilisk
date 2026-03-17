@@ -687,41 +687,131 @@ def _basilisk_save_files():
     _basilisk_ic.stable_write(offset, header + payload)
 
 def _basilisk_load_files():
-    """Restore memfs files from stable memory (after maps region)."""
+    """Restore memfs files from stable memory and/or StableBTreeMap file store."""
     import os
     import base64 as _b64
+    # 1. Legacy: restore from stable memory region (backward compat)
     offset = _stable_maps_end_offset()
     current_pages = _basilisk_ic.stable_size()
-    if current_pages == 0:
-        return
-    total_bytes = current_pages * 65536
-    if offset + 16 > total_bytes:
-        return
-    header = _basilisk_ic.stable_read(offset, 16)
-    if header[:8] != _STABLE_FS_MAGIC:
-        return
-    payload_len = int.from_bytes(header[8:16], 'little')
-    if payload_len == 0:
-        return
-    payload = _basilisk_ic.stable_read(offset + 16, payload_len)
-    files = _json.loads(payload.decode('utf-8'))
-    for fpath, entry in files.items():
+    if current_pages > 0:
+        total_bytes = current_pages * 65536
+        if offset + 16 <= total_bytes:
+            header = _basilisk_ic.stable_read(offset, 16)
+            if header[:8] == _STABLE_FS_MAGIC:
+                payload_len = int.from_bytes(header[8:16], 'little')
+                if payload_len > 0:
+                    payload = _basilisk_ic.stable_read(offset + 16, payload_len)
+                    files = _json.loads(payload.decode('utf-8'))
+                    for fpath, entry in files.items():
+                        try:
+                            parent = os.path.dirname(fpath)
+                            if parent and parent != '/':
+                                os.makedirs(parent, exist_ok=True)
+                            if isinstance(entry, str):
+                                b64_data = entry
+                            else:
+                                b64_data = entry.get('b64', '')
+                            content = _b64.b64decode(b64_data)
+                            with open(fpath, 'wb') as f:
+                                f.write(content)
+                        except Exception:
+                            pass
+    # 2. Primary: restore from StableBTreeMap file store (overwrites legacy)
+    _basilisk_restore_files_from_map()
+
+# === Immediate file persistence via StableBTreeMap ===
+# Files written to non-volatile paths are automatically persisted to a
+# dedicated StableBTreeMap so they survive upgrades by default.
+
+_BASILISK_FS_MEM_ID = 255
+_basilisk_file_store = StableBTreeMap(memory_id=_BASILISK_FS_MEM_ID, max_key_size=500, max_value_size=0)
+
+import builtins as _builtins
+_original_open = _builtins.open
+
+def _persist_file(path):
+    """Read file from memfs and store in the file store map."""
+    import base64 as _b64
+    try:
+        with _original_open(path, 'rb') as _f:
+            _content = _f.read()
+        _basilisk_file_store.insert(path, _b64.b64encode(_content).decode('ascii'))
+    except Exception:
+        pass
+
+class _PersistentFile:
+    """Wrapper that auto-persists file content to StableBTreeMap on close."""
+    __slots__ = ('_pf_file', '_pf_path', '_pf_done')
+    def __init__(self, file_obj, path):
+        self._pf_file = file_obj
+        self._pf_path = path
+        self._pf_done = False
+    def _pf_persist(self):
+        if not self._pf_done:
+            self._pf_done = True
+            _persist_file(self._pf_path)
+    def close(self):
+        self._pf_file.close()
+        self._pf_persist()
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        self._pf_file.close()
+        self._pf_persist()
+        return False
+    def __getattr__(self, name):
+        return getattr(self._pf_file, name)
+    def __iter__(self):
+        return iter(self._pf_file)
+
+def _persistent_open(file, mode='r', *args, **kwargs):
+    """Wrapper around built-in open() that auto-persists writes."""
+    _f = _original_open(file, mode, *args, **kwargs)
+    if isinstance(file, (str, bytes)):
+        _p = str(file)
+        if any(c in mode for c in 'wxa+') and not any(_p.startswith(pfx) for pfx in _VOLATILE_PREFIXES):
+            return _PersistentFile(_f, _p)
+    return _f
+
+_builtins.open = _persistent_open
+
+import os as _os
+_original_os_remove = _os.remove
+_original_os_rename = _os.rename
+
+def _persistent_os_remove(path, *args, **kwargs):
+    """Remove file from memfs and from the file store map."""
+    _original_os_remove(path, *args, **kwargs)
+    _p = str(path)
+    if _basilisk_file_store.contains_key(_p):
+        _basilisk_file_store.remove(_p)
+
+def _persistent_os_rename(src, dst, *args, **kwargs):
+    """Rename file in memfs and update the file store map."""
+    _original_os_rename(src, dst, *args, **kwargs)
+    _s, _d = str(src), str(dst)
+    if _basilisk_file_store.contains_key(_s):
+        _data = _basilisk_file_store.get(_s)
+        _basilisk_file_store.remove(_s)
+        if _data is not None:
+            _basilisk_file_store.insert(_d, _data)
+
+_os.remove = _persistent_os_remove
+_os.unlink = _persistent_os_remove
+_os.rename = _persistent_os_rename
+
+def _basilisk_restore_files_from_map():
+    """Restore files from the StableBTreeMap file store to memfs."""
+    import os as _ros
+    import base64 as _rb64
+    for _path, _b64_data in _basilisk_file_store.items():
         try:
-            parent = os.path.dirname(fpath)
-            if parent and parent != '/':
-                os.makedirs(parent, exist_ok=True)
-            # Backward compat: old format is plain b64 string, new is {"b64": ..., "mtime": ...}
-            if isinstance(entry, str):
-                b64_data = entry
-                mtime = None
-            else:
-                b64_data = entry.get('b64', '')
-                mtime = entry.get('mtime')
-            content = _b64.b64decode(b64_data)
-            with open(fpath, 'wb') as f:
-                f.write(content)
-            if mtime is not None:
-                os.utime(fpath, (mtime, mtime))
+            _parent = _ros.path.dirname(_path)
+            if _parent and _parent != '/':
+                _ros.makedirs(_parent, exist_ok=True)
+            _content = _rb64.b64decode(_b64_data)
+            with _original_open(_path, 'wb') as _f:
+                _f.write(_content)
         except Exception:
             pass
 

@@ -148,13 +148,11 @@ class Call(Entity, TimestampedMixin):
 
                 call_result = async_task_fn()
 
-                # If async_task is a generator, iterate it so its body executes
+                # If async_task is a generator, use yield from so that
+                # yielded _ServiceCall objects and sub-generators propagate
+                # to the Rust drive_generator for IC inter-canister calls.
                 if hasattr(call_result, '__next__'):
-                    try:
-                        while True:
-                            next(call_result)
-                    except StopIteration as e:
-                        return e.value
+                    return (yield from call_result)
                 return call_result
 
             return async_wrapper

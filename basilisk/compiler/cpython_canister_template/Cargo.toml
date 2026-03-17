@@ -32,3 +32,4 @@ ic-wasi-polyfill = { version = "0.6.1", features = ["transient"] }
 
 [patch.crates-io]
 num-bigint = { git = "https://github.com/rust-num/num-bigint" }
+ic-wasi-polyfill = { path = "../ic-wasi-polyfill-patched" }

@@ -229,6 +229,7 @@ def manipulate_wasm(
         query_dispatcher_idx,
         update_dispatcher_idx,
         placeholder_funcs,
+        lifecycle=lifecycle,
     )
 
     with open(output_wasm_path, "wb") as f:
@@ -312,6 +313,7 @@ def build_modified_wasm(
     query_dispatcher_idx: int,
     update_dispatcher_idx: int,
     placeholder_funcs: Dict[str, int],
+    lifecycle: Optional[Dict[str, Dict]] = None,
 ) -> bytes:
     """
     Build the modified wasm binary with injected data and method exports.
@@ -448,10 +450,24 @@ def build_modified_wasm(
             write_section(output, SECTION_FUNCTION, new_content)
 
         elif section.section_id == SECTION_EXPORT:
-            export_count = len(exports)
+            # Strip canister_heartbeat export when no user @ic.heartbeat is defined.
+            # The heartbeat fires every IC block (~0.5s) and produces empty log
+            # entries even when the handler returns immediately, flooding
+            # dfx canister logs and wasting cycles.
+            strip_heartbeat = not (lifecycle or {}).get("heartbeat")
+            if strip_heartbeat:
+                # Rebuild existing exports without canister_heartbeat entries
+                filtered_exports = [e for e in exports if e["name"] != "canister_heartbeat"]
+            else:
+                filtered_exports = exports
+            export_count = len(filtered_exports)
             new_export_count = export_count + len(methods)
-            _, first_entry_offset = decode_unsigned_leb128(wasm, section.content_offset)
-            rest = wasm[first_entry_offset:section.content_offset + section.size]
+            # Re-encode the filtered existing exports from scratch
+            rest = bytearray()
+            for exp in filtered_exports:
+                rest.extend(encode_name(exp["name"]))
+                rest.append(exp["kind"])
+                rest.extend(encode_unsigned_leb128(exp["index"]))
             new_entries = bytearray()
             for i, method in enumerate(methods):
                 func_idx = total_existing_funcs + i

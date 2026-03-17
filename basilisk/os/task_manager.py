@@ -172,7 +172,16 @@ def _create_timer_callback(step: TaskStep, task: Task) -> Callable:
             try:
                 task_execution.started_at = get_now()
                 task_execution.status = TaskExecutionStatus.RUNNING
-                result = _step.call._function(task_execution)()
+                fn_result = _step.call._function(task_execution)()
+
+                # If the function returned a generator (async codex with
+                # yield-based IC calls), delegate via yield from so the
+                # Rust drive_generator handles _ServiceCall objects and
+                # sub-generators for inter-canister calls.
+                if hasattr(fn_result, 'send'):
+                    result = yield from fn_result
+                else:
+                    result = fn_result
                 logger.info(f"Timer callback completed with result: {result}")
 
                 task_execution.result = str(result)[:4999] if result is not None else ""
