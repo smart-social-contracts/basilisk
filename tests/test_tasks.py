@@ -954,6 +954,34 @@ class TestTaskTimerExecution:
         finally:
             _cleanup_task(tid, canister, network)
 
+    def test_start_async_logger_in_task_log(self, canister_reachable, canister, network):
+        """Async step using logger.info() should show messages in %task log output."""
+        result = _task_magic(
+            "%task create _test_timer_async_log", canister, network
+        )
+        tid = _extract_task_id(result)
+        assert tid, f"Failed to create task: {result}"
+        try:
+            _task_magic(
+                f'%task add-step {tid} --async --code '
+                '"def async_task(): logger.info(\'LOGCHECK_HELLO\'); logger.info(\'LOGCHECK_WORLD\'); yield; return \'done\'"',
+                canister, network,
+            )
+            _task_magic(f"%task start {tid}", canister, network)
+            info = _wait_for_task_execution(tid, canister, network)
+            assert "Executions: 0" not in info, f"Async timer never fired: {info}"
+
+            log = _task_magic(f"%task log {tid}", canister, network)
+            assert "completed" in log, f"Expected completed: {log}"
+            assert "LOGCHECK_HELLO" in log, (
+                f"Expected logger.info() output in task log: {log}"
+            )
+            assert "LOGCHECK_WORLD" in log, (
+                f"Expected second logger.info() output in task log: {log}"
+            )
+        finally:
+            _cleanup_task(tid, canister, network)
+
     def test_start_async_http_download(self, canister_reachable, canister, network):
         """An async step making an HTTP outcall should execute and record the result."""
         result = _task_magic(
