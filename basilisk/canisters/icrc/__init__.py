@@ -222,6 +222,69 @@ class ICRCLedger(Service):
     def icrc1_transfer(self, args: TransferArg) -> TransferResult: ...
 
 
+# Candid type strings for typed encoding/decoding of inter-canister calls.
+# Without these, the Rust Candid decoder falls back to typeless decoding
+# which returns hashed field names (_NNNN) instead of proper names.
+_ACCOUNT_CANDID = 'record { owner : principal; subaccount : opt blob }'
+_SPENDER_CANDID = 'record { owner : principal; subaccount : opt blob }'
+_TRANSFER_ERROR_CANDID = (
+    'variant { BadFee : record { expected_fee : nat }; '
+    'BadBurn : record { min_burn_amount : nat }; '
+    'InsufficientFunds : record { balance : nat }; '
+    'TooOld : null; CreatedInFuture : null; '
+    'Duplicate : record { duplicate_of : nat }; '
+    'TemporarilyUnavailable : null; '
+    'GenericError : record { error_code : nat; message : text } }'
+)
+_TRANSFER_TX_CANDID = (
+    f'record {{ to : {_ACCOUNT_CANDID}; fee : opt nat; '
+    f'from_ : {_ACCOUNT_CANDID}; memo : opt vec nat; '
+    f'created_at_time : opt nat64; amount : nat; '
+    f'spender : opt {_SPENDER_CANDID} }}'
+)
+_MINT_TX_CANDID = (
+    f'record {{ to : {_ACCOUNT_CANDID}; memo : opt vec nat; '
+    f'created_at_time : opt nat64; amount : nat }}'
+)
+_BURN_TX_CANDID = (
+    f'record {{ from_ : {_ACCOUNT_CANDID}; memo : opt vec nat; '
+    f'created_at_time : opt nat64; amount : nat; '
+    f'spender : opt {_SPENDER_CANDID} }}'
+)
+_APPROVE_CANDID = (
+    f'record {{ fee : opt nat; from_ : {_ACCOUNT_CANDID}; '
+    f'memo : opt vec nat; created_at_time : opt nat64; amount : nat; '
+    f'expected_allowance : opt nat; expires_at : opt nat64; '
+    f'spender : {_SPENDER_CANDID} }}'
+)
+_TRANSACTION_CANDID = (
+    f'record {{ burn : opt {_BURN_TX_CANDID}; kind : text; '
+    f'mint : opt {_MINT_TX_CANDID}; approve : opt {_APPROVE_CANDID}; '
+    f'timestamp : nat64; transfer : opt {_TRANSFER_TX_CANDID} }}'
+)
+_ACCOUNT_TX_CANDID = f'record {{ id : nat; transaction : {_TRANSACTION_CANDID} }}'
+_GET_TX_RESPONSE_CANDID = (
+    f'record {{ balance : nat; transactions : vec {_ACCOUNT_TX_CANDID}; '
+    f'oldest_tx_id : opt nat }}'
+)
+_GET_TX_RESULT_CANDID = (
+    f'variant {{ Ok : {_GET_TX_RESPONSE_CANDID}; Err : text }}'
+)
+
+ICRCLedger._arg_types = {
+    'icrc1_balance_of': _ACCOUNT_CANDID,
+    'icrc1_transfer': (
+        f'record {{ to : {_ACCOUNT_CANDID}; fee : opt nat; memo : opt blob; '
+        f'from_subaccount : opt blob; created_at_time : opt nat64; amount : nat }}'
+    ),
+}
+ICRCLedger._return_types = {
+    'icrc1_balance_of': 'nat',
+    'icrc1_fee': 'nat',
+    'icrc1_transfer': f'variant {{ Ok : nat; Err : {_TRANSFER_ERROR_CANDID} }}',
+}
+
+
 class ICRCIndexer(Service):
     """
     Service proxy for an ICRC token indexer canister.
@@ -243,3 +306,13 @@ class ICRCIndexer(Service):
     def get_account_transactions(
         self, request: GetAccountTransactionsRequest
     ) -> Async[GetTransactionsResult]: ...
+
+
+ICRCIndexer._arg_types = {
+    'get_account_transactions': (
+        f'record {{ account : {_ACCOUNT_CANDID}; start : opt nat; max_results : nat }}'
+    ),
+}
+ICRCIndexer._return_types = {
+    'get_account_transactions': _GET_TX_RESULT_CANDID,
+}

@@ -190,24 +190,26 @@ class Wallet:
     # Async: balance query (inter-canister call)
     # ------------------------------------------------------------------
 
-    def balance_of(self, token_name, principal=None):
+    def balance_of(self, token_name, principal=None, subaccount=None):
         """
         Query the token's balance from the ledger canister (async).
 
         Must be called with ``yield``::
 
             balance = yield wallet.balance_of("ckBTC")
+            balance = yield wallet.balance_of("ckBTC", subaccount=sub_bytes)
 
         Args:
             token_name: Token symbol
             principal: Principal ID string. Defaults to this canister's ID.
+            subaccount: Optional 32-byte subaccount (bytes). Defaults to None.
 
         Returns:
             Generator that yields an inter-canister call and returns the balance as int.
         """
-        return self._balance_of(token_name, principal)
+        return self._balance_of(token_name, principal, subaccount)
 
-    def _balance_of(self, token_name, principal=None) -> Async[int]:
+    def _balance_of(self, token_name, principal=None, subaccount=None) -> Async[int]:
         if principal is None:
             principal = ic.id().to_str()
 
@@ -215,7 +217,7 @@ class Wallet:
         ledger = ICRCLedger(Principal.from_str(token.ledger))
 
         balance_result = yield ledger.icrc1_balance_of(
-            Account(owner=Principal.from_str(principal), subaccount=None)
+            Account(owner=Principal.from_str(principal), subaccount=subaccount)
         )
 
         balance = self._extract_ok_value(balance_result)
@@ -346,7 +348,7 @@ class Wallet:
     # Async: refresh transactions from indexer
     # ------------------------------------------------------------------
 
-    def refresh(self, token_name, max_results=100):
+    def refresh(self, token_name, max_results=100, subaccount=None):
         """
         Sync transaction history from the indexer canister (async).
 
@@ -356,14 +358,20 @@ class Wallet:
         Must be called with ``yield``::
 
             summary = yield wallet.refresh("ckBTC")
+            summary = yield wallet.refresh("REALMS", subaccount=sub_bytes)
+
+        Args:
+            token_name: Token symbol
+            max_results: Maximum number of transactions to fetch (default 100)
+            subaccount: Optional 32-byte subaccount (bytes). Defaults to None.
 
         Returns:
             Generator yielding inter-canister call. Returns dict:
             ``{"new_txs": int, "balance": int}``
         """
-        return self._refresh(token_name, max_results)
+        return self._refresh(token_name, max_results, subaccount)
 
-    def _refresh(self, token_name, max_results=100) -> Async[dict]:
+    def _refresh(self, token_name, max_results=100, subaccount=None) -> Async[dict]:
         token = self._require_token(token_name)
         canister_principal = ic.id().to_str()
 
@@ -375,7 +383,7 @@ class Wallet:
         request = GetAccountTransactionsRequest(
             account=Account(
                 owner=Principal.from_str(canister_principal),
-                subaccount=None,
+                subaccount=subaccount,
             ),
             start=None,
             max_results=max_results,
@@ -385,12 +393,15 @@ class Wallet:
         raw = self._extract_ok_value(result)
 
         # Parse the response
-        if isinstance(raw, dict) and "Ok" in raw:
+        if isinstance(raw, dict) and "_call_error" in raw:
+            logger.error(f"Indexer call failed for {token_name}: {raw['_call_error']}")
+            return {"new_txs": 0, "balance": self.cached_balance(token_name)}
+        elif isinstance(raw, dict) and "Ok" in raw:
             data = raw["Ok"]
         elif isinstance(raw, dict) and "transactions" in raw:
             data = raw
         else:
-            logger.error(f"Unexpected indexer response: {type(raw)}")
+            logger.error(f"Unexpected indexer response for {token_name}: {type(raw)}")
             return {"new_txs": 0, "balance": self.cached_balance(token_name)}
 
         balance = self._to_int(data.get("balance", 0))
@@ -493,11 +504,22 @@ class Wallet:
         Extract the inner value from a CallResult.
 
         Handles both attribute-style (result.Ok) and dict-style (result["Ok"]).
+        Returns the Err string (prefixed) if the result is an error, so callers
+        can check without exceptions (needed because the Rust shim doesn't
+        propagate exceptions from nested generators back to Python try/except).
         """
-        if hasattr(result, "Ok") and result.Ok is not None:
-            return result.Ok
-        if isinstance(result, dict) and "Ok" in result:
-            return result["Ok"]
+        # Attribute-style CallResult (from Rust shim)
+        if hasattr(result, "Ok"):
+            if result.Ok is not None:
+                return result.Ok
+            if hasattr(result, "Err") and result.Err is not None:
+                return {"_call_error": str(result.Err)}
+        # Dict-style result
+        if isinstance(result, dict):
+            if "Ok" in result:
+                return result["Ok"]
+            if "Err" in result:
+                return {"_call_error": str(result["Err"])}
         return result
 
     @staticmethod
