@@ -226,7 +226,22 @@ jobs:
     cpython-integration-tests:
         needs: release-candidate-deploy
         runs-on: ubuntu-latest
-        continue-on-error: true  # Many examples use features not yet in CPython template; don't block gate
+        continue-on-error: true  # Known failing examples don't block gate; see categories below
+        # Expected failures (triage 2026-03-21):
+        #   Candid type limitations:
+        #     - cross_canister_calls: cross-canister Record type resolves as text in variant
+        #     - func_types: Func type (Principal, method) not serializable to Candid
+        #     - candid_encoding: Func type encoding not supported
+        #   Feature limitations (StableBTreeMap / Func / HTTP):
+        #     - motoko_examples/http_counter: uses Func callback types + StableBTreeMap
+        #     - pre_and_post_upgrade: StableBTreeMap upgrade persistence not implemented
+        #   External dependencies / environment:
+        #     - bitcoin: needs bitcoin integration canister (tar extraction fails)
+        #     - ethereum_json_rpc: needs ETHEREUM_URL secret
+        #     - ledger_canister: ICP ledger canister Candid deserialization mismatch
+        #     - motoko_examples/threshold_ecdsa: needs threshold ECDSA subnet (PocketIC limitation)
+        #   Timeout:
+        #     - composite_queries: composite query times out in PocketIC
         if: ${{ needs.release-candidate-deploy.outputs.should_run_tests == 'true' }}
         env:
             BASILISK_PYTHON_BACKEND: cpython
@@ -422,7 +437,7 @@ jobs:
               timeout-minutes: 35
               run: |
                   source ../venv/bin/activate
-                  BASILISK_REBUILD=true npx ts-node --transpile-only --ignore=false test.ts 2>&1 || {
+                  npm test 2>&1 || {
                     echo "::error::Test failed for ${{ matrix.example_directories }}"
                     exit 1
                   }

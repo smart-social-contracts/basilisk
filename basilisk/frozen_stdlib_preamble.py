@@ -1011,11 +1011,29 @@ def _install_memfs():
         def _rename(src, dst):
             src = _normpath(src)
             dst = _normpath(dst)
-            if src not in _MEMFS:
+            if src in _MEMFS:
+                _MEMFS[dst] = _MEMFS.pop(src)
+                _MEMFS_MTIMES[dst] = _MEMFS_MTIMES.pop(src, _now())
+            elif src in _MEMFS_DIRS:
+                _MEMFS_DIRS.discard(src)
+                _MEMFS_DIRS.add(dst)
+                if src in _MEMFS_MTIMES:
+                    _MEMFS_MTIMES[dst] = _MEMFS_MTIMES.pop(src)
+                _src_prefix = src + '/'
+                _dst_prefix = dst + '/'
+                for _k in list(_MEMFS.keys()):
+                    if _k.startswith(_src_prefix):
+                        _new_k = _dst_prefix + _k[len(_src_prefix):]
+                        _MEMFS[_new_k] = _MEMFS.pop(_k)
+                        if _k in _MEMFS_MTIMES:
+                            _MEMFS_MTIMES[_new_k] = _MEMFS_MTIMES.pop(_k)
+                for _d in list(_MEMFS_DIRS):
+                    if _d.startswith(_src_prefix):
+                        _MEMFS_DIRS.discard(_d)
+                        _MEMFS_DIRS.add(_dst_prefix + _d[len(_src_prefix):])
+            else:
                 raise FileNotFoundError(
                     f"[Errno 2] No such file or directory: '{src}'")
-            _MEMFS[dst] = _MEMFS.pop(src)
-            _MEMFS_MTIMES[dst] = _MEMFS_MTIMES.pop(src, _now())
 
         def _stat(path):
             path = _normpath(path)
