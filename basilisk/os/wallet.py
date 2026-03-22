@@ -34,7 +34,7 @@ from basilisk.canisters.icrc import (
 )
 from ic_python_logging import get_logger
 
-from .entities import Token, WalletBalance, WalletTransfer
+from .entities import Token, WalletBalance, WalletSubaccount, WalletTransfer
 
 logger = get_logger("basilisk.os.wallet")
 
@@ -128,6 +128,135 @@ class Wallet:
                 "fee": token.fee,
             })
         return tokens
+
+    # ------------------------------------------------------------------
+    # Subaccount derivation (deterministic, no DB)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def make_subaccount(prefix, identifier):
+        """
+        Derive a 32-byte subaccount from a prefix and identifier.
+
+        The subaccount is ``prefix + identifier`` encoded as UTF-8 and
+        zero-padded (or truncated) to exactly 32 bytes.  The prefix
+        makes subaccounts self-describing when viewed in hex.
+
+        Common prefixes:
+            ``usr_``  — per-user subaccount (identifier = principal text)
+            ``inv_``  — per-invoice subaccount (identifier = invoice ID)
+
+        Args:
+            prefix: Short ASCII prefix, e.g. ``"usr_"`` or ``"inv_"``
+            identifier: Arbitrary string (principal, invoice ID, etc.)
+
+        Returns:
+            32-byte ``bytes`` object suitable for ICRC-1 subaccount fields.
+        """
+        raw = f"{prefix}{identifier}".encode("utf-8")
+        if len(raw) > 32:
+            raw = raw[:32]
+        return raw.ljust(32, b"\x00")
+
+    @staticmethod
+    def user_subaccount(principal):
+        """Derive the canonical ``usr_`` subaccount for a principal.
+
+        Args:
+            principal: Principal ID string (e.g. ``"aaaaa-aa"``)
+
+        Returns:
+            32-byte subaccount: ``b"usr_<principal>"`` zero-padded to 32 bytes.
+        """
+        return Wallet.make_subaccount("usr_", principal)
+
+    @staticmethod
+    def invoice_subaccount(invoice_id):
+        """Derive the canonical ``inv_`` subaccount for an invoice.
+
+        Args:
+            invoice_id: Invoice identifier string.
+
+        Returns:
+            32-byte subaccount: ``b"inv_<invoice_id>"`` zero-padded to 32 bytes.
+        """
+        return Wallet.make_subaccount("inv_", invoice_id)
+
+    # ------------------------------------------------------------------
+    # Subaccount registry (synchronous — local DB only)
+    # ------------------------------------------------------------------
+
+    def register_subaccount(self, token_name, subaccount_hex, label=""):
+        """
+        Register a subaccount for balance and transaction tracking.
+
+        Other extensions (invoices, marketplace, etc.) should call this
+        when they create subaccounts so the wallet tracks them during refresh.
+
+        Args:
+            token_name: Token symbol (e.g. "ckBTC")
+            subaccount_hex: Hex-encoded 32-byte subaccount string
+            label: Human-readable label (e.g. "Invoice #17f6a82d")
+
+        Returns:
+            The WalletSubaccount entity instance.
+        """
+        token = self._require_token(token_name)
+        # Check for existing registration
+        for sub in token.subaccounts:
+            if sub.subaccount_hex == subaccount_hex:
+                if label:
+                    sub.label = label
+                logger.info(f"Subaccount already registered for {token_name}: {label or subaccount_hex[:16]}")
+                return sub
+        sub = WalletSubaccount(
+            token=token,
+            subaccount_hex=subaccount_hex,
+            label=label or subaccount_hex[:16],
+        )
+        logger.info(f"Registered subaccount for {token_name}: {label or subaccount_hex[:16]}")
+        return sub
+
+    def unregister_subaccount(self, token_name, subaccount_hex):
+        """
+        Remove a subaccount from tracking.
+
+        Args:
+            token_name: Token symbol
+            subaccount_hex: Hex-encoded 32-byte subaccount string
+
+        Returns:
+            True if removed, False if not found.
+        """
+        token = self._require_token(token_name)
+        for sub in token.subaccounts:
+            if sub.subaccount_hex == subaccount_hex:
+                sub.delete()
+                logger.info(f"Unregistered subaccount for {token_name}: {subaccount_hex[:16]}")
+                return True
+        return False
+
+    def list_subaccounts(self, token_name):
+        """
+        List all registered subaccounts for a token.
+
+        Args:
+            token_name: Token symbol
+
+        Returns:
+            List of dicts with subaccount info.
+        """
+        token = Token[token_name]
+        if token is None:
+            return []
+        result = []
+        for sub in token.subaccounts:
+            result.append({
+                "subaccount_hex": sub.subaccount_hex,
+                "label": sub.label,
+                "balance": sub.balance,
+            })
+        return result
 
     # ------------------------------------------------------------------
     # Cached balance (synchronous — local DB only)
@@ -374,11 +503,91 @@ class Wallet:
     def _refresh(self, token_name, max_results=100, subaccount=None) -> Async[dict]:
         token = self._require_token(token_name)
         canister_principal = ic.id().to_str()
+        ledger = ICRCLedger(Principal.from_str(token.ledger))
 
+        # --- 1. Refresh the default (or explicitly requested) account ----
+        default_result = yield from self._refresh_account(
+            token, ledger, canister_principal, subaccount, max_results,
+        )
+        total_new = default_result["new_txs"]
+        default_balance = default_result["balance"]
+
+        # --- 2. Refresh all registered subaccounts -----------------------
+        sub_results = []
+        if subaccount is None:
+            for sub_entity in token.subaccounts:
+                try:
+                    sub_bytes = bytes.fromhex(sub_entity.subaccount_hex)
+                    sub_res = yield from self._refresh_account(
+                        token, ledger, canister_principal, sub_bytes, max_results,
+                    )
+                    sub_entity.balance = sub_res["balance"]
+                    total_new += sub_res["new_txs"]
+                    sub_results.append({
+                        "subaccount_hex": sub_entity.subaccount_hex,
+                        "label": sub_entity.label,
+                        "balance": sub_res["balance"],
+                        "new_txs": sub_res["new_txs"],
+                    })
+                except Exception as e:
+                    logger.error(f"Subaccount refresh failed for {token_name}/{sub_entity.label}: {e}")
+
+        aggregate_balance = default_balance + sum(s["balance"] for s in sub_results)
+
+        logger.info(
+            f"refresh({token_name}): {total_new} new txs, "
+            f"default_balance={default_balance}, aggregate={aggregate_balance}, "
+            f"subaccounts={len(sub_results)}"
+        )
+        return {
+            "new_txs": total_new,
+            "balance": default_balance,
+            "aggregate_balance": aggregate_balance,
+            "subaccounts": sub_results,
+        }
+
+    def _refresh_account(
+        self, token, ledger, canister_principal, subaccount, max_results,
+    ) -> Async[dict]:
+        """Refresh balance + transactions for a single account (default or subaccount)."""
+        token_name = token.name
+
+        # --- Query the ledger for the authoritative balance ---
+        balance_result = yield ledger.icrc1_balance_of(
+            Account(
+                owner=Principal.from_str(canister_principal),
+                subaccount=subaccount,
+            )
+        )
+        balance_raw = self._extract_ok_value(balance_result)
+        if isinstance(balance_raw, dict) and "_call_error" in balance_raw:
+            logger.error(f"Ledger balance query failed for {token_name}: {balance_raw['_call_error']}")
+            balance = 0
+        else:
+            balance = self._to_int(balance_raw)
+
+        # For default account, update the WalletBalance cache
+        if subaccount is None:
+            self._update_cached_balance(token, canister_principal, balance)
+
+        # --- Best-effort: sync transactions from the indexer ---
+        new_count = 0
         if not token.indexer:
-            logger.warning(f"No indexer configured for {token_name}")
-            return {"new_txs": 0, "balance": self.cached_balance(token_name)}
+            pass  # No indexer — balance-only
+        else:
+            try:
+                new_count = yield from self._sync_indexer_txs(
+                    token, canister_principal, subaccount, max_results,
+                )
+            except Exception as e:
+                logger.error(f"Indexer sync failed for {token_name}: {e}")
 
+        return {"new_txs": new_count, "balance": balance}
+
+    def _sync_indexer_txs(
+        self, token, canister_principal, subaccount, max_results,
+    ) -> Async[int]:
+        """Fetch transactions from the indexer for a single account. Returns new tx count."""
         indexer = ICRCIndexer(Principal.from_str(token.indexer))
         request = GetAccountTransactionsRequest(
             account=Account(
@@ -392,22 +601,21 @@ class Wallet:
         result = yield indexer.get_account_transactions(request)
         raw = self._extract_ok_value(result)
 
-        # Parse the response
+        data = None
         if isinstance(raw, dict) and "_call_error" in raw:
-            logger.error(f"Indexer call failed for {token_name}: {raw['_call_error']}")
-            return {"new_txs": 0, "balance": self.cached_balance(token_name)}
+            logger.error(f"Indexer call failed for {token.name}: {raw['_call_error']}")
         elif isinstance(raw, dict) and "Ok" in raw:
             data = raw["Ok"]
         elif isinstance(raw, dict) and "transactions" in raw:
             data = raw
         else:
-            logger.error(f"Unexpected indexer response for {token_name}: {type(raw)}")
-            return {"new_txs": 0, "balance": self.cached_balance(token_name)}
+            logger.warning(f"Unexpected indexer response for {token.name}: {type(raw)}")
 
-        balance = self._to_int(data.get("balance", 0))
+        if data is None:
+            return 0
+
         transactions = data.get("transactions", [])
 
-        # Collect existing tx_ids to avoid duplicates
         existing_tx_ids = set()
         for t in token.transfers:
             existing_tx_ids.add(t.tx_id)
@@ -428,19 +636,20 @@ class Wallet:
             fee = 0
 
             if kind == "transfer" and tx.get("transfer"):
-                t = tx["transfer"]
-                principal_from = self._extract_principal(t.get("from_", {}))
+                t = self._unwrap_opt(tx["transfer"])
+                principal_from = self._extract_principal(t.get("from_") or t.get("from", {}))
                 principal_to = self._extract_principal(t.get("to", {}))
                 amount = self._to_int(t.get("amount", 0))
-                fee = self._to_int(t.get("fee", 0)) if t.get("fee") else 0
+                raw_fee = self._unwrap_opt(t.get("fee", 0))
+                fee = self._to_int(raw_fee) if raw_fee else 0
             elif kind == "mint" and tx.get("mint"):
-                m = tx["mint"]
+                m = self._unwrap_opt(tx["mint"])
                 principal_from = "minting_account"
                 principal_to = self._extract_principal(m.get("to", {}))
                 amount = self._to_int(m.get("amount", 0))
             elif kind == "burn" and tx.get("burn"):
-                b = tx["burn"]
-                principal_from = self._extract_principal(b.get("from_", {}))
+                b = self._unwrap_opt(tx["burn"])
+                principal_from = self._extract_principal(b.get("from_") or b.get("from", {}))
                 principal_to = "burn"
                 amount = self._to_int(b.get("amount", 0))
 
@@ -450,13 +659,7 @@ class Wallet:
             )
             new_count += 1
 
-        # Update cached balance from ledger
-        self._update_cached_balance(token, canister_principal, balance)
-
-        logger.info(
-            f"refresh({token_name}): {new_count} new txs, balance={balance}"
-        )
-        return {"new_txs": new_count, "balance": balance}
+        return new_count
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -533,6 +736,13 @@ class Wallet:
             return int(value)
         except (TypeError, ValueError):
             return 0
+
+    @staticmethod
+    def _unwrap_opt(value):
+        """Unwrap a Candid opt field: [] → None, [x] → x, other → as-is."""
+        if isinstance(value, list):
+            return value[0] if value else None
+        return value
 
     @staticmethod
     def _extract_principal(account_dict):

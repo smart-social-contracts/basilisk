@@ -238,7 +238,7 @@ _TRANSFER_ERROR_CANDID = (
 )
 _TRANSFER_TX_CANDID = (
     f'record {{ to : {_ACCOUNT_CANDID}; fee : opt nat; '
-    f'from_ : {_ACCOUNT_CANDID}; memo : opt vec nat; '
+    f'from : {_ACCOUNT_CANDID}; memo : opt vec nat; '
     f'created_at_time : opt nat64; amount : nat; '
     f'spender : opt {_SPENDER_CANDID} }}'
 )
@@ -247,12 +247,12 @@ _MINT_TX_CANDID = (
     f'created_at_time : opt nat64; amount : nat }}'
 )
 _BURN_TX_CANDID = (
-    f'record {{ from_ : {_ACCOUNT_CANDID}; memo : opt vec nat; '
+    f'record {{ from : {_ACCOUNT_CANDID}; memo : opt vec nat; '
     f'created_at_time : opt nat64; amount : nat; '
     f'spender : opt {_SPENDER_CANDID} }}'
 )
 _APPROVE_CANDID = (
-    f'record {{ fee : opt nat; from_ : {_ACCOUNT_CANDID}; '
+    f'record {{ fee : opt nat; from : {_ACCOUNT_CANDID}; '
     f'memo : opt vec nat; created_at_time : opt nat64; amount : nat; '
     f'expected_allowance : opt nat; expires_at : opt nat64; '
     f'spender : {_SPENDER_CANDID} }}'

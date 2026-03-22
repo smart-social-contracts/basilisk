@@ -315,6 +315,34 @@ class Token(Entity, TimestampedMixin):
     fee = Integer(default=10)
     balances = OneToMany("WalletBalance", "token")
     transfers = OneToMany("WalletTransfer", "token")
+    subaccounts = OneToMany("WalletSubaccount", "token")
+
+
+# ---------------------------------------------------------------------------
+# WalletSubaccount — registered subaccount for balance/tx tracking
+# ---------------------------------------------------------------------------
+
+class WalletSubaccount(Entity, TimestampedMixin):
+    """
+    A registered subaccount that the wallet should track.
+
+    Other extensions (invoices, marketplace, etc.) register subaccounts
+    so the vault can query their balance and transactions during refresh.
+
+    Usage::
+
+        WalletSubaccount(
+            token=Token["ckBTC"],
+            subaccount_hex="696e765f3137663661383264...",
+            label="Invoice #17f6a82d",
+        )
+    """
+
+    __alias__ = "label"
+    token = ManyToOne("Token", "subaccounts")
+    subaccount_hex = String(max_length=64)  # hex-encoded 32-byte subaccount
+    label = String(max_length=128)
+    balance = Integer(default=0)
 
 
 # ---------------------------------------------------------------------------
