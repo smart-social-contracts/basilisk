@@ -1367,10 +1367,10 @@ class TestFXServiceFetchRate:
 # ===========================================================================
 
 class TestFXCleanup:
-    """Final cleanup of all test FX pairs."""
+    """Cleanup FX pairs before CLI tests."""
 
     def test_cleanup_all_pairs(self, fx_reachable, fx_canister, fx_network):
-        """Remove all test FX pairs from the DB."""
+        """Remove all FX pairs from the DB."""
         result = _exec(
             "deleted = 0\n"
             "for p in list(FXPair.instances()):\n"
@@ -1383,3 +1383,122 @@ class TestFXCleanup:
         count = int(re.search(r'deleted=(\d+)', result).group(1))
         assert count >= 0
         print(f"\n  Cleaned up {count} FX pairs")
+
+
+# ===========================================================================
+# 8. %fx CLI magic commands
+# ===========================================================================
+
+def _fx_magic(cmd, canister, network):
+    """Run a %fx magic command via generated code on the canister."""
+    from basilisk.shell import (
+        _fx_list_code, _fx_register_code, _fx_unregister_code,
+        _fx_rate_code, _fx_info_code, _CRYPTO_SYMBOLS, _FIAT_SYMBOLS,
+    )
+    stripped = cmd.strip()
+    if stripped.startswith("%fx"):
+        stripped = stripped[3:].strip()
+    parts = stripped.split()
+
+    if not parts or parts[0] == "list":
+        code = _fx_list_code()
+    elif parts[0] == "register":
+        base = parts[1].upper()
+        quote = parts[2].upper()
+        base_class = "Cryptocurrency" if base in _CRYPTO_SYMBOLS else "FiatCurrency"
+        quote_class = "Cryptocurrency" if quote in _CRYPTO_SYMBOLS else "FiatCurrency"
+        if "--fiat-base" in parts:
+            base_class = "FiatCurrency"
+        if "--crypto-quote" in parts:
+            quote_class = "Cryptocurrency"
+        code = _fx_register_code(base, quote, base_class, quote_class)
+    elif parts[0] == "unregister":
+        code = _fx_unregister_code(parts[1].upper(), parts[2].upper())
+    elif parts[0] == "rate":
+        code = _fx_rate_code(parts[1].upper(), parts[2].upper())
+    elif parts[0] == "info":
+        code = _fx_info_code(parts[1].upper(), parts[2].upper())
+    else:
+        return f"Unknown subcommand: {parts[0]}"
+
+    return _local_canister_exec(code, canister, network).strip()
+
+
+class TestFXCLI:
+    """Test %fx magic command dispatching."""
+
+    def test_fx_list_empty(self, fx_reachable, fx_canister, fx_network):
+        """'%fx list' with no pairs shows help message."""
+        result = _fx_magic("%fx list", fx_canister, fx_network)
+        assert "No FX pairs registered" in result
+
+    def test_fx_register_crypto(self, fx_reachable, fx_canister, fx_network):
+        """'%fx register BTC USD' creates a pair with auto-classification."""
+        result = _fx_magic("%fx register BTC USD", fx_canister, fx_network)
+        assert "Registered FX pair: BTC/USD" in result
+
+    def test_fx_register_fiat(self, fx_reachable, fx_canister, fx_network):
+        """'%fx register EUR USD' auto-classifies both as FiatCurrency."""
+        result = _fx_magic("%fx register EUR USD", fx_canister, fx_network)
+        assert "Registered FX pair: EUR/USD" in result
+
+    def test_fx_register_idempotent(self, fx_reachable, fx_canister, fx_network):
+        """Re-registering shows 'Updated'."""
+        result = _fx_magic("%fx register BTC USD", fx_canister, fx_network)
+        assert "Updated FX pair: BTC/USD" in result
+
+    def test_fx_list_with_pairs(self, fx_reachable, fx_canister, fx_network):
+        """'%fx list' shows registered pairs in a table."""
+        result = _fx_magic("%fx list", fx_canister, fx_network)
+        assert "FX Pairs" in result
+        assert "BTC/USD" in result
+        assert "EUR/USD" in result
+
+    def test_fx_rate_no_data(self, fx_reachable, fx_canister, fx_network):
+        """'%fx rate' with no rate data shows help message."""
+        result = _fx_magic("%fx rate BTC USD", fx_canister, fx_network)
+        assert "no rate data" in result or "run %fx refresh" in result
+
+    def test_fx_rate_with_data(self, fx_reachable, fx_canister, fx_network):
+        """'%fx rate' after manually setting rate shows the value."""
+        _exec(
+            "p = FXPair['BTC/USD']\n"
+            "p.rate = 67000_000_000_000\n"
+            "p.decimals = 9\n",
+            fx_canister, fx_network,
+        )
+        result = _fx_magic("%fx rate BTC USD", fx_canister, fx_network)
+        assert "67,000" in result or "67000" in result
+
+    def test_fx_info(self, fx_reachable, fx_canister, fx_network):
+        """'%fx info' shows detailed pair information."""
+        result = _fx_magic("%fx info BTC USD", fx_canister, fx_network)
+        assert "Pair:" in result
+        assert "BTC/USD" in result
+        assert "Base:" in result
+        assert "Cryptocurrency" in result
+        assert "Raw rate:" in result
+
+    def test_fx_info_not_registered(self, fx_reachable, fx_canister, fx_network):
+        """'%fx info' for unregistered pair shows error."""
+        result = _fx_magic("%fx info DOGE USD", fx_canister, fx_network)
+        assert "not registered" in result
+
+    def test_fx_unregister(self, fx_reachable, fx_canister, fx_network):
+        """'%fx unregister' removes a pair."""
+        result = _fx_magic("%fx unregister EUR USD", fx_canister, fx_network)
+        assert "Unregistered FX pair: EUR/USD" in result
+
+    def test_fx_unregister_nonexistent(self, fx_reachable, fx_canister, fx_network):
+        """'%fx unregister' for non-existent pair shows error."""
+        result = _fx_magic("%fx unregister DOGE USD", fx_canister, fx_network)
+        assert "not found" in result
+
+    def test_fx_cli_cleanup(self, fx_reachable, fx_canister, fx_network):
+        """Clean up all pairs after CLI tests."""
+        _exec(
+            "for p in list(FXPair.instances()):\n"
+            "    p.delete()\n"
+            "print('cleaned')",
+            fx_canister, fx_network,
+        )
