@@ -381,3 +381,34 @@ class WalletTransfer(Entity, TimestampedMixin):
     amount = Integer(default=0)
     fee = Integer(default=0)
     timestamp = Integer(default=0)
+
+
+# ---------------------------------------------------------------------------
+# FXPair — exchange rate pair tracked via the IC XRC canister
+# ---------------------------------------------------------------------------
+
+class FXPair(Entity, TimestampedMixin):
+    """
+    A registered FX pair whose rate is periodically fetched from the
+    IC Exchange Rate Canister (XRC).
+
+    Rates are stored as integers scaled by ``10^decimals`` (typically
+    ``10^9``).  Use ``human_rate`` for the float representation.
+
+    Usage::
+
+        FXPair(name="BTC/USD", base_symbol="BTC",
+               base_class="Cryptocurrency", quote_symbol="USD",
+               quote_class="FiatCurrency")
+    """
+
+    __alias__ = "name"
+    name = String(max_length=16)             # e.g. "BTC/USD"
+    base_symbol = String(max_length=8)       # e.g. "BTC"
+    base_class = String(max_length=16)       # "Cryptocurrency" or "FiatCurrency"
+    quote_symbol = String(max_length=8)      # e.g. "USD"
+    quote_class = String(max_length=16)      # "Cryptocurrency" or "FiatCurrency"
+    rate = Integer(default=0)                # scaled by 10^decimals
+    decimals = Integer(default=9)            # from XRC metadata
+    last_updated = Integer(default=0)        # IC time in seconds (epoch)
+    last_error = String(max_length=256)      # last error message, empty on success

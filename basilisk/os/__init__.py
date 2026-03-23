@@ -28,8 +28,12 @@ __all__ = [
     "Token",
     "WalletBalance",
     "WalletTransfer",
+    # FX entities
+    "FXPair",
     # Wallet
     "Wallet",
+    # FX service
+    "FXService",
     # Task manager
     "TaskManager",
     # Execution
@@ -44,8 +48,10 @@ try:
     from .entities import (
         Codex, Call, Task, TaskStep, TaskSchedule, TaskExecution,
         Token, WalletBalance, WalletTransfer,
+        FXPair,
     )
     from .wallet import Wallet
+    from .fx import FXService
     from .task_manager import TaskManager
     from .execution import run_code, create_task_entity_class
 except ImportError:
