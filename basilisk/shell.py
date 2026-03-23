@@ -2159,6 +2159,439 @@ def _handle_task(args: str, canister: str, network: str) -> str:
     return _TASK_USAGE
 
 
+# ---------------------------------------------------------------------------
+# %fx subcommand handlers — FX rate service
+# ---------------------------------------------------------------------------
+
+# Entity resolve preamble injected into every %fx exec call
+_FX_RESOLVE = (
+    "if 'FXPair' not in dir():\n"
+    "    from ic_python_db import Entity, String, Integer, TimestampedMixin\n"
+    "    class FXPair(Entity, TimestampedMixin):\n"
+    "        __alias__ = 'name'\n"
+    "        name = String(max_length=16)\n"
+    "        base_symbol = String(max_length=8)\n"
+    "        base_class = String(max_length=16)\n"
+    "        quote_symbol = String(max_length=8)\n"
+    "        quote_class = String(max_length=16)\n"
+    "        rate = Integer(default=0)\n"
+    "        decimals = Integer(default=9)\n"
+    "        last_updated = Integer(default=0)\n"
+    "        last_error = String(max_length=256)\n"
+)
+
+
+def _fx_list_code() -> str:
+    """Generate code to list all registered FX pairs with rates."""
+    return (
+        _FX_RESOLVE +
+        "pairs = sorted(FXPair.instances(), key=lambda p: p.name)\n"
+        "if not pairs:\n"
+        "    print('No FX pairs registered.  Use: %fx register <base> <quote>')\n"
+        "else:\n"
+        "    print(f'FX Pairs ({len(pairs)}):')\n"
+        "    print(f'{\"Pair\":<12} {\"Rate\":>16} {\"Updated\":>22} {\"Error\"}')\n"
+        "    print('-' * 70)\n"
+        "    for p in pairs:\n"
+        "        human = p.rate / (10 ** p.decimals) if p.rate and p.decimals else 0.0\n"
+        "        rate_str = f'{human:,.{min(p.decimals, 6)}f}' if p.rate else '-'\n"
+        "        if p.last_updated:\n"
+        "            import time as _t\n"
+        "            try:\n"
+        "                ts = _t.strftime('%Y-%m-%d %H:%M UTC', _t.gmtime(p.last_updated))\n"
+        "            except Exception:\n"
+        "                ts = str(p.last_updated)\n"
+        "        else:\n"
+        "            ts = 'never'\n"
+        "        err = p.last_error[:20] if p.last_error else ''\n"
+        "        print(f'{p.name:<12} {rate_str:>16} {ts:>22} {err}')\n"
+    )
+
+
+def _fx_register_code(base: str, quote: str, base_class: str, quote_class: str) -> str:
+    """Generate code to register an FX pair."""
+    name = f"{base}/{quote}"
+    return (
+        _FX_RESOLVE +
+        f"name = '{name}'\n"
+        f"pair = FXPair[name]\n"
+        f"if pair is None:\n"
+        f"    pair = FXPair(name=name, base_symbol='{base}', base_class='{base_class}', "
+        f"quote_symbol='{quote}', quote_class='{quote_class}')\n"
+        f"    print(f'Registered FX pair: {name}')\n"
+        f"else:\n"
+        f"    pair.base_symbol = '{base}'\n"
+        f"    pair.base_class = '{base_class}'\n"
+        f"    pair.quote_symbol = '{quote}'\n"
+        f"    pair.quote_class = '{quote_class}'\n"
+        f"    print(f'Updated FX pair: {name}')\n"
+    )
+
+
+def _fx_unregister_code(base: str, quote: str) -> str:
+    """Generate code to unregister an FX pair."""
+    name = f"{base}/{quote}"
+    return (
+        _FX_RESOLVE +
+        f"pair = FXPair['{name}']\n"
+        f"if pair is None:\n"
+        f"    print('FX pair not found: {name}')\n"
+        f"else:\n"
+        f"    pair.delete()\n"
+        f"    print('Unregistered FX pair: {name}')\n"
+    )
+
+
+def _fx_rate_code(base: str, quote: str) -> str:
+    """Generate code to display the cached rate for a pair."""
+    name = f"{base}/{quote}"
+    return (
+        _FX_RESOLVE +
+        f"pair = FXPair['{name}']\n"
+        f"if pair is None:\n"
+        f"    print('FX pair not registered: {name}')\n"
+        f"elif pair.rate == 0:\n"
+        f"    print('{name}: no rate data yet — run %fx refresh')\n"
+        f"else:\n"
+        f"    human = pair.rate / (10 ** pair.decimals)\n"
+        f"    print(f'{name} = {{human:,.{{min(pair.decimals, 6)}}f}}')\n"
+    )
+
+
+def _fx_info_code(base: str, quote: str) -> str:
+    """Generate code to display full rate info for a pair."""
+    name = f"{base}/{quote}"
+    return (
+        _FX_RESOLVE +
+        f"pair = FXPair['{name}']\n"
+        f"if pair is None:\n"
+        f"    print('FX pair not registered: {name}')\n"
+        f"else:\n"
+        f"    human = pair.rate / (10 ** pair.decimals) if pair.rate and pair.decimals else 0.0\n"
+        f"    print(f'Pair:         {{pair.name}}')\n"
+        f"    print(f'Base:         {{pair.base_symbol}} ({{pair.base_class}})')\n"
+        f"    print(f'Quote:        {{pair.quote_symbol}} ({{pair.quote_class}})')\n"
+        f"    print(f'Rate:         {{human:,.{{min(pair.decimals, 6)}}f}}' if pair.rate else 'Rate:         -')\n"
+        f"    print(f'Raw rate:     {{pair.rate}}')\n"
+        f"    print(f'Decimals:     {{pair.decimals}}')\n"
+        f"    if pair.last_updated:\n"
+        f"        import time as _t\n"
+        f"        try:\n"
+        f"            ts = _t.strftime('%Y-%m-%d %H:%M:%S UTC', _t.gmtime(pair.last_updated))\n"
+        f"        except Exception:\n"
+        f"            ts = str(pair.last_updated)\n"
+        f"        print(f'Last updated: {{ts}}')\n"
+        f"    else:\n"
+        f"        print('Last updated: never')\n"
+        f"    if pair.last_error:\n"
+        f"        print(f'Last error:   {{pair.last_error}}')\n"
+    )
+
+
+def _fx_refresh(canister: str, network: str) -> str:
+    """Trigger an async refresh of all registered FX pairs via a one-shot task.
+
+    Creates a task with an async step that queries the XRC canister for each
+    registered pair, updates the DB, then polls for completion.
+    """
+    # Step 1: write the refresh code to canister memfs
+    refresh_code = (
+        "from basilisk import Record, Service, service_update, Principal, Opt, Variant, nat32, nat64, null, text, Async\n"
+        "from ic_python_db import Entity, String, Integer, TimestampedMixin\n"
+        "\n"
+        "if 'FXPair' not in dir():\n"
+        "    class FXPair(Entity, TimestampedMixin):\n"
+        "        __alias__ = 'name'\n"
+        "        name = String(max_length=16)\n"
+        "        base_symbol = String(max_length=8)\n"
+        "        base_class = String(max_length=16)\n"
+        "        quote_symbol = String(max_length=8)\n"
+        "        quote_class = String(max_length=16)\n"
+        "        rate = Integer(default=0)\n"
+        "        decimals = Integer(default=9)\n"
+        "        last_updated = Integer(default=0)\n"
+        "        last_error = String(max_length=256)\n"
+        "\n"
+        "class _AssetClass(Variant, total=False):\n"
+        "    Cryptocurrency: null\n"
+        "    FiatCurrency: null\n"
+        "class _Asset(Record):\n"
+        "    symbol: text\n"
+        "    class_: _AssetClass\n"
+        "class _GetExchangeRateRequest(Record):\n"
+        "    base_asset: _Asset\n"
+        "    quote_asset: _Asset\n"
+        "    timestamp: Opt[nat64]\n"
+        "class _ExchangeRateMetadata(Record):\n"
+        "    decimals: nat32\n"
+        "    base_asset_num_queried_sources: nat64\n"
+        "    base_asset_num_received_rates: nat64\n"
+        "    quote_asset_num_queried_sources: nat64\n"
+        "    quote_asset_num_received_rates: nat64\n"
+        "    standard_deviation: nat64\n"
+        "    forex_timestamp: Opt[nat64]\n"
+        "class _ExchangeRate(Record):\n"
+        "    base_asset: _Asset\n"
+        "    quote_asset: _Asset\n"
+        "    timestamp: nat64\n"
+        "    rate: nat64\n"
+        "    metadata: _ExchangeRateMetadata\n"
+        "class _OtherError(Record):\n"
+        "    code: nat32\n"
+        "    description: text\n"
+        "class _ExchangeRateError(Variant, total=False):\n"
+        "    AnonymousPrincipalNotAllowed: null\n"
+        "    Pending: null\n"
+        "    CryptoBaseAssetNotFound: null\n"
+        "    CryptoQuoteAssetNotFound: null\n"
+        "    StablecoinRateNotFound: null\n"
+        "    StablecoinRateTooFewRates: null\n"
+        "    StablecoinRateZeroRate: null\n"
+        "    ForexInvalidTimestamp: null\n"
+        "    ForexBaseAssetNotFound: null\n"
+        "    ForexQuoteAssetNotFound: null\n"
+        "    ForexAssetsNotFound: null\n"
+        "    RateLimited: null\n"
+        "    NotEnoughCycles: null\n"
+        "    FailedToAcceptCycles: null\n"
+        "    InconsistentRatesReceived: null\n"
+        "    Other: _OtherError\n"
+        "class _GetExchangeRateResult(Variant, total=False):\n"
+        "    Ok: _ExchangeRate\n"
+        "    Err: _ExchangeRateError\n"
+        "class XRCCanister(Service):\n"
+        "    @service_update\n"
+        "    def get_exchange_rate(self, args: _GetExchangeRateRequest) -> _GetExchangeRateResult: ...\n"
+        "\n"
+        "_ASSET_CLASS_CANDID = 'variant { Cryptocurrency : null; FiatCurrency : null }'\n"
+        "_ASSET_CANDID = f'record {{ symbol : text; class : {_ASSET_CLASS_CANDID} }}'\n"
+        "_METADATA_CANDID = 'record { decimals : nat32; base_asset_num_queried_sources : nat64; "
+        "base_asset_num_received_rates : nat64; quote_asset_num_queried_sources : nat64; "
+        "quote_asset_num_received_rates : nat64; standard_deviation : nat64; forex_timestamp : opt nat64 }'\n"
+        "_EXCHANGE_RATE_CANDID = f'record {{ base_asset : {_ASSET_CANDID}; quote_asset : {_ASSET_CANDID}; "
+        "timestamp : nat64; rate : nat64; metadata : {_METADATA_CANDID} }}'\n"
+        "_OTHER_ERROR_CANDID = 'record { code : nat32; description : text }'\n"
+        "_EXCHANGE_RATE_ERROR_CANDID = f'variant {{ AnonymousPrincipalNotAllowed : null; Pending : null; "
+        "CryptoBaseAssetNotFound : null; CryptoQuoteAssetNotFound : null; StablecoinRateNotFound : null; "
+        "StablecoinRateTooFewRates : null; StablecoinRateZeroRate : null; ForexInvalidTimestamp : null; "
+        "ForexBaseAssetNotFound : null; ForexQuoteAssetNotFound : null; ForexAssetsNotFound : null; "
+        "RateLimited : null; NotEnoughCycles : null; FailedToAcceptCycles : null; "
+        "InconsistentRatesReceived : null; Other : {_OTHER_ERROR_CANDID} }}'\n"
+        "_GET_EXCHANGE_RATE_RESULT_CANDID = f'variant {{ Ok : {_EXCHANGE_RATE_CANDID}; "
+        "Err : {_EXCHANGE_RATE_ERROR_CANDID} }}'\n"
+        "XRCCanister._arg_types = {'get_exchange_rate': f'record {{ base_asset : {_ASSET_CANDID}; "
+        "quote_asset : {_ASSET_CANDID}; timestamp : opt nat64 }}'}\n"
+        "XRCCanister._return_types = {'get_exchange_rate': _GET_EXCHANGE_RATE_RESULT_CANDID}\n"
+        "\n"
+        "def async_task():\n"
+        "    xrc = XRCCanister(Principal.from_str('uf6dk-hyaaa-aaaaq-qaaaq-cai'))\n"
+        "    pairs = list(FXPair.instances())\n"
+        "    if not pairs:\n"
+        "        return 'No FX pairs registered'\n"
+        "    now = int(ic.time() / 1e9)\n"
+        "    results = []\n"
+        "    for pair in pairs:\n"
+        "        try:\n"
+        "            result = yield xrc.get_exchange_rate({\n"
+        "                'base_asset': {'symbol': pair.base_symbol, 'class': {pair.base_class: None}},\n"
+        "                'quote_asset': {'symbol': pair.quote_symbol, 'class': {pair.quote_class: None}},\n"
+        "                'timestamp': None,\n"
+        "            }).with_cycles(1_000_000_000)\n"
+        "            raw = result\n"
+        "            if hasattr(result, 'Ok'):\n"
+        "                raw = result.Ok if result.Ok else result.Err\n"
+        "            if isinstance(raw, dict) and 'Ok' in raw:\n"
+        "                data = raw['Ok']\n"
+        "                pair.rate = data['rate']\n"
+        "                pair.decimals = data['metadata']['decimals']\n"
+        "                pair.last_updated = now\n"
+        "                pair.last_error = ''\n"
+        "                human = data['rate'] / (10 ** data['metadata']['decimals'])\n"
+        "                results.append(f'{pair.name}={human}')\n"
+        "            elif isinstance(raw, dict) and 'Err' in raw:\n"
+        "                pair.last_error = str(raw['Err'])[:255]\n"
+        "                pair.last_updated = now\n"
+        "                results.append(f'{pair.name}=ERR:{pair.last_error}')\n"
+        "            else:\n"
+        "                pair.last_error = str(raw)[:255]\n"
+        "                pair.last_updated = now\n"
+        "                results.append(f'{pair.name}=ERR:{pair.last_error}')\n"
+        "        except Exception as e:\n"
+        "            pair.last_error = str(e)[:255]\n"
+        "            pair.last_updated = now\n"
+        "            results.append(f'{pair.name}=ERR:{e}')\n"
+        "    return 'FX_REFRESH_DONE: ' + '; '.join(results)\n"
+    )
+
+    # Write refresh code to canister memfs
+    import base64
+    b64 = base64.b64encode(refresh_code.encode()).decode()
+    write_code = (
+        "import base64\n"
+        f"_data = base64.b64decode('{b64}').decode()\n"
+        "with open('/_fx_refresh.py', 'w') as f:\n"
+        "    f.write(_data)\n"
+        "print('FX_FILE_WRITTEN')\n"
+    )
+    result = canister_exec(write_code, canister, network)
+    if not result or 'FX_FILE_WRITTEN' not in result:
+        return f"[error] failed to write refresh code: {result}"
+
+    # Create task, add async step, start it
+    create_result = canister_exec(
+        _task_create_code("_fx_refresh"), canister, network
+    )
+    if not create_result:
+        return "[error] failed to create refresh task"
+
+    import re
+    m = re.search(r'task\s+(\d+)', create_result, re.IGNORECASE)
+    if not m:
+        return f"[error] failed to parse task ID: {create_result}"
+    tid = m.group(1)
+
+    step_result = canister_exec(
+        _task_add_step_code(f"{tid} --async --file /_fx_refresh.py"),
+        canister, network,
+    )
+    if not step_result or "Added" not in step_result and "step" not in step_result.lower():
+        _cleanup_fx_task(tid, canister, network)
+        return f"[error] failed to add step: {step_result}"
+
+    canister_exec(_task_start_code(tid), canister, network)
+    print("Refreshing FX rates from XRC canister...")
+    sys.stdout.flush()
+
+    # Poll for completion
+    for _ in range(30):
+        _time.sleep(3)
+        log = canister_exec(_task_log_code(tid), canister, network)
+        if log and ("completed" in log or "failed" in log):
+            # Clean up task and temp file
+            _cleanup_fx_task(tid, canister, network)
+            canister_exec(
+                "import os; os.remove('/_fx_refresh.py') if os.path.exists('/_fx_refresh.py') else None",
+                canister, network,
+            )
+            # Parse and display results
+            if "FX_REFRESH_DONE:" in log:
+                raw = log.split("FX_REFRESH_DONE:", 1)[1].strip()
+                lines = []
+                for item in raw.split(";"):
+                    item = item.strip()
+                    if "=" in item:
+                        pair, val = item.split("=", 1)
+                        if val.startswith("ERR:"):
+                            lines.append(f"  {pair.strip()}: error — {val[4:]}")
+                        else:
+                            try:
+                                lines.append(f"  {pair.strip()}: {float(val):,.6f}")
+                            except ValueError:
+                                lines.append(f"  {pair.strip()}: {val}")
+                return "FX rates updated:\n" + "\n".join(lines)
+            return log
+        sys.stdout.write(".")
+        sys.stdout.flush()
+
+    _cleanup_fx_task(tid, canister, network)
+    return "\n[timeout] Refresh task started but did not complete within 90s. Check with: %fx list"
+
+
+def _cleanup_fx_task(tid: str, canister: str, network: str):
+    """Delete a temporary FX refresh task."""
+    try:
+        canister_exec(_task_delete_code(tid), canister, network)
+    except Exception:
+        pass
+
+
+# Well-known crypto and fiat symbols for auto-classification
+_CRYPTO_SYMBOLS = {"BTC", "ETH", "ICP", "USDT", "USDC", "DAI"}
+_FIAT_SYMBOLS = {"USD", "EUR", "GBP", "JPY", "CNY", "CHF", "CAD", "SGD", "CXDR"}
+
+
+_FX_USAGE = (
+    "Usage:\n"
+    "  %fx                                    List all registered pairs with rates\n"
+    "  %fx list                               Same as above\n"
+    "  %fx register <base> <quote>            Register an FX pair for tracking\n"
+    "  %fx unregister <base> <quote>          Remove an FX pair\n"
+    "  %fx rate <base> <quote>                Show cached rate\n"
+    "  %fx info <base> <quote>                Show full rate details\n"
+    "  %fx refresh                            Refresh all pairs from XRC canister\n"
+    "\n"
+    "Symbols are auto-classified (crypto vs fiat). Override with flags:\n"
+    "  %fx register EUR USD --fiat-base       Force base as FiatCurrency\n"
+    "  %fx register BTC ETH --crypto-quote    Force quote as Cryptocurrency\n"
+    "\n"
+    "Supported crypto: BTC, ETH, ICP, USDT, USDC, DAI\n"
+    "Supported fiat:   USD, EUR, GBP, JPY, CNY, CHF, CAD, SGD, CXDR"
+)
+
+
+def _handle_fx(args: str, canister: str, network: str) -> str:
+    """Dispatch %fx subcommands."""
+    parts = args.strip().split()
+
+    if not parts or parts[0] == "list":
+        return canister_exec(_fx_list_code(), canister, network)
+
+    subcmd = parts[0]
+
+    if subcmd == "register":
+        if len(parts) < 3:
+            return "Usage: %fx register <base> <quote> [--fiat-base] [--crypto-quote]"
+        base = parts[1].upper()
+        quote = parts[2].upper()
+        # Auto-classify based on known symbols, allow flag overrides
+        base_class = "Cryptocurrency" if base in _CRYPTO_SYMBOLS else "FiatCurrency"
+        quote_class = "Cryptocurrency" if quote in _CRYPTO_SYMBOLS else "FiatCurrency"
+        if "--fiat-base" in parts:
+            base_class = "FiatCurrency"
+        if "--crypto-base" in parts:
+            base_class = "Cryptocurrency"
+        if "--fiat-quote" in parts:
+            quote_class = "FiatCurrency"
+        if "--crypto-quote" in parts:
+            quote_class = "Cryptocurrency"
+        return canister_exec(
+            _fx_register_code(base, quote, base_class, quote_class),
+            canister, network,
+        )
+
+    if subcmd == "unregister":
+        if len(parts) < 3:
+            return "Usage: %fx unregister <base> <quote>"
+        base = parts[1].upper()
+        quote = parts[2].upper()
+        return canister_exec(
+            _fx_unregister_code(base, quote), canister, network,
+        )
+
+    if subcmd == "rate":
+        if len(parts) < 3:
+            return "Usage: %fx rate <base> <quote>"
+        base = parts[1].upper()
+        quote = parts[2].upper()
+        return canister_exec(
+            _fx_rate_code(base, quote), canister, network,
+        )
+
+    if subcmd == "info":
+        if len(parts) < 3:
+            return "Usage: %fx info <base> <quote>"
+        base = parts[1].upper()
+        quote = parts[2].upper()
+        return canister_exec(
+            _fx_info_code(base, quote), canister, network,
+        )
+
+    if subcmd == "refresh":
+        return _fx_refresh(canister, network)
+
+    return f"Unknown fx command: {subcmd}\n\n" + _FX_USAGE
+
+
 def _handle_magic(line: str, canister: str, network: str) -> str:
     """Handle % magic commands. Returns output or None if not a magic command."""
     stripped = line.strip()
@@ -2272,6 +2705,11 @@ def _handle_magic(line: str, canister: str, network: str) -> str:
     if stripped == "%wallet" or stripped.startswith("%wallet "):
         args = stripped[7:].strip()
         return _handle_wallet(args, canister, network)
+
+    # %fx subcommand system
+    if stripped == "%fx" or stripped.startswith("%fx "):
+        args = stripped[3:].strip()
+        return _handle_fx(args, canister, network)
 
     # %info — comprehensive canister information
     if stripped == "%info":
