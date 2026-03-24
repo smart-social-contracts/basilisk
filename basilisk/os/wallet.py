@@ -51,6 +51,8 @@ class Wallet:
                  Must be the same storage passed to ``Database.init()``.
     """
 
+    _pre_transfer_hook = None
+
     def __init__(self, storage=None):
         self._storage = storage
 
@@ -426,6 +428,18 @@ class Wallet:
         self, token_name, to_principal, amount,
         from_subaccount=None, to_subaccount=None, memo=None,
     ) -> Async[dict]:
+        if Wallet._pre_transfer_hook is not None:
+            hook_result = Wallet._pre_transfer_hook(
+                token_name=token_name,
+                to_principal=to_principal,
+                amount=amount,
+                from_subaccount=from_subaccount,
+                to_subaccount=to_subaccount,
+            )
+            if hook_result is not None:
+                logger.warning(f"Transfer blocked by pre_transfer_hook: {hook_result}")
+                return {"err": hook_result}
+
         token = self._require_token(token_name)
         ledger = ICRCLedger(Principal.from_str(token.ledger))
 
