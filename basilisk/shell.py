@@ -33,6 +33,9 @@ Shell commands:
     %wallet <token> deposit       Show deposit address
     %wallet <token> transfer <amount> <to>  Transfer tokens from canister
     %wallet result                Check last transfer result
+    %vetkey pubkey [--scope <s>]  Get vetKD public key
+    %vetkey derive <tpk_hex> [--scope <s>] [--input <s>]  Derive encrypted vetKey
+    %vetkey result                Check last vetkey result
     %info         Show canister info (principal, cycles, status, deploy)
     !<cmd>        Run a local OS command (e.g. !ls, !cat file.py)
     :q / exit     Quit the shell
@@ -1992,6 +1995,243 @@ def _handle_wallet(args: str, canister: str, network: str) -> str:
     return f"Unknown wallet command: {subcmd}\n\n" + _WALLET_USAGE
 
 
+# ---------------------------------------------------------------------------
+# %vetkey subcommand handlers — vetKD (vetKeys) operations
+# ---------------------------------------------------------------------------
+
+_VETKEY_USAGE = (
+    "Usage:\n"
+    "  %vetkey pubkey [--scope <text>]               Get derived vetKD public key\n"
+    "  %vetkey derive <transport_pk_hex> [--scope <text>] [--input <text>]\n"
+    "                                                Derive encrypted vetKey\n"
+    "  %vetkey result                                Check last derive result\n"
+    "\n"
+    "Key names: key_1 (production), test_key_1 (test), dfx_test_key (local)\n"
+    "Default key: test_key_1\n"
+    "\n"
+    "The transport public key must be generated client-side (e.g. via\n"
+    "@dfinity/vetkeys TransportSecretKey.random().publicKeyBytes()).\n"
+    "The canister returns the derived key encrypted under that transport key."
+)
+
+
+def _vetkey_pubkey(canister: str, network: str, scope: str = None,
+                   key_name: str = "test_key_1",
+                   domain_separator: str = "basilisk") -> str:
+    """Query the vetKD public key for the caller's context."""
+    esc_domain = domain_separator.replace("'", "\\'")
+    scope_code = (
+        f"    _scope = '{scope}'.encode('utf-8')\n"
+        if scope else
+        "    _scope = ic.caller().bytes\n"
+    )
+    pubkey_code = (
+        "import json as _json\n"
+        "def _vetkey_pubkey_cb():\n"
+        "    try:\n"
+        f"        _ds = b'{esc_domain}'\n"
+        + scope_code +
+        "        _ctx = bytes([len(_ds)]) + _ds + _scope\n"
+        "        _ctx_hex = ''.join(f'{b:02x}' for b in _ctx)\n"
+        f"        _args = ic.candid_encode('(record {{ canister_id = null; context = blob \"' + _ctx_hex + '\"; key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; name = \"{key_name}\" }} }})')\n"
+        "        _result = yield ic.call_raw('aaaaa-aa', 'vetkd_public_key', _args, 26_000_000_000)\n"
+        "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
+        "            _decoded = ic.candid_decode(_result.Ok)\n"
+        "            _out = _json.dumps({'ok': True, 'public_key': str(_decoded)})\n"
+        "        elif hasattr(_result, 'Err') and _result.Err is not None:\n"
+        "            _out = _json.dumps({'ok': False, 'error': str(_result.Err)})\n"
+        "        else:\n"
+        "            _out = _json.dumps({'ok': True, 'response': str(_result)})\n"
+        "    except Exception as _e:\n"
+        "        _out = _json.dumps({'ok': False, 'error': str(_e)})\n"
+        "    with open('/tmp/_vetkey_result.txt', 'w') as _f:\n"
+        "        _f.write(_out)\n"
+        "try:\n"
+        "    import os; os.remove('/tmp/_vetkey_result.txt')\n"
+        "except OSError:\n"
+        "    pass\n"
+        "ic.set_timer(0, _vetkey_pubkey_cb)\n"
+        "print('VETKEY_INITIATED')\n"
+    )
+
+    result = canister_exec(pubkey_code, canister, network)
+    if result is None or 'VETKEY_INITIATED' not in (result or ''):
+        return f"[error] failed to initiate vetkey pubkey call: {result}"
+
+    print(f"Requesting vetKD public key (key={key_name})...")
+    sys.stdout.flush()
+
+    return _vetkey_poll(canister, network, label="Public key")
+
+
+def _vetkey_derive(transport_pk_hex: str, canister: str, network: str,
+                   scope: str = None, input_text: str = "",
+                   key_name: str = "test_key_1",
+                   domain_separator: str = "basilisk") -> str:
+    """Derive an encrypted vetKey for the caller's context."""
+    # Validate transport public key hex
+    try:
+        bytes.fromhex(transport_pk_hex)
+    except ValueError:
+        return f"[error] invalid transport public key hex: {transport_pk_hex}"
+
+    esc_domain = domain_separator.replace("'", "\\'")
+    esc_tpk = transport_pk_hex.replace("'", "\\'")
+    esc_input = input_text.replace("'", "\\'")
+    scope_code = (
+        f"    _scope = '{scope}'.encode('utf-8')\n"
+        if scope else
+        "    _scope = ic.caller().bytes\n"
+    )
+    derive_code = (
+        "import json as _json\n"
+        "def _vetkey_derive_cb():\n"
+        "    try:\n"
+        f"        _ds = b'{esc_domain}'\n"
+        + scope_code +
+        "        _ctx = bytes([len(_ds)]) + _ds + _scope\n"
+        "        _ctx_hex = ''.join(f'{b:02x}' for b in _ctx)\n"
+        f"        _input_hex = ''.join(f'{{b:02x}}' for b in '{esc_input}'.encode('utf-8'))\n"
+        f"        _args = ic.candid_encode('(record {{ input = blob \"' + _input_hex + '\"; context = blob \"' + _ctx_hex + '\"; key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; name = \"{key_name}\" }}; transport_public_key = blob \"{esc_tpk}\" }})')\n"
+        "        _result = yield ic.call_raw('aaaaa-aa', 'vetkd_derive_key', _args, 54_000_000_000)\n"
+        "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
+        "            _decoded = ic.candid_decode(_result.Ok)\n"
+        "            _out = _json.dumps({'ok': True, 'encrypted_key': str(_decoded)})\n"
+        "        elif hasattr(_result, 'Err') and _result.Err is not None:\n"
+        "            _out = _json.dumps({'ok': False, 'error': str(_result.Err)})\n"
+        "        else:\n"
+        "            _out = _json.dumps({'ok': True, 'response': str(_result)})\n"
+        "    except Exception as _e:\n"
+        "        _out = _json.dumps({'ok': False, 'error': str(_e)})\n"
+        "    with open('/tmp/_vetkey_result.txt', 'w') as _f:\n"
+        "        _f.write(_out)\n"
+        "try:\n"
+        "    import os; os.remove('/tmp/_vetkey_result.txt')\n"
+        "except OSError:\n"
+        "    pass\n"
+        "ic.set_timer(0, _vetkey_derive_cb)\n"
+        "print('VETKEY_INITIATED')\n"
+    )
+
+    result = canister_exec(derive_code, canister, network)
+    if result is None or 'VETKEY_INITIATED' not in (result or ''):
+        return f"[error] failed to initiate vetkey derive call: {result}"
+
+    print(f"Deriving encrypted vetKey (key={key_name}, input='{input_text}')...")
+    sys.stdout.flush()
+
+    return _vetkey_poll(canister, network, label="Encrypted key")
+
+
+def _vetkey_poll(canister: str, network: str, label: str = "Result") -> str:
+    """Poll canister memfs for vetkey result (shared by pubkey and derive)."""
+    import json
+    poll_code = (
+        "try:\n"
+        "    with open('/tmp/_vetkey_result.txt', 'r') as _f:\n"
+        "        print('VETKEY_RESULT:' + _f.read())\n"
+        "except FileNotFoundError:\n"
+        "    print('VETKEY_PENDING')\n"
+    )
+    for _ in range(15):
+        _time.sleep(2)
+        poll_result = canister_exec(poll_code, canister, network)
+        if poll_result and 'VETKEY_RESULT:' in poll_result:
+            json_str = poll_result.split('VETKEY_RESULT:', 1)[1].strip()
+            try:
+                data = json.loads(json_str)
+                if data.get('ok'):
+                    for key in ('public_key', 'encrypted_key', 'response'):
+                        if key in data:
+                            return f"{label}: {data[key]}"
+                    return f"{label}: {data}"
+                else:
+                    return f"[error] {data.get('error', 'unknown error')}"
+            except json.JSONDecodeError:
+                return f"{label}: {json_str}"
+
+    return f"[timeout] vetKey operation initiated but result not yet available. Use: %vetkey result"
+
+
+def _vetkey_result(canister: str, network: str) -> str:
+    """Check the result of the last vetkey operation."""
+    import json
+    poll_code = (
+        "try:\n"
+        "    with open('/tmp/_vetkey_result.txt', 'r') as _f:\n"
+        "        print('VETKEY_RESULT:' + _f.read())\n"
+        "except FileNotFoundError:\n"
+        "    print('No pending vetkey result.')\n"
+    )
+    result = canister_exec(poll_code, canister, network)
+    if result and 'VETKEY_RESULT:' in result:
+        json_str = result.split('VETKEY_RESULT:', 1)[1].strip()
+        try:
+            data = json.loads(json_str)
+            if data.get('ok'):
+                for key in ('public_key', 'encrypted_key', 'response'):
+                    if key in data:
+                        return f"{key}: {data[key]}"
+                return str(data)
+            else:
+                return f"[error] {data.get('error', 'unknown error')}"
+        except json.JSONDecodeError:
+            return json_str
+    return result or "No pending vetkey result."
+
+
+def _parse_vetkey_flags(args: str):
+    """Extract --scope, --input, --key flags from vetkey args."""
+    scope = None
+    input_text = ""
+    key_name = "test_key_1"
+    cleaned = args
+
+    import re as _re
+    # --scope <text>
+    m = _re.search(r'--scope\s+(\S+)', cleaned)
+    if m:
+        scope = m.group(1)
+        cleaned = cleaned[:m.start()] + cleaned[m.end():]
+    # --input <text>
+    m = _re.search(r'--input\s+(\S+)', cleaned)
+    if m:
+        input_text = m.group(1)
+        cleaned = cleaned[:m.start()] + cleaned[m.end():]
+    # --key <name>
+    m = _re.search(r'--key\s+(\S+)', cleaned)
+    if m:
+        key_name = m.group(1)
+        cleaned = cleaned[:m.start()] + cleaned[m.end():]
+
+    return cleaned.strip(), scope, input_text, key_name
+
+
+def _handle_vetkey(args: str, canister: str, network: str) -> str:
+    """Dispatch %vetkey subcommands."""
+    cleaned, scope, input_text, key_name = _parse_vetkey_flags(args)
+    parts = cleaned.strip().split(None, 1)
+    subcmd = parts[0] if parts else "help"
+    rest = parts[1].strip() if len(parts) > 1 else ""
+
+    if subcmd == "help":
+        return _VETKEY_USAGE
+
+    if subcmd == "pubkey":
+        return _vetkey_pubkey(canister, network, scope=scope, key_name=key_name)
+
+    if subcmd == "derive":
+        if not rest:
+            return "Usage: %vetkey derive <transport_public_key_hex> [--scope <text>] [--input <text>]"
+        return _vetkey_derive(rest, canister, network, scope=scope,
+                              input_text=input_text, key_name=key_name)
+
+    if subcmd == "result":
+        return _vetkey_result(canister, network)
+
+    return f"Unknown vetkey command: {subcmd}\n\n" + _VETKEY_USAGE
+
+
 def _task_log_follow_query(tid: str) -> str:
     """Canister code that returns JSON lines of recent executions for polling."""
     esc_tid = tid.replace("'", "\\'")
@@ -2706,6 +2946,11 @@ def _handle_magic(line: str, canister: str, network: str) -> str:
         args = stripped[7:].strip()
         return _handle_wallet(args, canister, network)
 
+    # %vetkey subcommand system
+    if stripped == "%vetkey" or stripped.startswith("%vetkey "):
+        args = stripped[7:].strip()
+        return _handle_vetkey(args, canister, network)
+
     # %fx subcommand system
     if stripped == "%fx" or stripped.startswith("%fx "):
         args = stripped[3:].strip()
@@ -2916,6 +3161,8 @@ print('__BASILISK_INFO__' + json.dumps(_info))
     print("    %db count|dump|clear       Database operations")
     print("    %wallet <token> balance   Check token balance (ckbtc, cketh, icp)")
     print("    %wallet <token> transfer <amt> <to>  Transfer tokens")
+    print("    %vetkey pubkey            Get vetKD public key")
+    print("    %vetkey derive <tpk_hex>  Derive encrypted vetKey")
     print("    %run <file>               Execute file from canister")
     print("    %get <remote> [local]     Download file from canister")
     print("    %put <local> [remote]     Upload file to canister")

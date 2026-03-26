@@ -34,6 +34,8 @@ __all__ = [
     "Wallet",
     # FX service
     "FXService",
+    # VetKey service
+    "VetKeyService",
     # Task manager
     "TaskManager",
     # Execution
@@ -52,6 +54,7 @@ try:
     )
     from .wallet import Wallet
     from .fx import FXService
+    from .vetkeys import VetKeyService
     from .task_manager import TaskManager
     from .execution import run_code, create_task_entity_class
 except ImportError:

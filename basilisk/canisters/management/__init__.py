@@ -55,6 +55,14 @@ from basilisk.canisters.management.tecdsa import (
     SignWithEcdsaArgs as SignWithEcdsaArgs,
     SignWithEcdsaResult as SignWithEcdsaResult,
 )
+from basilisk.canisters.management.vetkd import (
+    VetKDCurve as VetKDCurve,
+    VetKDKeyId as VetKDKeyId,
+    VetKDPublicKeyArgs as VetKDPublicKeyArgs,
+    VetKDPublicKeyResult as VetKDPublicKeyResult,
+    VetKDDeriveKeyArgs as VetKDDeriveKeyArgs,
+    VetKDDeriveKeyResult as VetKDDeriveKeyResult,
+)
 from basilisk.canisters.management.http import (
     HttpHeader as HttpHeader,
     HttpMethod as HttpMethod,
@@ -166,6 +174,15 @@ class ManagementCanister(Service):
     def sign_with_ecdsa(self, args: SignWithEcdsaArgs) -> SignWithEcdsaResult:
         ...
 
+    # vetKD API (vetKeys)
+    @service_update
+    def vetkd_public_key(self, args: VetKDPublicKeyArgs) -> VetKDPublicKeyResult:
+        ...
+
+    @service_update
+    def vetkd_derive_key(self, args: VetKDDeriveKeyArgs) -> VetKDDeriveKeyResult:
+        ...
+
     # Chunked code upload API (for WASMs > 10MB)
     @service_update
     def upload_chunk(self, args: UploadChunkArgs) -> UploadChunkResult:
@@ -205,6 +222,8 @@ setattr(ManagementCanister, '_arg_types', {
     'bitcoin_get_utxos': 'record { address : text; filter : opt variant { min_confirmations : nat32; page : blob }; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
     'bitcoin_get_current_fee_percentiles': 'record { network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
     'bitcoin_send_transaction': 'record { transaction : blob; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
+    'vetkd_public_key': 'record { canister_id : opt principal; context : blob; key_id : record { curve : variant { bls12_381_g2 : null }; name : text } }',
+    'vetkd_derive_key': 'record { input : blob; context : blob; key_id : record { curve : variant { bls12_381_g2 : null }; name : text }; transport_public_key : blob }',
 })
 setattr(ManagementCanister, '_return_types', {
     'create_canister': 'record { canister_id : principal }',
@@ -216,4 +235,6 @@ setattr(ManagementCanister, '_return_types', {
     'bitcoin_get_balance': 'nat64',
     'bitcoin_get_utxos': 'record { next_page : opt blob; tip_block_hash : blob; tip_height : nat32; utxos : vec record { height : nat32; outpoint : record { txid : blob; vout : nat32 }; value : nat64 } }',
     'bitcoin_get_current_fee_percentiles': 'vec nat64',
+    'vetkd_public_key': 'record { public_key : blob }',
+    'vetkd_derive_key': 'record { encrypted_key : blob }',
 })
