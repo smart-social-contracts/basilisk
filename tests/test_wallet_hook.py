@@ -21,7 +21,13 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from basilisk.os.wallet import Wallet
+try:
+    from basilisk.os.wallet import Wallet
+except ImportError:
+    pytest.skip(
+        "basilisk.os.wallet requires canister-only modules (ic_python_logging)",
+        allow_module_level=True,
+    )
 
 
 @pytest.fixture(autouse=True)
