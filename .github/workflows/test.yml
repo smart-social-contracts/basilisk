@@ -582,10 +582,46 @@ jobs:
         needs: release-candidate-deploy
         runs-on: ubuntu-latest
         if: ${{ needs.release-candidate-deploy.outputs.should_run_tests == 'true' }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - shard: tasks-1
+                      pytest_args: >-
+                          tests/test_tasks.py -k
+                          "TaskList or TaskCreate or TaskInfo or TaskLog
+                          or TaskLifecycle or TaskDelete or ShortcutAliases
+                          or TaskUsage or TaskEntities"
+                    - shard: tasks-2
+                      pytest_args: >-
+                          tests/test_tasks.py -k
+                          "TaskExecution or TaskTimerExecution"
+                    - shard: tasks-3
+                      pytest_args: >-
+                          tests/test_tasks.py -k
+                          "TaskNameLookup or TaskCreateFile or TaskTimestamps
+                          or TaskLogFeatures or TaskAddStep"
+                    - shard: tasks-4
+                      pytest_args: >-
+                          tests/test_tasks.py -k
+                          "MultiStepExecution or Wget or TaskRetryResume
+                          or E2EWriteAndRun or E2EDownloadAndRun
+                          or PersistentFileStorage or UsageStrings"
+                    - shard: filesystem
+                      pytest_args: tests/test_filesystem.py tests/test_sftp.py
+                    - shard: fx
+                      pytest_args: tests/test_fx.py
+                    - shard: shell-db
+                      pytest_args: tests/test_db_shell.py tests/test_shell.py
+                    - shard: vetkeys-wallet
+                      pytest_args: >-
+                          tests/test_vetkeys.py tests/test_wallet.py
+                          tests/test_wallet_shell.py tests/test_wallet_hook.py
         env:
             DFX_WARNING: -mainnet_plaintext_identity
             BASILISK_TEST_CANISTER: ru4ga-siaaa-aaaai-q7f3a-cai
             BASILISK_TEST_NETWORK: ic
+        name: shell-integration-tests (${{ matrix.shard }})
         steps:
             - uses: actions/checkout@v4
 
@@ -618,9 +654,9 @@ jobs:
               run: |
                   dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
 
-            - name: Run all tests
+            - name: Run tests (${{ matrix.shard }})
               run: |
-                  PYTHONPATH=. python -m pytest tests/ -v
+                  PYTHONPATH=. python -m pytest ${{ matrix.pytest_args }} -v
 
     check-basic-integration-tests-success:
         needs: [cpython-integration-tests, cpython-ic-deploy, shell-integration-tests]
