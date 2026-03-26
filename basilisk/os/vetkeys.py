@@ -46,7 +46,11 @@ from basilisk.canisters.management import (
     VetKDPublicKeyArgs,
     VetKDDeriveKeyArgs,
 )
-from ic_python_logging import get_logger
+try:
+    from ic_python_logging import get_logger
+except ImportError:
+    import logging
+    get_logger = logging.getLogger
 
 logger = get_logger("basilisk.os.vetkeys")
 

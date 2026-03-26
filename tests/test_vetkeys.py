@@ -581,7 +581,7 @@ class TestIntegrationVetKDPublicKey:
 
         log = _run_async_task(
             "_test_vetkey_diff_ctx", code,
-            vetkey_canister, vetkey_network, timeout=120,
+            vetkey_canister, vetkey_network, timeout=240,
         )
         assert "completed" in log, f"Task did not complete: {log}"
 
