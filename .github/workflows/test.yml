@@ -578,15 +578,59 @@ jobs:
                     exit 1
                   fi
 
+    shell-integration-tests:
+        needs: release-candidate-deploy
+        runs-on: ubuntu-latest
+        if: ${{ needs.release-candidate-deploy.outputs.should_run_tests == 'true' }}
+        env:
+            DFX_WARNING: -mainnet_plaintext_identity
+            BASILISK_TEST_CANISTER: ru4ga-siaaa-aaaai-q7f3a-cai
+            BASILISK_TEST_NETWORK: ic
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install dfx
+              run: |
+                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Import DFX identity
+              run: |
+                  if [ -z "${{ secrets.IC_IDENTITY_PEM }}" ]; then
+                    echo "::error::IC_IDENTITY_PEM secret is not set."
+                    exit 1
+                  fi
+                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  rm /tmp/ci-identity.pem
+                  dfx identity use ci-deploy
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.10"
+
+            - name: Install dependencies
+              run: |
+                  pip install -e ".[shell,test]"
+
+            - name: Verify canister reachable
+              run: |
+                  dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
+
+            - name: Run all tests
+              run: |
+                  PYTHONPATH=. python -m pytest tests/ -v
+
     check-basic-integration-tests-success:
-        needs: [cpython-integration-tests, cpython-ic-deploy]
+        needs: [cpython-integration-tests, cpython-ic-deploy, shell-integration-tests]
         runs-on: ubuntu-latest
         if: success()
         steps:
             - run: exit 0
 
     check-basic-integration-tests-failure:
-        needs: [cpython-integration-tests, cpython-ic-deploy]
+        needs: [cpython-integration-tests, cpython-ic-deploy, shell-integration-tests]
         runs-on: ubuntu-latest
         if: failure()
         steps:
