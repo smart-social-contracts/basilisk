@@ -554,45 +554,45 @@ class TestIntegrationVetKDPublicKey:
     def test_vetkd_public_key_different_contexts_differ(
         self, canister_reachable, vetkey_canister, vetkey_network, key_name,
     ):
-        """Two different contexts should produce different public keys."""
-        code = (
-            "import json as _json\n"
-            "\n"
-            "def async_task():\n"
-            "    results = []\n"
-            "    for _scope_str in [b'scope-A', b'scope-B']:\n"
-            "        _ds = b'basilisk'\n"
-            "        _ctx = bytes([len(_ds)]) + _ds + _scope_str\n"
-            "        _ctx_hex = ''.join(f'{b:02x}' for b in _ctx)\n"
-            f"        _args = ic.candid_encode('(record {{ canister_id = null; "
-            f"context = blob \"' + _ctx_hex + '\"; "
-            f"key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; "
-            f"name = \"{key_name}\" }} }})')\n"
-            "        _result = yield ic.call_raw('aaaaa-aa', 'vetkd_public_key', _args, 26_000_000_000)\n"
-            "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
-            "            results.append(str(ic.candid_decode(_result.Ok)))\n"
-            "        else:\n"
-            "            results.append('ERR:' + str(_result))\n"
-            "    if results[0].startswith('ERR') or results[1].startswith('ERR'):\n"
-            "        return 'VETKEY_DIFF_ERR:' + '|'.join(results)\n"
-            "    same = (results[0] == results[1])\n"
-            "    return f'VETKEY_DIFF:{not same}|{len(results[0])}|{len(results[1])}'\n"
-        )
+        """Two different contexts should produce different public keys.
 
-        log = _run_async_task(
-            "_test_vetkey_diff_ctx", code,
-            vetkey_canister, vetkey_network, timeout=240,
-        )
-        assert "completed" in log, f"Task did not complete: {log}"
+        Uses two separate tasks (one vetKD call each) instead of one task
+        with two sequential yields, since each inter-canister call can
+        take 30-60s on mainnet.
+        """
+        results = []
+        for scope_label in ["scope-A", "scope-B"]:
+            scope_bytes_hex = scope_label.encode().hex()
+            ds_hex = "basilisk".encode().hex()
+            ds_len_hex = f"{len('basilisk'):02x}"
+            ctx_hex = ds_len_hex + ds_hex + scope_bytes_hex
 
-        if "VETKEY_DIFF:True" in log:
-            print("\n  Different contexts produced different public keys (correct)")
-        elif "VETKEY_DIFF:False" in log:
+            code = (
+                "def async_task():\n"
+                f"    _args = ic.candid_encode('(record {{ canister_id = null; "
+                f"context = blob \"{ctx_hex}\"; "
+                f"key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; "
+                f"name = \"{key_name}\" }} }})')\n"
+                "    _result = yield ic.call_raw('aaaaa-aa', 'vetkd_public_key', _args, 26_000_000_000)\n"
+                "    if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
+                "        return 'VETKEY_CTX_OK:' + str(ic.candid_decode(_result.Ok))\n"
+                "    else:\n"
+                "        return 'VETKEY_CTX_ERR:' + str(_result)\n"
+            )
+
+            log = _run_async_task(
+                f"_test_vetkey_ctx_{scope_label.replace('-', '_')}",
+                code, vetkey_canister, vetkey_network, timeout=120,
+            )
+            assert "completed" in log, f"Task did not complete for {scope_label}: {log}"
+            results.append(log)
+
+        if "VETKEY_CTX_ERR" in results[0] or "VETKEY_CTX_ERR" in results[1]:
+            print(f"\n  vetKD not available on this subnet")
+        elif results[0] == results[1]:
             pytest.fail("Different contexts produced SAME public key — this is wrong")
-        elif "VETKEY_DIFF_ERR" in log:
-            print(f"\n  vetKD not available on this subnet: {log}")
         else:
-            pytest.fail(f"Unexpected result: {log}")
+            print("\n  Different contexts produced different public keys (correct)")
 
 
 class TestIntegrationVetKDDeriveKey:
@@ -659,50 +659,50 @@ class TestIntegrationVetKDDeriveKey:
     def test_vetkd_derive_key_different_inputs_differ(
         self, canister_reachable, vetkey_canister, vetkey_network, key_name,
     ):
-        """Two different inputs (same context) should produce different encrypted keys."""
-        code = (
-            "import json as _json\n"
-            "\n"
-            "def async_task():\n"
-            "    results = []\n"
-            "    _ds = b'basilisk'\n"
-            "    _scope = ic.id().bytes\n"
-            "    _ctx = bytes([len(_ds)]) + _ds + _scope\n"
-            "    _ctx_hex = ''.join(f'{b:02x}' for b in _ctx)\n"
-            "    _tpk = '00' * 48\n"
-            "    for _input_str in ['input-A', 'input-B']:\n"
-            "        _input_hex = ''.join(f'{b:02x}' for b in _input_str.encode())\n"
-            f"        _args = ic.candid_encode('(record {{ "
-            f"input = blob \"' + _input_hex + '\"; "
-            f"context = blob \"' + _ctx_hex + '\"; "
-            f"key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; "
-            f"name = \"{key_name}\" }}; "
-            f"transport_public_key = blob \"' + _tpk + '\" }})')\n"
-            "        _result = yield ic.call_raw('aaaaa-aa', 'vetkd_derive_key', _args, 54_000_000_000)\n"
-            "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
-            "            results.append(str(ic.candid_decode(_result.Ok)))\n"
-            "        else:\n"
-            "            results.append('ERR:' + str(_result))\n"
-            "    if results[0].startswith('ERR') or results[1].startswith('ERR'):\n"
-            "        return 'VETKEY_DINPUT_ERR:' + '|'.join(results)\n"
-            "    same = (results[0] == results[1])\n"
-            "    return f'VETKEY_DINPUT:{not same}|{len(results[0])}|{len(results[1])}'\n"
-        )
+        """Two different inputs (same context) should produce different encrypted keys.
 
-        log = _run_async_task(
-            "_test_vetkey_diff_input", code,
-            vetkey_canister, vetkey_network, timeout=120,
-        )
-        assert "completed" in log, f"Task did not complete: {log}"
+        Uses two separate tasks (one vetKD call each) instead of one task
+        with two sequential yields, since each inter-canister call can
+        take 30-60s on mainnet.
+        """
+        results = []
+        for input_label in ["input-A", "input-B"]:
+            input_hex = input_label.encode().hex()
+            ds_hex = "basilisk".encode().hex()
+            ds_len_hex = f"{len('basilisk'):02x}"
+            tpk_hex = "00" * 48
 
-        if "VETKEY_DINPUT:True" in log:
-            print("\n  Different inputs produced different encrypted keys (correct)")
-        elif "VETKEY_DINPUT:False" in log:
+            code = (
+                "def async_task():\n"
+                "    _scope = ic.id().bytes\n"
+                "    _scope_hex = ''.join(f'{b:02x}' for b in _scope)\n"
+                f"    _ctx_hex = '{ds_len_hex}{ds_hex}' + _scope_hex\n"
+                f"    _args = ic.candid_encode('(record {{ "
+                f"input = blob \"{input_hex}\"; "
+                f"context = blob \"' + _ctx_hex + '\"; "
+                f"key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; "
+                f"name = \"{key_name}\" }}; "
+                f"transport_public_key = blob \"{tpk_hex}\" }})')\n"
+                "    _result = yield ic.call_raw('aaaaa-aa', 'vetkd_derive_key', _args, 54_000_000_000)\n"
+                "    if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
+                "        return 'VETKEY_DI_OK:' + str(ic.candid_decode(_result.Ok))\n"
+                "    else:\n"
+                "        return 'VETKEY_DI_ERR:' + str(_result)\n"
+            )
+
+            log = _run_async_task(
+                f"_test_vetkey_di_{input_label.replace('-', '_')}",
+                code, vetkey_canister, vetkey_network, timeout=120,
+            )
+            assert "completed" in log, f"Task did not complete for {input_label}: {log}"
+            results.append(log)
+
+        if "VETKEY_DI_ERR" in results[0] or "VETKEY_DI_ERR" in results[1]:
+            print(f"\n  vetKD not available or dummy tpk rejected")
+        elif results[0] == results[1]:
             pytest.fail("Different inputs produced SAME encrypted key — this is wrong")
-        elif "VETKEY_DINPUT_ERR" in log:
-            print(f"\n  vetKD not available or dummy tpk rejected: {log}")
         else:
-            pytest.fail(f"Unexpected result: {log}")
+            print("\n  Different inputs produced different encrypted keys (correct)")
 
 
 class TestIntegrationShellVetKey:
