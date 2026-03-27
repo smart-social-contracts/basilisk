@@ -2021,9 +2021,9 @@ def _vetkey_pubkey(canister: str, network: str, scope: str = None,
     """Query the vetKD public key for the caller's context."""
     esc_domain = domain_separator.replace("'", "\\'")
     scope_code = (
-        f"    _scope = '{scope}'.encode('utf-8')\n"
+        f"        _scope = '{scope}'.encode('utf-8')\n"
         if scope else
-        "    _scope = ic.caller().bytes\n"
+        "        _scope = ic.caller().bytes\n"
     )
     pubkey_code = (
         "import json as _json\n"
@@ -2079,9 +2079,9 @@ def _vetkey_derive(transport_pk_hex: str, canister: str, network: str,
     esc_tpk = transport_pk_hex.replace("'", "\\'")
     esc_input = input_text.replace("'", "\\'")
     scope_code = (
-        f"    _scope = '{scope}'.encode('utf-8')\n"
+        f"        _scope = '{scope}'.encode('utf-8')\n"
         if scope else
-        "    _scope = ic.caller().bytes\n"
+        "        _scope = ic.caller().bytes\n"
     )
     derive_code = (
         "import json as _json\n"
