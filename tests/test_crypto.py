@@ -42,15 +42,25 @@ from basilisk.shell import (
     _CRYPTO_USAGE,
     canister_exec,
 )
-from basilisk.os.crypto import (
-    encode_envelope,
-    decode_envelope,
-    encode_ciphertext,
-    decode_ciphertext,
-    is_encrypted,
-    is_envelope,
-)
+try:
+    from basilisk.os.crypto import (
+        encode_envelope,
+        decode_envelope,
+        encode_ciphertext,
+        decode_ciphertext,
+        is_encrypted,
+        is_envelope,
+    )
+    _HAS_CRYPTO = True
+except (ImportError, ModuleNotFoundError):
+    _HAS_CRYPTO = False
+
 from tests.conftest import exec_on_canister, magic_on_canister
+
+_skip_no_crypto = pytest.mark.skipif(
+    not _HAS_CRYPTO,
+    reason="basilisk.os.crypto not importable (ic_python_db not installed)",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +85,7 @@ _CRYPTO_RESOLVE = (
 # Pure unit tests — no canister needed
 # ===========================================================================
 
+@_skip_no_crypto
 class TestFormatHelpers:
     """Test encode/decode format helpers locally (no canister)."""
 
