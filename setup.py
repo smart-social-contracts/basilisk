@@ -19,6 +19,8 @@ setup(
         "compiler/**/LICENSE*",
         "canisters/**",
         "py.typed",
+        "*.wasm",
+        "*.js",
     ]},
     include_package_data=True,
     packages=["basilisk", "basilisk.os"],

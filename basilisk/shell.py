@@ -35,6 +35,8 @@ Shell commands:
     %wallet result                Check last transfer result
     %vetkey pubkey [--scope <s>]  Get vetKD public key
     %vetkey derive <tpk_hex> [--scope <s>] [--input <s>]  Derive encrypted vetKey
+    %vetkey encrypt <file|text>   Encrypt file or text with vetKeys
+    %vetkey decrypt <file|text>   Decrypt file or text with vetKeys
     %vetkey result                Check last vetkey result
     %info         Show canister info (principal, cycles, status, deploy)
     !<cmd>        Run a local OS command (e.g. !ls, !cat file.py)
@@ -2004,14 +2006,25 @@ _VETKEY_USAGE = (
     "  %vetkey pubkey [--scope <text>]               Get derived vetKD public key\n"
     "  %vetkey derive <transport_pk_hex> [--scope <text>] [--input <text>]\n"
     "                                                Derive encrypted vetKey\n"
+    "  %vetkey encrypt <file_or_text> [--scope <text>] [--input <text>]\n"
+    "                                                Encrypt a file or text\n"
+    "  %vetkey decrypt <file_or_text> [--scope <text>] [--input <text>]\n"
+    "                                                Decrypt a file or text\n"
     "  %vetkey result                                Check last derive result\n"
     "\n"
     "Key names: key_1 (production), test_key_1 (test), dfx_test_key (local)\n"
     "Default key: test_key_1\n"
     "\n"
-    "The transport public key must be generated client-side (e.g. via\n"
-    "@dfinity/vetkeys TransportSecretKey.random().publicKeyBytes()).\n"
-    "The canister returns the derived key encrypted under that transport key."
+    "Encrypt/decrypt targets:\n"
+    "  /path/to/file.txt   — canister file (encrypted → .enc, decrypted → strip .enc)\n"
+    "  \"hello world\"       — literal text (quoted)\n"
+    "  <hex>               — hex ciphertext (for decrypt)\n"
+    "\n"
+    "Examples:\n"
+    "  %vetkey encrypt /data/secret.json\n"
+    "  %vetkey decrypt /data/secret.json.enc\n"
+    '  %vetkey encrypt "my secret message"\n'
+    "  %vetkey decrypt a1b2c3...                     (hex from previous encrypt)"
 )
 
 
@@ -2036,8 +2049,15 @@ def _vetkey_pubkey(canister: str, network: str, scope: str = None,
         f"        _args = ic.candid_encode('(record {{ canister_id = null; context = blob \"' + _ctx_hex + '\"; key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; name = \"{key_name}\" }} }})')\n"
         "        _result = yield ic.call_raw('aaaaa-aa', 'vetkd_public_key', _args, 26_000_000_000)\n"
         "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
-        "            _decoded = ic.candid_decode(_result.Ok)\n"
-        "            _out = _json.dumps({'ok': True, 'public_key': str(_decoded)})\n"
+        "            _d = ic.candid_decode(_result.Ok)\n"
+        "            _raw = None\n"
+        "            if isinstance(_d, dict):\n"
+        "                for _v in _d.values():\n"
+        "                    if isinstance(_v, (bytes, bytearray, list)): _raw = _v; break\n"
+        "            if _raw is None: _raw = getattr(_d, 'public_key', _d)\n"
+        "            try: _hex = bytes(_raw).hex()\n"
+        "            except: _hex = str(_d)\n"
+        "            _out = _json.dumps({'ok': True, 'public_key': _hex})\n"
         "        elif hasattr(_result, 'Err') and _result.Err is not None:\n"
         "            _out = _json.dumps({'ok': False, 'error': str(_result.Err)})\n"
         "        else:\n"
@@ -2092,11 +2112,20 @@ def _vetkey_derive(transport_pk_hex: str, canister: str, network: str,
         "        _ctx = bytes([len(_ds)]) + _ds + _scope\n"
         "        _ctx_hex = ''.join(f'{b:02x}' for b in _ctx)\n"
         f"        _input_hex = ''.join(f'{{b:02x}}' for b in '{esc_input}'.encode('utf-8'))\n"
-        f"        _args = ic.candid_encode('(record {{ input = blob \"' + _input_hex + '\"; context = blob \"' + _ctx_hex + '\"; key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; name = \"{key_name}\" }}; transport_public_key = blob \"{esc_tpk}\" }})')\n"
+        f"        _tpk_hex = '{esc_tpk}'\n"
+        "        _tpk_blob = ''.join(chr(92) + _tpk_hex[i:i+2] for i in range(0, len(_tpk_hex), 2))\n"
+        f"        _args = ic.candid_encode('(record {{ input = blob \"' + _input_hex + '\"; context = blob \"' + _ctx_hex + '\"; key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; name = \"{key_name}\" }}; transport_public_key = blob \"' + _tpk_blob + '\" }})')\n"
         "        _result = yield ic.call_raw('aaaaa-aa', 'vetkd_derive_key', _args, 54_000_000_000)\n"
         "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
-        "            _decoded = ic.candid_decode(_result.Ok)\n"
-        "            _out = _json.dumps({'ok': True, 'encrypted_key': str(_decoded)})\n"
+        "            _d = ic.candid_decode(_result.Ok)\n"
+        "            _raw = None\n"
+        "            if isinstance(_d, dict):\n"
+        "                for _v in _d.values():\n"
+        "                    if isinstance(_v, (bytes, bytearray, list)): _raw = _v; break\n"
+        "            if _raw is None: _raw = getattr(_d, 'encrypted_key', _d)\n"
+        "            try: _hex = bytes(_raw).hex()\n"
+        "            except: _hex = str(_d)\n"
+        "            _out = _json.dumps({'ok': True, 'encrypted_key': _hex})\n"
         "        elif hasattr(_result, 'Err') and _result.Err is not None:\n"
         "            _out = _json.dumps({'ok': False, 'error': str(_result.Err)})\n"
         "        else:\n"
@@ -2207,6 +2236,424 @@ def _parse_vetkey_flags(args: str):
     return cleaned.strip(), scope, input_text, key_name
 
 
+def _vetkey_poll_raw(canister: str, network: str, timeout: int = 30) -> dict:
+    """Poll canister memfs for vetkey result and return the parsed dict (or None)."""
+    import json
+    poll_code = (
+        "try:\n"
+        "    with open('/tmp/_vetkey_result.txt', 'r') as _f:\n"
+        "        print('VETKEY_RESULT:' + _f.read())\n"
+        "except FileNotFoundError:\n"
+        "    print('VETKEY_PENDING')\n"
+    )
+    iterations = max(timeout // 2, 1)
+    for _ in range(iterations):
+        _time.sleep(2)
+        poll_result = canister_exec(poll_code, canister, network)
+        if poll_result and 'VETKEY_RESULT:' in poll_result:
+            json_str = poll_result.split('VETKEY_RESULT:', 1)[1].strip()
+            try:
+                return json.loads(json_str)
+            except json.JSONDecodeError:
+                return {'ok': True, 'raw': json_str}
+    return None
+
+
+def _parse_candid_blob(text: str):
+    """Extract hex bytes from a Candid blob like: blob \"\\af\\d3\\fc...\" (fallback parser)."""
+    import re as _re
+    m = _re.search(r'blob\s*"([^"]*)"', text)
+    if not m:
+        return None
+    raw = m.group(1)
+    hex_str = ''
+    i = 0
+    while i < len(raw):
+        if raw[i] == '\\' and i + 2 < len(raw):
+            hex_str += raw[i + 1:i + 3]
+            i += 3
+        else:
+            hex_str += format(ord(raw[i]), '02x')
+            i += 1
+    return hex_str
+
+
+def _vetkey_extract_hex(data: dict, field: str):
+    """Extract a clean hex string from a vetkey poll result dict."""
+    val = data.get(field, data.get('response', ''))
+    if not val:
+        return None
+    # If it's already clean hex, return it
+    try:
+        bytes.fromhex(val)
+        return val
+    except (ValueError, TypeError):
+        pass
+    # Fallback: try parsing Candid blob text
+    parsed = _parse_candid_blob(str(val))
+    return parsed
+
+
+def _vetkey_get_pubkey_hex(canister: str, network: str, scope=None,
+                           key_name: str = "test_key_1") -> str:
+    """Run the full pubkey flow and return the hex string (or error string)."""
+    # Initiate the pubkey call (reuse existing function internals)
+    esc_domain = "basilisk".replace("'", "\\'")
+    scope_code = (
+        f"        _scope = '{scope}'.encode('utf-8')\n"
+        if scope else
+        "        _scope = ic.caller().bytes\n"
+    )
+    pubkey_code = (
+        "import json as _json\n"
+        "def _vetkey_pubkey_cb():\n"
+        "    try:\n"
+        f"        _ds = b'{esc_domain}'\n"
+        + scope_code +
+        "        _ctx = bytes([len(_ds)]) + _ds + _scope\n"
+        "        _ctx_hex = ''.join(f'{b:02x}' for b in _ctx)\n"
+        f"        _args = ic.candid_encode('(record {{ canister_id = null; context = blob \"' + _ctx_hex + '\"; key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; name = \"{key_name}\" }} }})')\n"
+        "        _result = yield ic.call_raw('aaaaa-aa', 'vetkd_public_key', _args, 26_000_000_000)\n"
+        "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
+        "            _d = ic.candid_decode(_result.Ok)\n"
+        "            _raw = None\n"
+        "            if isinstance(_d, dict):\n"
+        "                for _v in _d.values():\n"
+        "                    if isinstance(_v, (bytes, bytearray, list)): _raw = _v; break\n"
+        "            if _raw is None: _raw = getattr(_d, 'public_key', _d)\n"
+        "            try: _hex = bytes(_raw).hex()\n"
+        "            except: _hex = str(_d)\n"
+        "            _out = _json.dumps({'ok': True, 'public_key': _hex})\n"
+        "        elif hasattr(_result, 'Err') and _result.Err is not None:\n"
+        "            _out = _json.dumps({'ok': False, 'error': str(_result.Err)})\n"
+        "        else:\n"
+        "            _out = _json.dumps({'ok': True, 'response': str(_result)})\n"
+        "    except Exception as _e:\n"
+        "        _out = _json.dumps({'ok': False, 'error': str(_e)})\n"
+        "    with open('/tmp/_vetkey_result.txt', 'w') as _f:\n"
+        "        _f.write(_out)\n"
+        "try:\n"
+        "    import os; os.remove('/tmp/_vetkey_result.txt')\n"
+        "except OSError:\n"
+        "    pass\n"
+        "ic.set_timer(0, _vetkey_pubkey_cb)\n"
+        "print('VETKEY_INITIATED')\n"
+    )
+    result = canister_exec(pubkey_code, canister, network)
+    if result is None or 'VETKEY_INITIATED' not in (result or ''):
+        return None
+
+    print("  [1/3] Requesting vetKD public key...")
+    sys.stdout.flush()
+
+    data = _vetkey_poll_raw(canister, network, timeout=60)
+    if data is None:
+        return None
+    if not data.get('ok'):
+        return None
+    return _vetkey_extract_hex(data, 'public_key')
+
+
+def _vetkey_get_encrypted_key_hex(tpk_hex: str, canister: str, network: str,
+                                   scope=None, input_text: str = "",
+                                   key_name: str = "test_key_1") -> str:
+    """Run the full derive flow and return the encrypted key hex (or None)."""
+    esc_domain = "basilisk".replace("'", "\\'")
+    esc_tpk = tpk_hex.replace("'", "\\'")
+    esc_input = input_text.replace("'", "\\'")
+    scope_code = (
+        f"        _scope = '{scope}'.encode('utf-8')\n"
+        if scope else
+        "        _scope = ic.caller().bytes\n"
+    )
+    derive_code = (
+        "import json as _json\n"
+        "def _vetkey_derive_cb():\n"
+        "    try:\n"
+        f"        _ds = b'{esc_domain}'\n"
+        + scope_code +
+        "        _ctx = bytes([len(_ds)]) + _ds + _scope\n"
+        "        _ctx_hex = ''.join(f'{b:02x}' for b in _ctx)\n"
+        f"        _input_hex = ''.join(f'{{b:02x}}' for b in '{esc_input}'.encode('utf-8'))\n"
+        f"        _tpk_hex = '{esc_tpk}'\n"
+        "        _tpk_blob = ''.join(chr(92) + _tpk_hex[i:i+2] for i in range(0, len(_tpk_hex), 2))\n"
+        f"        _args = ic.candid_encode('(record {{ input = blob \"' + _input_hex + '\"; context = blob \"' + _ctx_hex + '\"; key_id = record {{ curve = variant {{ bls12_381_g2 = null }}; name = \"{key_name}\" }}; transport_public_key = blob \"' + _tpk_blob + '\" }})')\n"
+        "        _result = yield ic.call_raw('aaaaa-aa', 'vetkd_derive_key', _args, 54_000_000_000)\n"
+        "        if hasattr(_result, 'Ok') and _result.Ok is not None:\n"
+        "            _d = ic.candid_decode(_result.Ok)\n"
+        "            _raw = None\n"
+        "            if isinstance(_d, dict):\n"
+        "                for _v in _d.values():\n"
+        "                    if isinstance(_v, (bytes, bytearray, list)): _raw = _v; break\n"
+        "            if _raw is None: _raw = getattr(_d, 'encrypted_key', _d)\n"
+        "            try: _hex = bytes(_raw).hex()\n"
+        "            except: _hex = str(_d)\n"
+        "            _out = _json.dumps({'ok': True, 'encrypted_key': _hex})\n"
+        "        elif hasattr(_result, 'Err') and _result.Err is not None:\n"
+        "            _out = _json.dumps({'ok': False, 'error': str(_result.Err)})\n"
+        "        else:\n"
+        "            _out = _json.dumps({'ok': True, 'response': str(_result)})\n"
+        "    except Exception as _e:\n"
+        "        _out = _json.dumps({'ok': False, 'error': str(_e)})\n"
+        "    with open('/tmp/_vetkey_result.txt', 'w') as _f:\n"
+        "        _f.write(_out)\n"
+        "try:\n"
+        "    import os; os.remove('/tmp/_vetkey_result.txt')\n"
+        "except OSError:\n"
+        "    pass\n"
+        "ic.set_timer(0, _vetkey_derive_cb)\n"
+        "print('VETKEY_INITIATED')\n"
+    )
+    result = canister_exec(derive_code, canister, network)
+    if result is None or 'VETKEY_INITIATED' not in (result or ''):
+        return None
+
+    print("  [2/3] Deriving encrypted vetKey...")
+    sys.stdout.flush()
+
+    data = _vetkey_poll_raw(canister, network, timeout=60)
+    if data is None:
+        return None
+    if not data.get('ok'):
+        return None
+    return _vetkey_extract_hex(data, 'encrypted_key')
+
+
+def _vetkey_node_call(cmd_dict: dict) -> dict:
+    """Call the vetkeys Node.js helper and return the parsed JSON response."""
+    import json
+    helper_path = os.path.join(os.path.dirname(__file__), 'vetkeys_helper.js')
+    if not os.path.exists(helper_path):
+        return {'ok': False, 'error': f'vetkeys_helper.js not found at {helper_path}'}
+
+    try:
+        proc = subprocess.run(
+            ['node', helper_path],
+            input=json.dumps(cmd_dict),
+            capture_output=True, text=True, timeout=30
+        )
+    except FileNotFoundError:
+        return {'ok': False, 'error': 'Node.js is required for vetkey encrypt/decrypt. Install it from https://nodejs.org'}
+    except subprocess.TimeoutExpired:
+        return {'ok': False, 'error': 'Node.js helper timed out'}
+
+    if proc.returncode != 0:
+        return {'ok': False, 'error': f'Node.js helper failed: {proc.stderr.strip()}'}
+
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return {'ok': False, 'error': f'Invalid response from helper: {proc.stdout[:200]}'}
+
+
+def _vetkey_read_canister_file(filepath: str, canister: str, network: str):
+    """Read a file from the canister and return its bytes as hex, or None."""
+    import base64 as _b64
+    esc = filepath.replace("'", "\\'")
+    code = (
+        "import base64 as _b64\n"
+        "try:\n"
+        f"    with open('{esc}', 'rb') as _f:\n"
+        "        print('FDATA:' + _b64.b64encode(_f.read()).decode())\n"
+        "except FileNotFoundError:\n"
+        "    print('FNOTFOUND')\n"
+        "except Exception as _e:\n"
+        "    print('FERR:' + str(_e))\n"
+    )
+    result = canister_exec(code, canister, network)
+    if not result:
+        return None
+    if 'FNOTFOUND' in result:
+        return None
+    if 'FDATA:' in result:
+        b64_str = result.split('FDATA:', 1)[1].strip()
+        return _b64.b64decode(b64_str).hex()
+    return None
+
+
+def _vetkey_write_canister_file(filepath: str, data_hex: str,
+                                 canister: str, network: str) -> bool:
+    """Write hex data to a file on the canister. Returns True on success."""
+    import base64 as _b64
+    data_bytes = bytes.fromhex(data_hex)
+    b64_data = _b64.b64encode(data_bytes).decode()
+    esc = filepath.replace("'", "\\'")
+    code = (
+        "import base64 as _b64\n"
+        f"_data = _b64.b64decode('{b64_data}')\n"
+        "try:\n"
+        f"    with open('{esc}', 'wb') as _f:\n"
+        "        _f.write(_data)\n"
+        "    print('FWRITTEN')\n"
+        "except Exception as _e:\n"
+        "    print('FERR:' + str(_e))\n"
+    )
+    result = canister_exec(code, canister, network)
+    return result is not None and 'FWRITTEN' in result
+
+
+def _vetkey_derive_aes_key(canister: str, network: str, scope=None,
+                            input_text: str = "", key_name: str = "test_key_1"):
+    """Full key derivation: pubkey + transport keygen + derive → returns (seed_hex, pubkey_hex, ek_hex) or error string."""
+    # Step 1: Get public key
+    pk_hex = _vetkey_get_pubkey_hex(canister, network, scope=scope, key_name=key_name)
+    if pk_hex is None:
+        return "[error] Failed to retrieve vetKD public key (timeout or error)"
+
+    # Step 2: Generate transport key
+    seed_hex = os.urandom(32).hex()
+    keygen_result = _vetkey_node_call({'cmd': 'keygen', 'seed_hex': seed_hex})
+    if not keygen_result.get('ok'):
+        return f"[error] Transport keygen failed: {keygen_result.get('error', 'unknown')}"
+    tpk_hex = keygen_result['tpk_hex']
+
+    # Step 3: Derive encrypted key
+    ek_hex = _vetkey_get_encrypted_key_hex(
+        tpk_hex, canister, network,
+        scope=scope, input_text=input_text, key_name=key_name
+    )
+    if ek_hex is None:
+        return "[error] Failed to derive encrypted vetKey (timeout or error)"
+
+    return (seed_hex, pk_hex, ek_hex)
+
+
+def _vetkey_encrypt(target: str, canister: str, network: str,
+                     scope=None, input_text: str = "",
+                     key_name: str = "test_key_1") -> str:
+    """Encrypt a file or text using vetKeys."""
+    # Determine if target is a file path or text
+    is_file = target.startswith('/')
+    is_quoted = target.startswith('"') and target.endswith('"')
+
+    if is_file:
+        print(f"Encrypting canister file: {target}")
+    elif is_quoted:
+        print(f"Encrypting text...")
+    else:
+        print(f"Encrypting text...")
+    sys.stdout.flush()
+
+    # Get the plaintext
+    if is_file:
+        plaintext_hex = _vetkey_read_canister_file(target, canister, network)
+        if plaintext_hex is None:
+            return f"[error] File not found on canister: {target}"
+    elif is_quoted:
+        plaintext_hex = target[1:-1].encode('utf-8').hex()
+    else:
+        plaintext_hex = target.encode('utf-8').hex()
+
+    # Derive AES key (2 async canister calls ~ 60-120s)
+    derivation_id_hex = input_text.encode('utf-8').hex() if input_text else ""
+    key_result = _vetkey_derive_aes_key(canister, network, scope=scope,
+                                         input_text=input_text, key_name=key_name)
+    if isinstance(key_result, str):
+        return key_result  # error message
+
+    seed_hex, pk_hex, ek_hex = key_result
+
+    # Encrypt via Node.js helper
+    print("  [3/3] Encrypting data...")
+    sys.stdout.flush()
+    enc_result = _vetkey_node_call({
+        'cmd': 'encrypt',
+        'seed_hex': seed_hex,
+        'encrypted_key_hex': ek_hex,
+        'public_key_hex': pk_hex,
+        'derivation_id_hex': derivation_id_hex,
+        'plaintext_hex': plaintext_hex,
+    })
+    if not enc_result.get('ok'):
+        return f"[error] Encryption failed: {enc_result.get('error', 'unknown')}"
+
+    ciphertext_hex = enc_result['ciphertext_hex']
+
+    if is_file:
+        dest = target + '.enc'
+        ok = _vetkey_write_canister_file(dest, ciphertext_hex, canister, network)
+        if ok:
+            return f"Encrypted {target} → {dest} ({len(ciphertext_hex) // 2} bytes)"
+        return f"[error] Failed to write encrypted file to {dest}"
+    else:
+        return f"Ciphertext ({len(ciphertext_hex) // 2} bytes):\n{ciphertext_hex}"
+
+
+def _vetkey_decrypt(target: str, canister: str, network: str,
+                     scope=None, input_text: str = "",
+                     key_name: str = "test_key_1") -> str:
+    """Decrypt a file or hex ciphertext using vetKeys."""
+    is_file = target.startswith('/')
+    is_quoted = target.startswith('"') and target.endswith('"')
+
+    if is_file:
+        print(f"Decrypting canister file: {target}")
+    else:
+        print(f"Decrypting ciphertext...")
+    sys.stdout.flush()
+
+    # Get the ciphertext
+    if is_file:
+        ciphertext_hex = _vetkey_read_canister_file(target, canister, network)
+        if ciphertext_hex is None:
+            return f"[error] File not found on canister: {target}"
+    elif is_quoted:
+        ciphertext_hex = target[1:-1]
+    else:
+        ciphertext_hex = target
+
+    # Validate hex
+    try:
+        bytes.fromhex(ciphertext_hex)
+    except ValueError:
+        return f"[error] Invalid ciphertext (not valid hex)"
+
+    # Derive AES key
+    derivation_id_hex = input_text.encode('utf-8').hex() if input_text else ""
+    key_result = _vetkey_derive_aes_key(canister, network, scope=scope,
+                                         input_text=input_text, key_name=key_name)
+    if isinstance(key_result, str):
+        return key_result
+
+    seed_hex, pk_hex, ek_hex = key_result
+
+    # Decrypt via Node.js helper
+    print("  [3/3] Decrypting data...")
+    sys.stdout.flush()
+    dec_result = _vetkey_node_call({
+        'cmd': 'decrypt',
+        'seed_hex': seed_hex,
+        'encrypted_key_hex': ek_hex,
+        'public_key_hex': pk_hex,
+        'derivation_id_hex': derivation_id_hex,
+        'ciphertext_hex': ciphertext_hex,
+    })
+    if not dec_result.get('ok'):
+        return f"[error] Decryption failed: {dec_result.get('error', 'unknown')}"
+
+    plaintext_hex = dec_result['plaintext_hex']
+
+    if is_file:
+        dest = target[:-4] if target.endswith('.enc') else target + '.dec'
+        plaintext_bytes = bytes.fromhex(plaintext_hex)
+        ok = _vetkey_write_canister_file(dest, plaintext_hex, canister, network)
+        if ok:
+            # Try to show the content if it looks like text
+            try:
+                text = plaintext_bytes.decode('utf-8')
+                return f"Decrypted {target} → {dest} ({len(plaintext_bytes)} bytes)\nContent: {text[:500]}"
+            except UnicodeDecodeError:
+                return f"Decrypted {target} → {dest} ({len(plaintext_bytes)} bytes)"
+        return f"[error] Failed to write decrypted file to {dest}"
+    else:
+        plaintext_bytes = bytes.fromhex(plaintext_hex)
+        try:
+            text = plaintext_bytes.decode('utf-8')
+            return f"Plaintext: {text}"
+        except UnicodeDecodeError:
+            return f"Plaintext (hex): {plaintext_hex}"
+
+
 def _handle_vetkey(args: str, canister: str, network: str) -> str:
     """Dispatch %vetkey subcommands."""
     cleaned, scope, input_text, key_name = _parse_vetkey_flags(args)
@@ -2225,6 +2672,18 @@ def _handle_vetkey(args: str, canister: str, network: str) -> str:
             return "Usage: %vetkey derive <transport_public_key_hex> [--scope <text>] [--input <text>]"
         return _vetkey_derive(rest, canister, network, scope=scope,
                               input_text=input_text, key_name=key_name)
+
+    if subcmd == "encrypt":
+        if not rest:
+            return "Usage: %vetkey encrypt <file_or_text> [--scope <text>] [--input <text>]"
+        return _vetkey_encrypt(rest, canister, network, scope=scope,
+                               input_text=input_text, key_name=key_name)
+
+    if subcmd == "decrypt":
+        if not rest:
+            return "Usage: %vetkey decrypt <file_or_text> [--scope <text>] [--input <text>]"
+        return _vetkey_decrypt(rest, canister, network, scope=scope,
+                               input_text=input_text, key_name=key_name)
 
     if subcmd == "result":
         return _vetkey_result(canister, network)
@@ -3163,6 +3622,8 @@ print('__BASILISK_INFO__' + json.dumps(_info))
     print("    %wallet <token> transfer <amt> <to>  Transfer tokens")
     print("    %vetkey pubkey            Get vetKD public key")
     print("    %vetkey derive <tpk_hex>  Derive encrypted vetKey")
+    print("    %vetkey encrypt <target>  Encrypt file or text")
+    print("    %vetkey decrypt <target>  Decrypt file or text")
     print("    %run <file>               Execute file from canister")
     print("    %get <remote> [local]     Download file from canister")
     print("    %put <local> [remote]     Upload file to canister")
