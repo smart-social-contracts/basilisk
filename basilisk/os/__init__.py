@@ -7,6 +7,7 @@ Provides POSIX-like abstractions on top of the Basilisk CDK:
   - Wallet (ICRC-1 token registry, transfers, balance tracking)
   - Filesystem (in-memory POSIX fs via frozen_stdlib_preamble)
   - Persistent storage (via ic-python-db entity ORM)
+  - Encryption (vetKeys + per-principal envelopes + groups)
   - Logging (via ic-python-logging)
 
 Canister-side code: entities and task_manager run *inside* the canister.
@@ -36,6 +37,12 @@ __all__ = [
     "FXService",
     # VetKey service
     "VetKeyService",
+    # Crypto entities & service
+    "KeyEnvelope",
+    "CryptoGroup",
+    "CryptoGroupMember",
+    "CryptoService",
+    "EncryptedString",
     # Task manager
     "TaskManager",
     # Execution
@@ -55,6 +62,10 @@ try:
     from .wallet import Wallet
     from .fx import FXService
     from .vetkeys import VetKeyService
+    from .crypto import (
+        KeyEnvelope, CryptoGroup, CryptoGroupMember,
+        CryptoService, EncryptedString,
+    )
     from .task_manager import TaskManager
     from .execution import run_code, create_task_entity_class
 except ImportError:

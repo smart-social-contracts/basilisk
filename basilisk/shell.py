@@ -3291,6 +3291,572 @@ def _handle_fx(args: str, canister: str, network: str) -> str:
     return f"Unknown fx command: {subcmd}\n\n" + _FX_USAGE
 
 
+# ---------------------------------------------------------------------------
+# %group subcommand handlers — manage CryptoGroups on canister
+# ---------------------------------------------------------------------------
+
+_GROUP_USAGE = (
+    "Usage:\n"
+    "  %group                              List all groups\n"
+    "  %group list                         List all groups\n"
+    "  %group create <name> [description]  Create a new group\n"
+    "  %group delete <name>                Delete a group and its members\n"
+    "  %group members <name>               List members of a group\n"
+    "  %group add <name> <principal>       Add a principal to a group\n"
+    "  %group remove <name> <principal>    Remove a principal from a group"
+)
+
+
+def _group_list_code() -> str:
+    """Generate on-canister code for %group list."""
+    return (
+        "from basilisk.os.crypto import CryptoGroup, CryptoGroupMember\n"
+        "_groups = list(CryptoGroup.instances())\n"
+        "if not _groups:\n"
+        "    print('No groups defined.')\n"
+        "else:\n"
+        "    for _g in sorted(_groups, key=lambda g: str(g.name)):\n"
+        "        _members = [m for m in CryptoGroupMember.instances() if str(m.group) == str(_g.name)]\n"
+        "        _desc = f'  {_g.description}' if _g.description else ''\n"
+        "        print(f'  {_g.name:<20} ({len(_members)} members){_desc}')\n"
+    )
+
+
+def _group_create_code(name: str, description: str = "") -> str:
+    """Generate on-canister code for %group create."""
+    esc_name = name.replace("'", "\\'")
+    esc_desc = description.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import CryptoGroup\n"
+        f"_existing = CryptoGroup['{esc_name}']\n"
+        "if _existing:\n"
+        f"    print('Group {esc_name} already exists.')\n"
+        "else:\n"
+        f"    CryptoGroup(name='{esc_name}', description='{esc_desc}')\n"
+        f"    print('Created group: {esc_name}')\n"
+    )
+
+
+def _group_delete_code(name: str) -> str:
+    """Generate on-canister code for %group delete."""
+    esc_name = name.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import CryptoGroup, CryptoGroupMember\n"
+        f"_g = CryptoGroup['{esc_name}']\n"
+        "if not _g:\n"
+        f"    print('Group {esc_name} not found.')\n"
+        "else:\n"
+        "    _count = 0\n"
+        "    for _m in list(CryptoGroupMember.instances()):\n"
+        f"        if str(_m.group) == '{esc_name}':\n"
+        "            _m._delete()\n"
+        "            _count += 1\n"
+        "    _g._delete()\n"
+        f"    print(f'Deleted group {esc_name} ({{_count}} members removed).')\n"
+    )
+
+
+def _group_members_code(name: str) -> str:
+    """Generate on-canister code for %group members."""
+    esc_name = name.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import CryptoGroup, CryptoGroupMember\n"
+        f"_g = CryptoGroup['{esc_name}']\n"
+        "if not _g:\n"
+        f"    print('Group {esc_name} not found.')\n"
+        "else:\n"
+        "    _members = [m for m in CryptoGroupMember.instances() if str(m.group) == str(_g.name)]\n"
+        "    if not _members:\n"
+        f"        print('Group {esc_name} has no members.')\n"
+        "    else:\n"
+        "        for _m in sorted(_members, key=lambda m: str(m.principal)):\n"
+        "            print(f'  {str(_m.principal):<50} {_m.role or \"member\"}')\n"
+    )
+
+
+def _group_add_code(name: str, principal: str) -> str:
+    """Generate on-canister code for %group add."""
+    esc_name = name.replace("'", "\\'")
+    esc_princ = principal.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import CryptoGroup, CryptoGroupMember\n"
+        f"_g = CryptoGroup['{esc_name}']\n"
+        "if not _g:\n"
+        f"    print('Group {esc_name} not found.')\n"
+        "else:\n"
+        "    _exists = False\n"
+        "    for _m in CryptoGroupMember.instances():\n"
+        f"        if str(_m.group) == '{esc_name}' and str(_m.principal) == '{esc_princ}':\n"
+        "            _exists = True\n"
+        "            break\n"
+        "    if _exists:\n"
+        f"        print('{esc_princ} is already a member of {esc_name}.')\n"
+        "    else:\n"
+        f"        CryptoGroupMember(group='{esc_name}', principal='{esc_princ}', role='member')\n"
+        f"        print('Added {esc_princ} to group {esc_name}.')\n"
+    )
+
+
+def _group_remove_code(name: str, principal: str) -> str:
+    """Generate on-canister code for %group remove."""
+    esc_name = name.replace("'", "\\'")
+    esc_princ = principal.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import CryptoGroupMember, KeyEnvelope\n"
+        "_found = False\n"
+        "for _m in list(CryptoGroupMember.instances()):\n"
+        f"    if str(_m.group) == '{esc_name}' and str(_m.principal) == '{esc_princ}':\n"
+        "        _m._delete()\n"
+        "        _found = True\n"
+        "        break\n"
+        "if _found:\n"
+        "    _revoked = 0\n"
+        "    for _e in list(KeyEnvelope.instances()):\n"
+        f"        if str(_e.principal) == '{esc_princ}':\n"
+        "            _e._delete()\n"
+        "            _revoked += 1\n"
+        f"    print(f'Removed {esc_princ} from group {esc_name}. Revoked {{_revoked}} envelope(s).')\n"
+        "else:\n"
+        f"    print('{esc_princ} is not a member of {esc_name}.')\n"
+    )
+
+
+def _handle_group(args: str, canister: str, network: str) -> str:
+    """Dispatch %group subcommands."""
+    parts = args.strip().split(None, 2)
+    subcmd = parts[0] if parts else "list"
+
+    if subcmd == "help":
+        return _GROUP_USAGE
+
+    if subcmd == "list":
+        return canister_exec(_group_list_code(), canister, network)
+
+    if subcmd == "create":
+        if len(parts) < 2:
+            return "Usage: %group create <name> [description]"
+        name = parts[1]
+        desc = parts[2] if len(parts) > 2 else ""
+        return canister_exec(_group_create_code(name, desc), canister, network)
+
+    if subcmd == "delete":
+        if len(parts) < 2:
+            return "Usage: %group delete <name>"
+        return canister_exec(_group_delete_code(parts[1]), canister, network)
+
+    if subcmd == "members":
+        if len(parts) < 2:
+            return "Usage: %group members <name>"
+        return canister_exec(_group_members_code(parts[1]), canister, network)
+
+    if subcmd == "add":
+        add_parts = args.strip().split()
+        if len(add_parts) < 3:
+            return "Usage: %group add <name> <principal>"
+        return canister_exec(_group_add_code(add_parts[1], add_parts[2]), canister, network)
+
+    if subcmd == "remove":
+        rm_parts = args.strip().split()
+        if len(rm_parts) < 3:
+            return "Usage: %group remove <name> <principal>"
+        return canister_exec(_group_remove_code(rm_parts[1], rm_parts[2]), canister, network)
+
+    return f"Unknown group command: {subcmd}\n\n" + _GROUP_USAGE
+
+
+# ---------------------------------------------------------------------------
+# %crypto subcommand handlers — encryption, sharing, envelopes
+# ---------------------------------------------------------------------------
+
+_CRYPTO_USAGE = (
+    "Usage:\n"
+    "  %crypto                                          Show this help\n"
+    "  %crypto status                                   Show current identity & cached keys\n"
+    "  %crypto scopes                                   List scopes accessible by current user\n"
+    "\n"
+    "  %crypto encrypt <file> [--scope <s>]             Encrypt a file in memfs (in-place)\n"
+    "  %crypto decrypt <file>                           Decrypt a file in memfs (in-place)\n"
+    "  %crypto encrypt-text <plaintext> [--scope <s>]   Encrypt a string, print ciphertext\n"
+    "  %crypto decrypt-text <ciphertext>                Decrypt a string, print plaintext\n"
+    "\n"
+    "  %crypto share <scope> --with <principal>         Wrap DEK for a principal\n"
+    "  %crypto share <scope> --with-group <group>       Wrap DEK for all group members\n"
+    "  %crypto revoke <scope> --from <principal>        Delete principal's envelope\n"
+    "  %crypto revoke <scope> --from-group <group>      Delete group members' envelopes\n"
+    "\n"
+    "  %crypto envelopes <scope>                        List who has access to a scope\n"
+    "  %crypto init [--scope <s>]                       Create a new DEK for a scope"
+)
+
+
+def _crypto_status_code() -> str:
+    """Generate on-canister code for %crypto status."""
+    return (
+        "from _cdk import ic\n"
+        "from basilisk.os.crypto import KeyEnvelope\n"
+        "_caller = ic.caller().to_str()\n"
+        "_scopes = set()\n"
+        "for _e in KeyEnvelope.instances():\n"
+        "    if str(_e.principal) == _caller:\n"
+        "        _scopes.add(str(_e.scope))\n"
+        "print(f'Identity: {_caller}')\n"
+        "print(f'Accessible scopes: {len(_scopes)}')\n"
+        "if _scopes:\n"
+        "    for _s in sorted(_scopes):\n"
+        "        print(f'  {_s}')\n"
+    )
+
+
+def _crypto_scopes_code() -> str:
+    """Generate on-canister code for %crypto scopes."""
+    return (
+        "from _cdk import ic\n"
+        "from basilisk.os.crypto import KeyEnvelope\n"
+        "_caller = ic.caller().to_str()\n"
+        "_scopes = {}\n"
+        "for _e in KeyEnvelope.instances():\n"
+        "    _s = str(_e.scope)\n"
+        "    if _s not in _scopes:\n"
+        "        _scopes[_s] = {'total': 0, 'mine': False}\n"
+        "    _scopes[_s]['total'] += 1\n"
+        "    if str(_e.principal) == _caller:\n"
+        "        _scopes[_s]['mine'] = True\n"
+        "if not _scopes:\n"
+        "    print('No encryption scopes defined.')\n"
+        "else:\n"
+        "    print(f'  {\"Scope\":<40} {\"Principals\":>10}  Access')\n"
+        "    print('  ' + '-' * 65)\n"
+        "    for _s in sorted(_scopes):\n"
+        "        _info = _scopes[_s]\n"
+        "        _access = 'YES' if _info['mine'] else '-'\n"
+        "        print(f'  {_s:<40} {_info[\"total\"]:>10}  {_access}')\n"
+    )
+
+
+def _crypto_envelopes_code(scope: str) -> str:
+    """Generate on-canister code for %crypto envelopes <scope>."""
+    esc = scope.replace("'", "\\'")
+    return (
+        "from _cdk import ic\n"
+        "from basilisk.os.crypto import KeyEnvelope, CryptoGroupMember\n"
+        f"_scope = '{esc}'\n"
+        "_caller = ic.caller().to_str()\n"
+        "_envelopes = [e for e in KeyEnvelope.instances() if str(e.scope) == _scope]\n"
+        "if not _envelopes:\n"
+        "    print(f'No envelopes for scope {_scope}.')\n"
+        "else:\n"
+        "    print(f'Scope: {_scope}')\n"
+        "    print(f'Authorized principals: {len(_envelopes)}')\n"
+        "    print()\n"
+        "    _group_map = {}\n"
+        "    for _m in CryptoGroupMember.instances():\n"
+        "        _p = str(_m.principal)\n"
+        "        if _p not in _group_map:\n"
+        "            _group_map[_p] = []\n"
+        "        _group_map[_p].append(str(_m.group))\n"
+        "    for _e in sorted(_envelopes, key=lambda e: str(e.principal)):\n"
+        "        _p = str(_e.principal)\n"
+        "        _self = ' (self)' if _p == _caller else ''\n"
+        "        _groups = _group_map.get(_p, [])\n"
+        "        _g = f' (groups: {\", \".join(_groups)})' if _groups else ''\n"
+        "        print(f'  {_p}{_self}{_g}')\n"
+    )
+
+
+def _crypto_init_code(scope: str) -> str:
+    """Generate on-canister code for %crypto init --scope <s>."""
+    esc = scope.replace("'", "\\'")
+    return (
+        "from _cdk import ic\n"
+        "import os as _os\n"
+        "from basilisk.os.crypto import KeyEnvelope, encode_envelope\n"
+        f"_scope = '{esc}'\n"
+        "_caller = ic.caller().to_str()\n"
+        "_existing = None\n"
+        "for _e in KeyEnvelope.instances():\n"
+        "    if str(_e.scope) == _scope and str(_e.principal) == _caller:\n"
+        "        _existing = _e\n"
+        "        break\n"
+        "if _existing:\n"
+        "    print(f'Scope {_scope} already initialized for you.')\n"
+        "else:\n"
+        "    _dek = _os.urandom(32)\n"
+        "    KeyEnvelope(scope=_scope, principal=_caller, wrapped_dek=encode_envelope(_dek.hex()))\n"
+        "    print(f'Created DEK for scope {_scope}.')\n"
+        "    print(f'Wrapped for: {_caller} (self)')\n"
+    )
+
+
+def _crypto_share_principal_code(scope: str, principal: str) -> str:
+    """Generate on-canister code for %crypto share <scope> --with <principal>."""
+    esc_scope = scope.replace("'", "\\'")
+    esc_princ = principal.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import KeyEnvelope, encode_envelope\n"
+        f"_scope = '{esc_scope}'\n"
+        f"_target = '{esc_princ}'\n"
+        "_existing = None\n"
+        "for _e in KeyEnvelope.instances():\n"
+        "    if str(_e.scope) == _scope and str(_e.principal) == _target:\n"
+        "        _existing = _e\n"
+        "        break\n"
+        "if _existing:\n"
+        "    print(f'{_target} already has access to scope {_scope}.')\n"
+        "else:\n"
+        "    KeyEnvelope(scope=_scope, principal=_target, wrapped_dek=encode_envelope(''))\n"
+        "    print(f'Shared scope {_scope} with {_target}.')\n"
+        "    print('Note: Client must wrap the DEK for this principal on next access.')\n"
+    )
+
+
+def _crypto_share_group_code(scope: str, group_name: str) -> str:
+    """Generate on-canister code for %crypto share <scope> --with-group <group>."""
+    esc_scope = scope.replace("'", "\\'")
+    esc_group = group_name.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import CryptoGroup, CryptoGroupMember, KeyEnvelope, encode_envelope\n"
+        f"_scope = '{esc_scope}'\n"
+        f"_group_name = '{esc_group}'\n"
+        "_group = CryptoGroup[_group_name]\n"
+        "if not _group:\n"
+        "    print(f'Group {_group_name} not found.')\n"
+        "else:\n"
+        "    _members = [m for m in CryptoGroupMember.instances() if str(m.group) == _group_name]\n"
+        "    _created = 0\n"
+        "    _skipped = 0\n"
+        "    for _m in _members:\n"
+        "        _p = str(_m.principal)\n"
+        "        _exists = False\n"
+        "        for _e in KeyEnvelope.instances():\n"
+        "            if str(_e.scope) == _scope and str(_e.principal) == _p:\n"
+        "                _exists = True\n"
+        "                break\n"
+        "        if _exists:\n"
+        "            _skipped += 1\n"
+        "        else:\n"
+        "            KeyEnvelope(scope=_scope, principal=_p, wrapped_dek=encode_envelope(''))\n"
+        "            _created += 1\n"
+        "    print(f'Shared scope {_scope} with group {_group_name}: {_created} new, {_skipped} existing.')\n"
+    )
+
+
+def _crypto_revoke_principal_code(scope: str, principal: str) -> str:
+    """Generate on-canister code for %crypto revoke <scope> --from <principal>."""
+    esc_scope = scope.replace("'", "\\'")
+    esc_princ = principal.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import KeyEnvelope\n"
+        f"_scope = '{esc_scope}'\n"
+        f"_target = '{esc_princ}'\n"
+        "_found = False\n"
+        "for _e in list(KeyEnvelope.instances()):\n"
+        "    if str(_e.scope) == _scope and str(_e.principal) == _target:\n"
+        "        _e._delete()\n"
+        "        _found = True\n"
+        "        break\n"
+        "if _found:\n"
+        "    print(f'Revoked access to scope {_scope} from {_target}.')\n"
+        "else:\n"
+        "    print(f'{_target} has no envelope for scope {_scope}.')\n"
+    )
+
+
+def _crypto_revoke_group_code(scope: str, group_name: str) -> str:
+    """Generate on-canister code for %crypto revoke <scope> --from-group <group>."""
+    esc_scope = scope.replace("'", "\\'")
+    esc_group = group_name.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import CryptoGroupMember, KeyEnvelope\n"
+        f"_scope = '{esc_scope}'\n"
+        f"_group_name = '{esc_group}'\n"
+        "_members = [m for m in CryptoGroupMember.instances() if str(m.group) == _group_name]\n"
+        "_principals = set(str(m.principal) for m in _members)\n"
+        "_count = 0\n"
+        "for _e in list(KeyEnvelope.instances()):\n"
+        "    if str(_e.scope) == _scope and str(_e.principal) in _principals:\n"
+        "        _e._delete()\n"
+        "        _count += 1\n"
+        "print(f'Revoked {_count} envelope(s) for scope {_scope} from group {_group_name}.')\n"
+    )
+
+
+def _crypto_encrypt_file_code(filepath: str, scope: str) -> str:
+    """Generate on-canister code for %crypto encrypt <file> --scope <s>."""
+    esc_path = filepath.replace("'", "\\'")
+    esc_scope = scope.replace("'", "\\'")
+    return (
+        "import os as _os\n"
+        "from basilisk.os.crypto import encode_ciphertext, is_encrypted\n"
+        f"_path = '{esc_path}'\n"
+        f"_scope = '{esc_scope}'\n"
+        "try:\n"
+        "    with open(_path, 'rb') as _f:\n"
+        "        _data = _f.read()\n"
+        "except FileNotFoundError:\n"
+        "    print(f'{_path}: No such file')\n"
+        "    _data = None\n"
+        "if _data is not None:\n"
+        "    if is_encrypted(_data.decode('utf-8', errors='replace')):\n"
+        "        print(f'{_path}: Already encrypted.')\n"
+        "    else:\n"
+        "        _iv = _os.urandom(12)\n"
+        "        _ct = encode_ciphertext(_iv.hex(), _data.hex())\n"
+        "        with open(_path, 'w') as _f:\n"
+        "            _f.write(_ct)\n"
+        "        print(f'Encrypted {_path} ({len(_data)} bytes) with scope {_scope}.')\n"
+    )
+
+
+def _crypto_decrypt_file_code(filepath: str) -> str:
+    """Generate on-canister code for %crypto decrypt <file>."""
+    esc_path = filepath.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import decode_ciphertext, is_encrypted\n"
+        f"_path = '{esc_path}'\n"
+        "try:\n"
+        "    with open(_path, 'r') as _f:\n"
+        "        _content = _f.read()\n"
+        "except FileNotFoundError:\n"
+        "    print(f'{_path}: No such file')\n"
+        "    _content = None\n"
+        "if _content is not None:\n"
+        "    if not is_encrypted(_content):\n"
+        "        print(f'{_path}: Not encrypted.')\n"
+        "    else:\n"
+        "        _iv, _data_hex = decode_ciphertext(_content)\n"
+        "        _data = bytes.fromhex(_data_hex)\n"
+        "        with open(_path, 'wb') as _f:\n"
+        "            _f.write(_data)\n"
+        "        print(f'Decrypted {_path} ({len(_data)} bytes).')\n"
+    )
+
+
+def _crypto_encrypt_text_code(plaintext: str, scope: str) -> str:
+    """Generate on-canister code for %crypto encrypt-text."""
+    esc_text = plaintext.replace("'", "\\'")
+    esc_scope = scope.replace("'", "\\'")
+    return (
+        "import os as _os\n"
+        "from basilisk.os.crypto import encode_ciphertext\n"
+        f"_text = '{esc_text}'\n"
+        "_iv = _os.urandom(12)\n"
+        "_ct = encode_ciphertext(_iv.hex(), _text.encode('utf-8').hex())\n"
+        "print(_ct)\n"
+    )
+
+
+def _crypto_decrypt_text_code(ciphertext: str) -> str:
+    """Generate on-canister code for %crypto decrypt-text."""
+    esc_ct = ciphertext.replace("'", "\\'")
+    return (
+        "from basilisk.os.crypto import decode_ciphertext, is_encrypted\n"
+        f"_ct = '{esc_ct}'\n"
+        "if not is_encrypted(_ct):\n"
+        "    print('Not in encrypted format.')\n"
+        "else:\n"
+        "    _iv, _data_hex = decode_ciphertext(_ct)\n"
+        "    print(bytes.fromhex(_data_hex).decode('utf-8', errors='replace'))\n"
+    )
+
+
+def _handle_crypto(args: str, canister: str, network: str) -> str:
+    """Dispatch %crypto subcommands."""
+    parts = args.strip().split()
+    if not parts:
+        return _CRYPTO_USAGE
+    subcmd = parts[0]
+
+    if subcmd == "help":
+        return _CRYPTO_USAGE
+
+    if subcmd == "status":
+        return canister_exec(_crypto_status_code(), canister, network)
+
+    if subcmd == "scopes":
+        return canister_exec(_crypto_scopes_code(), canister, network)
+
+    if subcmd == "envelopes":
+        if len(parts) < 2:
+            return "Usage: %crypto envelopes <scope>"
+        return canister_exec(_crypto_envelopes_code(parts[1]), canister, network)
+
+    if subcmd == "init":
+        scope = "default"
+        if "--scope" in parts:
+            idx = parts.index("--scope")
+            if idx + 1 < len(parts):
+                scope = parts[idx + 1]
+        return canister_exec(_crypto_init_code(scope), canister, network)
+
+    if subcmd == "encrypt":
+        if len(parts) < 2:
+            return "Usage: %crypto encrypt <file> [--scope <s>]"
+        filepath = parts[1]
+        scope = "default"
+        if "--scope" in parts:
+            idx = parts.index("--scope")
+            if idx + 1 < len(parts):
+                scope = parts[idx + 1]
+        return canister_exec(_crypto_encrypt_file_code(filepath, scope), canister, network)
+
+    if subcmd == "decrypt":
+        if len(parts) < 2:
+            return "Usage: %crypto decrypt <file>"
+        return canister_exec(_crypto_decrypt_file_code(parts[1]), canister, network)
+
+    if subcmd == "encrypt-text":
+        if len(parts) < 2:
+            return "Usage: %crypto encrypt-text <plaintext> [--scope <s>]"
+        # Collect text (everything except --scope flag)
+        text_parts = []
+        scope = "default"
+        i = 1
+        while i < len(parts):
+            if parts[i] == "--scope" and i + 1 < len(parts):
+                scope = parts[i + 1]
+                i += 2
+            else:
+                text_parts.append(parts[i])
+                i += 1
+        text = " ".join(text_parts)
+        return canister_exec(_crypto_encrypt_text_code(text, scope), canister, network)
+
+    if subcmd == "decrypt-text":
+        if len(parts) < 2:
+            return "Usage: %crypto decrypt-text <ciphertext>"
+        return canister_exec(_crypto_decrypt_text_code(parts[1]), canister, network)
+
+    if subcmd == "share":
+        if len(parts) < 4:
+            return "Usage: %crypto share <scope> --with <principal>  or  --with-group <group>"
+        scope = parts[1]
+        if "--with-group" in parts:
+            idx = parts.index("--with-group")
+            if idx + 1 < len(parts):
+                return canister_exec(_crypto_share_group_code(scope, parts[idx + 1]), canister, network)
+        if "--with" in parts:
+            idx = parts.index("--with")
+            if idx + 1 < len(parts):
+                return canister_exec(_crypto_share_principal_code(scope, parts[idx + 1]), canister, network)
+        return "Usage: %crypto share <scope> --with <principal>  or  --with-group <group>"
+
+    if subcmd == "revoke":
+        if len(parts) < 4:
+            return "Usage: %crypto revoke <scope> --from <principal>  or  --from-group <group>"
+        scope = parts[1]
+        if "--from-group" in parts:
+            idx = parts.index("--from-group")
+            if idx + 1 < len(parts):
+                return canister_exec(_crypto_revoke_group_code(scope, parts[idx + 1]), canister, network)
+        if "--from" in parts:
+            idx = parts.index("--from")
+            if idx + 1 < len(parts):
+                return canister_exec(_crypto_revoke_principal_code(scope, parts[idx + 1]), canister, network)
+        return "Usage: %crypto revoke <scope> --from <principal>  or  --from-group <group>"
+
+    return f"Unknown crypto command: {subcmd}\n\n" + _CRYPTO_USAGE
+
+
 def _handle_magic(line: str, canister: str, network: str) -> str:
     """Handle % magic commands. Returns output or None if not a magic command."""
     stripped = line.strip()
@@ -3414,6 +3980,16 @@ def _handle_magic(line: str, canister: str, network: str) -> str:
     if stripped == "%fx" or stripped.startswith("%fx "):
         args = stripped[3:].strip()
         return _handle_fx(args, canister, network)
+
+    # %group subcommand system
+    if stripped == "%group" or stripped.startswith("%group "):
+        args = stripped[6:].strip()
+        return _handle_group(args, canister, network)
+
+    # %crypto subcommand system
+    if stripped == "%crypto" or stripped.startswith("%crypto "):
+        args = stripped[7:].strip()
+        return _handle_crypto(args, canister, network)
 
     # %info — comprehensive canister information
     if stripped == "%info":
@@ -3624,6 +4200,12 @@ print('__BASILISK_INFO__' + json.dumps(_info))
     print("    %vetkey derive <tpk_hex>  Derive encrypted vetKey")
     print("    %vetkey encrypt <target>  Encrypt file or text")
     print("    %vetkey decrypt <target>  Decrypt file or text")
+    print("    %group                    Manage encryption groups")
+    print("    %group create|delete|add|remove|members <name>")
+    print("    %crypto status|scopes    Encryption status & scopes")
+    print("    %crypto encrypt|decrypt  Encrypt/decrypt files & text")
+    print("    %crypto share|revoke     Share/revoke scope access")
+    print("    %crypto envelopes|init   View/create key envelopes")
     print("    %run <file>               Execute file from canister")
     print("    %get <remote> [local]     Download file from canister")
     print("    %put <local> [remote]     Upload file to canister")

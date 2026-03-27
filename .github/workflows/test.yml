@@ -617,6 +617,8 @@ jobs:
                       pytest_args: >-
                           tests/test_vetkeys.py tests/test_wallet.py
                           tests/test_wallet_shell.py tests/test_wallet_hook.py
+                    - shard: crypto
+                      pytest_args: tests/test_crypto.py
         env:
             DFX_WARNING: -mainnet_plaintext_identity
             BASILISK_TEST_CANISTER: ru4ga-siaaa-aaaai-q7f3a-cai
