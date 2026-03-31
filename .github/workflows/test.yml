@@ -547,11 +547,11 @@ jobs:
                     "(record { canister_id = principal \"${CANISTER_ID}\" })" \
                     -e ic --identity ci-deploy 2>/dev/null || true
 
-                  # Install with --async-call: icp may timeout but DTS completes in background
+                  # Install canister (may take time due to DTS on mainnet)
                   icp canister install "${CANISTER_ID}" \
                     --wasm "${WASM_FILE}" \
                     -e ic --mode reinstall --yes \
-                    --async-call --identity ci-deploy || true
+                    --identity ci-deploy || true
 
                   # Poll for completion (up to 10 minutes)
                   for i in $(seq 1 20); do

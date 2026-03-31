@@ -38,7 +38,7 @@ def run_command(cmd, capture_output=True, check=True):
 
 def get_principal():
     """Get the current icp identity principal."""
-    result = run_command(["icp", "identity", "get-principal"])
+    result = run_command(["icp", "identity", "principal"])
     return result.stdout.strip()
 
 
