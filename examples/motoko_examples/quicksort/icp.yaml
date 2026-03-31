@@ -1,7 +1,11 @@
 canisters:
 - name: quicksort
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk quicksort src/main.py
+      - cp .basilisk/quicksort/quicksort.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/quicksort
     node_compatibility: true

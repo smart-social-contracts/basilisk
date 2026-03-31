@@ -1,13 +1,21 @@
 canisters:
 - name: cycles
-  type: basilisk
-  main: src/cycles/cycles.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk cycles src/cycles/cycles.py
+      - cp .basilisk/cycles/cycles.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/cycles
     node_compatibility: true
 - name: intermediary
-  type: basilisk
-  main: src/intermediary/intermediary.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk intermediary src/intermediary/intermediary.py
+      - cp .basilisk/intermediary/intermediary.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/intermediary
     node_compatibility: true

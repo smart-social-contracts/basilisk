@@ -1,7 +1,11 @@
 canisters:
 - name: date
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk date src/main.py
+      - cp .basilisk/date/date.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/date
     node_compatibility: true

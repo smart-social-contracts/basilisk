@@ -1,7 +1,11 @@
 canisters:
 - name: null_example
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk null_example src/main.py
+      - cp .basilisk/null_example/null_example.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/null_example
     node_compatibility: true

@@ -1,7 +1,11 @@
 canisters:
 - name: simple_user_accounts
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk simple_user_accounts src/main.py
+      - cp .basilisk/simple_user_accounts/simple_user_accounts.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/simple_user_accounts
     node_compatibility: true

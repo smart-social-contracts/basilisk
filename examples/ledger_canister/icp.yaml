@@ -1,12 +1,12 @@
 canisters:
 - name: ledger_canister
-  type: basilisk
-  main: src/ledger_canister/ledger_canister.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk ledger_canister src/ledger_canister/ledger_canister.py
+      - cp .basilisk/ledger_canister/ledger_canister.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/ledger_canister
     node_compatibility: true
 - name: icp_ledger
-  type: custom
-  candid: src/icp_ledger/ledger.private.did
-  wasm: src/icp_ledger/ledger.wasm
-  gzip: true

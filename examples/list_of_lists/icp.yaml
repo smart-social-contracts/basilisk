@@ -1,7 +1,11 @@
 canisters:
 - name: list_of_lists
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk list_of_lists src/main.py
+      - cp .basilisk/list_of_lists/list_of_lists.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/list_of_lists
     node_compatibility: true

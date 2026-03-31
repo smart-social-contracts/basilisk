@@ -1,7 +1,11 @@
 canisters:
 - name: primitive_types
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk primitive_types src/main.py
+      - cp .basilisk/primitive_types/primitive_types.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/primitive_types
     node_compatibility: true

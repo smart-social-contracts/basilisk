@@ -1,7 +1,11 @@
 canisters:
 - name: key_value_store
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk key_value_store src/main.py
+      - cp .basilisk/key_value_store/key_value_store.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/key_value_store
     node_compatibility: true

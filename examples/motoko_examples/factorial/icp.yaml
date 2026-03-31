@@ -1,7 +1,11 @@
 canisters:
 - name: factorial
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk factorial src/main.py
+      - cp .basilisk/factorial/factorial.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/factorial
     node_compatibility: true

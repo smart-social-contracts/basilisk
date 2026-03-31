@@ -1,7 +1,11 @@
 canisters:
 - name: manual_reply
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk manual_reply src/main.py
+      - cp .basilisk/manual_reply/manual_reply.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/manual_reply
     node_compatibility: true

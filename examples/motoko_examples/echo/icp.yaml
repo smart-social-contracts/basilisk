@@ -1,7 +1,11 @@
 canisters:
 - name: echo
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk echo src/main.py
+      - cp .basilisk/echo/echo.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/echo
     node_compatibility: true

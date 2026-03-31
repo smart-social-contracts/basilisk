@@ -1,7 +1,11 @@
 canisters:
 - name: guard_functions
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk guard_functions src/main.py
+      - cp .basilisk/guard_functions/guard_functions.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/guard_functions
     node_compatibility: true

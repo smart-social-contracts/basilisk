@@ -1,7 +1,11 @@
 canisters:
 - name: principal
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk principal src/main.py
+      - cp .basilisk/principal/principal.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/principal
     node_compatibility: true

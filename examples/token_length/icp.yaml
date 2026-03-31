@@ -1,19 +1,31 @@
 canisters:
 - name: works
-  type: basilisk
-  main: src/works/works.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk works src/works/works.py
+      - cp .basilisk/works/works.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/works
     node_compatibility: true
 - name: wip
-  type: basilisk
-  main: src/wip/wip.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk wip src/wip/wip.py
+      - cp .basilisk/wip/wip.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/wip
     node_compatibility: true
 - name: breaks
-  type: basilisk
-  main: src/breaks/breaks.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk breaks src/breaks/breaks.py
+      - cp .basilisk/breaks/breaks.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/breaks
     node_compatibility: true

@@ -1,7 +1,11 @@
 canisters:
 - name: optional_types
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk optional_types src/main.py
+      - cp .basilisk/optional_types/optional_types.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/optional_types
     node_compatibility: true

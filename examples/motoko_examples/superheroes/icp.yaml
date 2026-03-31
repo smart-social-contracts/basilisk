@@ -1,7 +1,11 @@
 canisters:
 - name: superheroes
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk superheroes src/main.py
+      - cp .basilisk/superheroes/superheroes.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/superheroes
     node_compatibility: true

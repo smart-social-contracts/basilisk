@@ -55,10 +55,12 @@ def cmd_new(project_name: str, backend: str = "cpython"):
     icp_yaml = f"""\
 canisters:
 - name: {project_name}
-  type: custom
-  build: "{build_cmd}"
-  candid: "{project_name}.did"
-  wasm: ".basilisk/{project_name}/{project_name}.wasm"
+  build:
+    steps:
+    - type: script
+      commands:
+      - {build_cmd}
+      - cp .basilisk/{project_name}/{project_name}.wasm "$ICP_WASM_OUTPUT_PATH"
 """
     (project_dir / "icp.yaml").write_text(icp_yaml)
 
@@ -141,19 +143,28 @@ def cmd_build():
     # Build each canister (icp.yaml uses list format with 'name' field)
     for config in canisters:
         name = config.get("name", "")
-        build_cmd = config.get("build", "")
-        if "basilisk" in build_cmd:
+        build_section = config.get("build", {})
+
+        # Extract build commands from steps
+        build_commands = []
+        if isinstance(build_section, dict):
+            for step in build_section.get("steps", []):
+                build_commands.extend(step.get("commands", []))
+        elif isinstance(build_section, str):
+            build_commands = [build_section]
+
+        # Find the basilisk build command
+        basilisk_cmd = next((c for c in build_commands if "basilisk" in c), None)
+        if basilisk_cmd:
             print(f"Building canister: {name}")
             # Extract entry point from build command
-            parts = build_cmd.split()
-            # Expected: python -m basilisk <name> <entry_point>
-            if len(parts) >= 5:
-                entry_point = parts[4]
-            else:
+            parts = basilisk_cmd.split()
+            # Expected: ... python -m basilisk <name> <entry_point>
+            try:
+                idx = parts.index("basilisk")
+                entry_point = parts[idx + 2] if idx + 2 < len(parts) else "src/main.py"
+            except (ValueError, IndexError):
                 entry_point = "src/main.py"
-
-            candid_path = config.get("candid", f"{name}.did")
-            os.environ["CANISTER_CANDID_PATH"] = f"./{candid_path}"
 
             # Run the basilisk build
             import subprocess

@@ -1,6 +1,8 @@
 canisters:
 - name: benchmark_counter
-  type: custom
-  candid: benchmark_counter.did
-  wasm: benchmark_counter.wasm
-  build: echo 'Wasm built externally'
+  build:
+    steps:
+    - type: script
+      commands:
+      - echo 'Wasm built externally'
+      - cp .basilisk/benchmark_counter/benchmark_counter.wasm "$ICP_WASM_OUTPUT_PATH"

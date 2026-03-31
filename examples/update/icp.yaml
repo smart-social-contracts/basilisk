@@ -1,7 +1,11 @@
 canisters:
 - name: update
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk update src/main.py
+      - cp .basilisk/update/update.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/update
     node_compatibility: true

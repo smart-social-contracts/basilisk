@@ -1,7 +1,11 @@
 canisters:
 - name: generators
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk generators src/main.py
+      - cp .basilisk/generators/generators.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/generators
     node_compatibility: true

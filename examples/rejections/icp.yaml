@@ -1,13 +1,21 @@
 canisters:
 - name: rejections
-  type: basilisk
-  main: src/rejections/rejections.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk rejections src/rejections/rejections.py
+      - cp .basilisk/rejections/rejections.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/rejections
     node_compatibility: true
 - name: some_service
-  type: basilisk
-  main: src/some_service/some_service.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk some_service src/some_service/some_service.py
+      - cp .basilisk/some_service/some_service.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/some_service
     node_compatibility: true

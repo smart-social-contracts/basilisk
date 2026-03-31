@@ -1,7 +1,11 @@
 canisters:
 - name: tuple_types
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk tuple_types src/main.py
+      - cp .basilisk/tuple_types/tuple_types.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/tuple_types
     node_compatibility: true

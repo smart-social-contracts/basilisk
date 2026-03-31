@@ -1,7 +1,11 @@
 canisters:
 - name: init
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk init src/main.py
+      - cp .basilisk/init/init.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/init
     node_compatibility: true

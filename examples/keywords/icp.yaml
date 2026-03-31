@@ -1,7 +1,11 @@
 canisters:
 - name: keywords
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk keywords src/main.py
+      - cp .basilisk/keywords/keywords.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/keywords
     node_compatibility: true

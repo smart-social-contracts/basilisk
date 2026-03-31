@@ -1,7 +1,11 @@
 canisters:
 - name: whoami
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk whoami src/main.py
+      - cp .basilisk/whoami/whoami.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/whoami
     node_compatibility: true

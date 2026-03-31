@@ -1,7 +1,11 @@
 canisters:
 - name: complex_types
-  type: basilisk
-  main: src/complex_types.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk complex_types src/complex_types.py
+      - cp .basilisk/complex_types/complex_types.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/complex_types
     node_compatibility: true

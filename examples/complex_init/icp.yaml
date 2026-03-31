@@ -1,7 +1,11 @@
 canisters:
 - name: complex_init
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk complex_init src/main.py
+      - cp .basilisk/complex_init/complex_init.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/complex_init
     node_compatibility: true

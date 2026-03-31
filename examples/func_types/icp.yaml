@@ -1,13 +1,21 @@
 canisters:
 - name: func_types
-  type: basilisk
-  main: src/func_types/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk func_types src/func_types/main.py
+      - cp .basilisk/func_types/func_types.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/func_types
     node_compatibility: true
 - name: notifiers
-  type: basilisk
-  main: src/notifiers/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk notifiers src/notifiers/main.py
+      - cp .basilisk/notifiers/notifiers.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/notifiers
     node_compatibility: true

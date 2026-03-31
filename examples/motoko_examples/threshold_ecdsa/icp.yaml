@@ -1,7 +1,11 @@
 canisters:
 - name: threshold_ecdsa
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk threshold_ecdsa src/main.py
+      - cp .basilisk/threshold_ecdsa/threshold_ecdsa.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/threshold_ecdsa
     node_compatibility: true

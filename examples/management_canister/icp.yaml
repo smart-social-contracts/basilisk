@@ -1,7 +1,11 @@
 canisters:
 - name: management_canister
-  type: basilisk
-  main: src/management_canister.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk management_canister src/management_canister.py
+      - cp .basilisk/management_canister/management_canister.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/management_canister
     node_compatibility: true

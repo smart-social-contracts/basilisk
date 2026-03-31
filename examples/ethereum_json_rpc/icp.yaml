@@ -1,7 +1,11 @@
 canisters:
 - name: ethereum_json_rpc
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk ethereum_json_rpc src/main.py
+      - cp .basilisk/ethereum_json_rpc/ethereum_json_rpc.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/ethereum_json_rpc
     node_compatibility: true

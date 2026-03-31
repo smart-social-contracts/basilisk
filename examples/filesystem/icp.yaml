@@ -1,7 +1,11 @@
 canisters:
 - name: filesystem
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk filesystem src/main.py
+      - cp .basilisk/filesystem/filesystem.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/filesystem
     node_compatibility: true

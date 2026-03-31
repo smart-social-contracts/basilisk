@@ -1,7 +1,11 @@
 canisters:
 - name: timers
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk timers src/main.py
+      - cp .basilisk/timers/timers.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/timers
     node_compatibility: true

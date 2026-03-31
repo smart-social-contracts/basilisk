@@ -1,7 +1,11 @@
 canisters:
 - name: calc
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk calc src/main.py
+      - cp .basilisk/calc/calc.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/calc
     node_compatibility: true

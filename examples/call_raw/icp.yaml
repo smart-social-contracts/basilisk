@@ -1,7 +1,11 @@
 canisters:
 - name: call_raw
-  type: basilisk
-  main: src/main.py
+  build:
+    steps:
+    - type: script
+      commands:
+      - python -m basilisk call_raw src/main.py
+      - cp .basilisk/call_raw/call_raw.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/call_raw
     node_compatibility: true
