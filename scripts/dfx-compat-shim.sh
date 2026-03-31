@@ -87,6 +87,47 @@ case "$CMD" in
                 ;;
         esac
         ;;
+    ledger)
+        case "$SUB" in
+            account-id)
+                # dfx ledger account-id [--of-canister X | --of-principal P]
+                shift 2  # remove 'ledger' 'account-id'
+                OF_CANISTER=""
+                ICP_ARGS=()
+                while [ $# -gt 0 ]; do
+                    case "$1" in
+                        --of-canister)
+                            OF_CANISTER="$2"
+                            shift 2
+                            ;;
+                        *)
+                            ICP_ARGS+=("$1")
+                            shift
+                            ;;
+                    esac
+                done
+                if [ -n "$OF_CANISTER" ]; then
+                    # Look up canister principal from icp mappings
+                    PRINCIPAL=$(find_mappings "$OF_CANISTER")
+                    if [ -z "$PRINCIPAL" ]; then
+                        echo "Error: Cannot find canister '${OF_CANISTER}'" >&2
+                        exit 1
+                    fi
+                    exec icp identity account-id --of-principal "$PRINCIPAL" "${ICP_ARGS[@]}"
+                else
+                    exec icp identity account-id "${ICP_ARGS[@]}"
+                fi
+                ;;
+            balance)
+                # dfx ledger balance -> icp ledger balance (pass through)
+                shift 1  # remove 'ledger'
+                exec icp identity "$@"
+                ;;
+            *)
+                exec icp identity "$SUB" "${@:3}"
+                ;;
+        esac
+        ;;
     generate)
         # dfx generate -> run icp-generate.sh
         SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
