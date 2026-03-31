@@ -1,13 +1,13 @@
 canisters:
-  heartbeat_async:
-    type: basilisk
-    main: src/heartbeat_async/main.py
-    declarations:
-      output: test/dfx_generated/heartbeat_async
-      node_compatibility: true
-  heartbeat_sync:
-    type: basilisk
-    main: src/heartbeat_sync/main.py
-    declarations:
-      output: test/dfx_generated/heartbeat_sync
-      node_compatibility: true
+- name: heartbeat_async
+  type: basilisk
+  main: src/heartbeat_async/main.py
+  declarations:
+    output: test/dfx_generated/heartbeat_async
+    node_compatibility: true
+- name: heartbeat_sync
+  type: basilisk
+  main: src/heartbeat_sync/main.py
+  declarations:
+    output: test/dfx_generated/heartbeat_sync
+    node_compatibility: true

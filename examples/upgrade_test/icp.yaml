@@ -1,10 +1,10 @@
 canisters:
-  controller:
-    type: basilisk
-    main: src/controller/main.py
-  target:
-    type: basilisk
-    main: src/target_v1/main.py
-  target_v2:
-    type: basilisk
-    main: src/target_v2/main.py
+- name: controller
+  type: basilisk
+  main: src/controller/main.py
+- name: target
+  type: basilisk
+  main: src/target_v1/main.py
+- name: target_v2
+  type: basilisk
+  main: src/target_v2/main.py

@@ -1,7 +1,7 @@
 canisters:
-  whoami:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/whoami
-      node_compatibility: true
+- name: whoami
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/whoami
+    node_compatibility: true

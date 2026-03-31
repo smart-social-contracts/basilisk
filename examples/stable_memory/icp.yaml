@@ -1,7 +1,7 @@
 canisters:
-  stable_memory:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/stable_memory
-      node_compatibility: true
+- name: stable_memory
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/stable_memory
+    node_compatibility: true

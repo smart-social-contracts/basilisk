@@ -1,7 +1,7 @@
 canisters:
-  annotated_tests:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/annotated_tests
-      node_compatibility: true
+- name: annotated_tests
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/annotated_tests
+    node_compatibility: true

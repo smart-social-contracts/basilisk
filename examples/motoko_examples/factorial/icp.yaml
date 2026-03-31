@@ -1,7 +1,7 @@
 canisters:
-  factorial:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/factorial
-      node_compatibility: true
+- name: factorial
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/factorial
+    node_compatibility: true

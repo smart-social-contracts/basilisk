@@ -1,13 +1,13 @@
 canisters:
-  rejections:
-    type: basilisk
-    main: src/rejections/rejections.py
-    declarations:
-      output: test/dfx_generated/rejections
-      node_compatibility: true
-  some_service:
-    type: basilisk
-    main: src/some_service/some_service.py
-    declarations:
-      output: test/dfx_generated/some_service
-      node_compatibility: true
+- name: rejections
+  type: basilisk
+  main: src/rejections/rejections.py
+  declarations:
+    output: test/dfx_generated/rejections
+    node_compatibility: true
+- name: some_service
+  type: basilisk
+  main: src/some_service/some_service.py
+  declarations:
+    output: test/dfx_generated/some_service
+    node_compatibility: true

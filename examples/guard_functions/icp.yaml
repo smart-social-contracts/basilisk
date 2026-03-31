@@ -1,7 +1,7 @@
 canisters:
-  guard_functions:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/guard_functions
-      node_compatibility: true
+- name: guard_functions
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/guard_functions
+    node_compatibility: true

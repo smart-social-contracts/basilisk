@@ -1,7 +1,7 @@
 canisters:
-  update:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/update
-      node_compatibility: true
+- name: update
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/update
+    node_compatibility: true

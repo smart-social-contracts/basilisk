@@ -1,7 +1,7 @@
 canisters:
-  phone_book:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/phone_book
-      node_compatibility: true
+- name: phone_book
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/phone_book
+    node_compatibility: true

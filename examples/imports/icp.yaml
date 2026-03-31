@@ -1,7 +1,7 @@
 canisters:
-  imports:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/imports
-      node_compatibility: true
+- name: imports
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/imports
+    node_compatibility: true

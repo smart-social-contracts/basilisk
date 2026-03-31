@@ -1,10 +1,10 @@
 canisters:
-  bitcoin:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/bitcoin
-      node_compatibility: true
+- name: bitcoin
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/bitcoin
+    node_compatibility: true
 defaults:
   bitcoin:
     enabled: true

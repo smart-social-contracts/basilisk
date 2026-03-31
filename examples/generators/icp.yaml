@@ -1,7 +1,7 @@
 canisters:
-  generators:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/generators
-      node_compatibility: true
+- name: generators
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/generators
+    node_compatibility: true

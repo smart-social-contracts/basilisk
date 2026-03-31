@@ -1,19 +1,19 @@
 canisters:
-  canister1:
-    type: basilisk
-    main: src/canister1/canister1.py
-    declarations:
-      output: test/dfx_generated/canister1
-      node_compatibility: true
-  canister2:
-    type: basilisk
-    main: src/canister2/canister2.py
-    declarations:
-      output: test/dfx_generated/canister2
-      node_compatibility: true
-  canister3:
-    type: basilisk
-    main: src/canister3/canister3.py
-    declarations:
-      output: test/dfx_generated/canister3
-      node_compatibility: true
+- name: canister1
+  type: basilisk
+  main: src/canister1/canister1.py
+  declarations:
+    output: test/dfx_generated/canister1
+    node_compatibility: true
+- name: canister2
+  type: basilisk
+  main: src/canister2/canister2.py
+  declarations:
+    output: test/dfx_generated/canister2
+    node_compatibility: true
+- name: canister3
+  type: basilisk
+  main: src/canister3/canister3.py
+  declarations:
+    output: test/dfx_generated/canister3
+    node_compatibility: true

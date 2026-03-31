@@ -1,7 +1,7 @@
 canisters:
-  threshold_ecdsa:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/threshold_ecdsa
-      node_compatibility: true
+- name: threshold_ecdsa
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/threshold_ecdsa
+    node_compatibility: true

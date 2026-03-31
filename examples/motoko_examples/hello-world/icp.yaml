@@ -1,7 +1,7 @@
 canisters:
-  hello_world:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/hello_world
-      node_compatibility: true
+- name: hello_world
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/hello_world
+    node_compatibility: true

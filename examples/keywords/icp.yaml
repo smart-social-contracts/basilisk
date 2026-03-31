@@ -1,7 +1,7 @@
 canisters:
-  keywords:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/keywords
-      node_compatibility: true
+- name: keywords
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/keywords
+    node_compatibility: true

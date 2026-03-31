@@ -1,7 +1,7 @@
 canisters:
-  http_counter:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/http_counter
-      node_compatibility: true
+- name: http_counter
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/http_counter
+    node_compatibility: true

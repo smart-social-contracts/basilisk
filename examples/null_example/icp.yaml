@@ -1,7 +1,7 @@
 canisters:
-  null_example:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/null_example
-      node_compatibility: true
+- name: null_example
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/null_example
+    node_compatibility: true

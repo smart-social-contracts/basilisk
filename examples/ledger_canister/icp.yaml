@@ -1,12 +1,12 @@
 canisters:
-  ledger_canister:
-    type: basilisk
-    main: src/ledger_canister/ledger_canister.py
-    declarations:
-      output: test/dfx_generated/ledger_canister
-      node_compatibility: true
-  icp_ledger:
-    type: custom
-    candid: src/icp_ledger/ledger.private.did
-    wasm: src/icp_ledger/ledger.wasm
-    gzip: true
+- name: ledger_canister
+  type: basilisk
+  main: src/ledger_canister/ledger_canister.py
+  declarations:
+    output: test/dfx_generated/ledger_canister
+    node_compatibility: true
+- name: icp_ledger
+  type: custom
+  candid: src/icp_ledger/ledger.private.did
+  wasm: src/icp_ledger/ledger.wasm
+  gzip: true

@@ -1,7 +1,7 @@
 canisters:
-  echo:
-    type: basilisk
-    main: src/main.py
-    declarations:
-      output: test/dfx_generated/echo
-      node_compatibility: true
+- name: echo
+  type: basilisk
+  main: src/main.py
+  declarations:
+    output: test/dfx_generated/echo
+    node_compatibility: true

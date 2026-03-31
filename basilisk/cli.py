@@ -54,11 +54,11 @@ def cmd_new(project_name: str, backend: str = "cpython"):
 
     icp_yaml = f"""\
 canisters:
-  {project_name}:
-    type: custom
-    build: "{build_cmd}"
-    candid: "{project_name}.did"
-    wasm: ".basilisk/{project_name}/{project_name}.wasm"
+- name: {project_name}
+  type: custom
+  build: "{build_cmd}"
+  candid: "{project_name}.did"
+  wasm: ".basilisk/{project_name}/{project_name}.wasm"
 """
     (project_dir / "icp.yaml").write_text(icp_yaml)
 
@@ -133,13 +133,14 @@ def cmd_build():
     with open("icp.yaml") as f:
         icp = yaml.safe_load(f)
 
-    canisters = icp.get("canisters", {})
+    canisters = icp.get("canisters", [])
     if not canisters:
         print("Error: no canisters defined in icp.yaml.", file=sys.stderr)
         sys.exit(1)
 
-    # Build each canister
-    for name, config in canisters.items():
+    # Build each canister (icp.yaml uses list format with 'name' field)
+    for config in canisters:
+        name = config.get("name", "")
         build_cmd = config.get("build", "")
         if "basilisk" in build_cmd:
             print(f"Building canister: {name}")
