@@ -9,9 +9,11 @@ icp network stop 2>/dev/null || true
 icp network start -d
 sleep 3
 
-# 2. Create all canisters
+# 2. Create canisters individually (icp CLI has no --all flag)
 echo "Creating canisters..."
-icp canister create --all
+icp canister create controller
+icp canister create target
+icp canister create target_v2
 
 # 3. Build and deploy with per-canister backends
 # Controller needs RustPython (uses basilisk.canisters.management, async/yield)
