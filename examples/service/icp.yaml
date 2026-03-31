@@ -1,0 +1,13 @@
+canisters:
+  service:
+    type: basilisk
+    main: src/service/service.py
+    declarations:
+      output: test/dfx_generated/service
+      node_compatibility: true
+  some_service:
+    type: basilisk
+    main: src/some_service/some_service.py
+    declarations:
+      output: test/dfx_generated/some_service
+      node_compatibility: true

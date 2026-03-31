@@ -1,0 +1,7 @@
+canisters:
+  simple_user_accounts:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/simple_user_accounts
+      node_compatibility: true

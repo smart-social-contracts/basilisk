@@ -1,0 +1,17 @@
+canisters:
+  bitcoin:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/bitcoin
+      node_compatibility: true
+defaults:
+  bitcoin:
+    enabled: true
+    nodes:
+    - 127.0.0.1:18444
+    log_level: info
+networks:
+  local:
+    bind: 127.0.0.1:8000
+    type: ephemeral

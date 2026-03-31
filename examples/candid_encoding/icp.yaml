@@ -1,0 +1,7 @@
+canisters:
+  candid_encoding:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/candid_encoding
+      node_compatibility: true

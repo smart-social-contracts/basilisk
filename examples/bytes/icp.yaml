@@ -1,0 +1,7 @@
+canisters:
+  bytes:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/bytes
+      node_compatibility: true

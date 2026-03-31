@@ -1,0 +1,7 @@
+canisters:
+  list_of_lists:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/list_of_lists
+      node_compatibility: true

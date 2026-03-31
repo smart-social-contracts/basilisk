@@ -1,0 +1,7 @@
+canisters:
+  counter:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/counter
+      node_compatibility: true

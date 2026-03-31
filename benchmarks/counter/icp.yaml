@@ -1,0 +1,6 @@
+canisters:
+  benchmark_counter:
+    type: custom
+    candid: benchmark_counter.did
+    wasm: benchmark_counter.wasm
+    build: echo 'Wasm built externally'

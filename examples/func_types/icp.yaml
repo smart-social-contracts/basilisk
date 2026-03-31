@@ -1,0 +1,13 @@
+canisters:
+  func_types:
+    type: basilisk
+    main: src/func_types/main.py
+    declarations:
+      output: test/dfx_generated/func_types
+      node_compatibility: true
+  notifiers:
+    type: basilisk
+    main: src/notifiers/main.py
+    declarations:
+      output: test/dfx_generated/notifiers
+      node_compatibility: true

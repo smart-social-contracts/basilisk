@@ -1,0 +1,7 @@
+canisters:
+  timers:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/timers
+      node_compatibility: true

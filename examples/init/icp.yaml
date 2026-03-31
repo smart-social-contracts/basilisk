@@ -1,0 +1,7 @@
+canisters:
+  init:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/init
+      node_compatibility: true

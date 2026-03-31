@@ -1,0 +1,7 @@
+canisters:
+  principal:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/principal
+      node_compatibility: true

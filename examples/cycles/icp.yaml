@@ -1,0 +1,13 @@
+canisters:
+  cycles:
+    type: basilisk
+    main: src/cycles/cycles.py
+    declarations:
+      output: test/dfx_generated/cycles
+      node_compatibility: true
+  intermediary:
+    type: basilisk
+    main: src/intermediary/intermediary.py
+    declarations:
+      output: test/dfx_generated/intermediary
+      node_compatibility: true

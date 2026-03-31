@@ -1,0 +1,7 @@
+canisters:
+  management_canister:
+    type: basilisk
+    main: src/management_canister.py
+    declarations:
+      output: test/dfx_generated/management_canister
+      node_compatibility: true

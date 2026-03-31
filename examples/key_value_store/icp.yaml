@@ -1,0 +1,7 @@
+canisters:
+  key_value_store:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/key_value_store
+      node_compatibility: true

@@ -1,0 +1,7 @@
+canisters:
+  date:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/date
+      node_compatibility: true

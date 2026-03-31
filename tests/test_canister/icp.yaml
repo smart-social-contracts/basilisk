@@ -1,0 +1,31 @@
+canisters:
+  shell_test:
+    type: custom
+    build: CANISTER_CANDID_PATH=./shell_test.did python -m basilisk shell_test src/main.py
+    candid: shell_test.did
+    wasm: .basilisk/shell_test/shell_test.wasm
+    gzip: true
+    metadata:
+    - name: candid:service
+  ckbtc_ledger:
+    type: custom
+    candid: https://raw.githubusercontent.com/dfinity/ic/master/rs/ledger_suite/icrc1/ledger/ledger.did
+    wasm: https://download.dfinity.systems/ic/d87954601e4b22972899e9957e800406a0a6b929/canisters/ic-icrc1-ledger.wasm.gz
+    remote:
+      id:
+        ic: mxzaz-hqaaa-aaaar-qaada-cai
+  ckbtc_indexer:
+    type: custom
+    candid: https://raw.githubusercontent.com/dfinity/ic/master/rs/ledger_suite/icrc1/index-ng/index-ng.did
+    wasm: https://download.dfinity.systems/ic/d87954601e4b22972899e9957e800406a0a6b929/canisters/ic-icrc1-index-ng.wasm.gz
+    remote:
+      id:
+        ic: n5wcd-faaaa-aaaar-qaaea-cai
+networks:
+  local:
+    bind: 127.0.0.1:4943
+    type: ephemeral
+  ic:
+    providers:
+    - https://icp0.io
+    type: persistent

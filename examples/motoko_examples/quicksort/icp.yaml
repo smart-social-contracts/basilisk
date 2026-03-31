@@ -1,0 +1,7 @@
+canisters:
+  quicksort:
+    type: basilisk
+    main: src/main.py
+    declarations:
+      output: test/dfx_generated/quicksort
+      node_compatibility: true
