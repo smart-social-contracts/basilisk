@@ -36,7 +36,7 @@ export function getTests(): Test[] {
             name: 'serviceReturnType',
             test: async () => {
                 const result = execSync(
-                    `icp canister call service service_return_type`
+                    `icp canister call service service_return_type '()'`
                 )
                     .toString()
                     .trim();
