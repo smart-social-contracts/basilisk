@@ -1959,7 +1959,8 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
         return f"[error] failed to parse index response"
 
     if not isinstance(data, dict):
-        return f"[error] unexpected index response format"
+        raw_preview = repr(r.stdout[:300])
+        return f"[error] unexpected index response format (raw={raw_preview})"
 
     if "Err" in data:
         return f"[error] index returned: {data['Err']}"
