@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk cycles src/cycles/cycles.py
+      - CANISTER_CANDID_PATH=.basilisk/cycles/cycles.did python -m basilisk cycles
+        src/cycles/cycles.py
       - cp .basilisk/cycles/cycles.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/cycles
@@ -14,7 +15,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk intermediary src/intermediary/intermediary.py
+      - CANISTER_CANDID_PATH=.basilisk/intermediary/intermediary.did python -m basilisk
+        intermediary src/intermediary/intermediary.py
       - cp .basilisk/intermediary/intermediary.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/intermediary

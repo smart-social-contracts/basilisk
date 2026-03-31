@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk func_types src/func_types/main.py
+      - CANISTER_CANDID_PATH=.basilisk/func_types/func_types.did python -m basilisk
+        func_types src/func_types/main.py
       - cp .basilisk/func_types/func_types.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/func_types
@@ -14,7 +15,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk notifiers src/notifiers/main.py
+      - CANISTER_CANDID_PATH=.basilisk/notifiers/notifiers.did python -m basilisk
+        notifiers src/notifiers/main.py
       - cp .basilisk/notifiers/notifiers.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/notifiers

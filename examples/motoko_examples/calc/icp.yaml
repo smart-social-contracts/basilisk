@@ -4,7 +4,7 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk calc src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/calc/calc.did python -m basilisk calc src/main.py
       - cp .basilisk/calc/calc.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/calc

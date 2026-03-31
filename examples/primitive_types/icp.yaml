@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk primitive_types src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/primitive_types/primitive_types.did python
+        -m basilisk primitive_types src/main.py
       - cp .basilisk/primitive_types/primitive_types.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/primitive_types

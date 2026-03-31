@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk guard_functions src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/guard_functions/guard_functions.did python
+        -m basilisk guard_functions src/main.py
       - cp .basilisk/guard_functions/guard_functions.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/guard_functions

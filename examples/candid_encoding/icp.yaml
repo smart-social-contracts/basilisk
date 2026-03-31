@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk candid_encoding src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/candid_encoding/candid_encoding.did python
+        -m basilisk candid_encoding src/main.py
       - cp .basilisk/candid_encoding/candid_encoding.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/candid_encoding

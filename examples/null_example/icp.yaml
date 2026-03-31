@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk null_example src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/null_example/null_example.did python -m basilisk
+        null_example src/main.py
       - cp .basilisk/null_example/null_example.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/null_example

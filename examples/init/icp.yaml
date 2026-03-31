@@ -4,7 +4,7 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk init src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/init/init.did python -m basilisk init src/main.py
       - cp .basilisk/init/init.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/init

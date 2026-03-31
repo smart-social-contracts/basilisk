@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk stdlib src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/stdlib/stdlib.did python -m basilisk stdlib
+        src/main.py
       - cp .basilisk/stdlib/stdlib.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/stdlib

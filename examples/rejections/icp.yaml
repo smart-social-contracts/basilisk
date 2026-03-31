@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk rejections src/rejections/rejections.py
+      - CANISTER_CANDID_PATH=.basilisk/rejections/rejections.did python -m basilisk
+        rejections src/rejections/rejections.py
       - cp .basilisk/rejections/rejections.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/rejections
@@ -14,7 +15,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk some_service src/some_service/some_service.py
+      - CANISTER_CANDID_PATH=.basilisk/some_service/some_service.did python -m basilisk
+        some_service src/some_service/some_service.py
       - cp .basilisk/some_service/some_service.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/some_service

@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk blob_array src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/blob_array/blob_array.did python -m basilisk
+        blob_array src/main.py
       - cp .basilisk/blob_array/blob_array.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/blob_array

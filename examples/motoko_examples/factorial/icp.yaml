@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk factorial src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/factorial/factorial.did python -m basilisk
+        factorial src/main.py
       - cp .basilisk/factorial/factorial.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/factorial

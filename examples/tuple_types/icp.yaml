@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk tuple_types src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/tuple_types/tuple_types.did python -m basilisk
+        tuple_types src/main.py
       - cp .basilisk/tuple_types/tuple_types.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/tuple_types

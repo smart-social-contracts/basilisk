@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk pre_and_post_upgrade src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/pre_and_post_upgrade/pre_and_post_upgrade.did
+        python -m basilisk pre_and_post_upgrade src/main.py
       - cp .basilisk/pre_and_post_upgrade/pre_and_post_upgrade.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/pre_and_post_upgrade

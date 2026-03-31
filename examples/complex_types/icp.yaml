@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk complex_types src/complex_types.py
+      - CANISTER_CANDID_PATH=.basilisk/complex_types/complex_types.did python -m basilisk
+        complex_types src/complex_types.py
       - cp .basilisk/complex_types/complex_types.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/complex_types

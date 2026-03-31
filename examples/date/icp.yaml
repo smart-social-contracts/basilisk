@@ -4,7 +4,7 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk date src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/date/date.did python -m basilisk date src/main.py
       - cp .basilisk/date/date.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/date

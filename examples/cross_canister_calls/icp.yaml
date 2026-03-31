@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk canister1 src/canister1/canister1.py
+      - CANISTER_CANDID_PATH=.basilisk/canister1/canister1.did python -m basilisk
+        canister1 src/canister1/canister1.py
       - cp .basilisk/canister1/canister1.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/canister1
@@ -14,7 +15,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk canister2 src/canister2/canister2.py
+      - CANISTER_CANDID_PATH=.basilisk/canister2/canister2.did python -m basilisk
+        canister2 src/canister2/canister2.py
       - cp .basilisk/canister2/canister2.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/canister2

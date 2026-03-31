@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk outgoing_http_requests src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/outgoing_http_requests/outgoing_http_requests.did
+        python -m basilisk outgoing_http_requests src/main.py
       - cp .basilisk/outgoing_http_requests/outgoing_http_requests.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/outgoing_http_requests

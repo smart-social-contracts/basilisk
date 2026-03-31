@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk ledger_canister src/ledger_canister/ledger_canister.py
+      - CANISTER_CANDID_PATH=.basilisk/ledger_canister/ledger_canister.did python
+        -m basilisk ledger_canister src/ledger_canister/ledger_canister.py
       - cp .basilisk/ledger_canister/ledger_canister.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/ledger_canister

@@ -4,7 +4,7 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk echo src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/echo/echo.did python -m basilisk echo src/main.py
       - cp .basilisk/echo/echo.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/echo

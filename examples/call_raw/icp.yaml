@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk call_raw src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/call_raw/call_raw.did python -m basilisk call_raw
+        src/main.py
       - cp .basilisk/call_raw/call_raw.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/call_raw

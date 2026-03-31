@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk simple_to_do src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/simple_to_do/simple_to_do.did python -m basilisk
+        simple_to_do src/main.py
       - cp .basilisk/simple_to_do/simple_to_do.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/simple_to_do

@@ -4,5 +4,6 @@ canisters:
     steps:
     - type: script
       commands:
-      - echo 'Wasm built externally'
+      - CANISTER_CANDID_PATH=.basilisk/benchmark_counter/benchmark_counter.did echo
+        'Wasm built externally'
       - cp .basilisk/benchmark_counter/benchmark_counter.wasm "$ICP_WASM_OUTPUT_PATH"

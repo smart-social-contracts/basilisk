@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk http_counter src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/http_counter/http_counter.did python -m basilisk
+        http_counter src/main.py
       - cp .basilisk/http_counter/http_counter.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/http_counter

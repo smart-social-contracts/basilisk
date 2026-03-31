@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk randomness src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/randomness/randomness.did python -m basilisk
+        randomness src/main.py
       - cp .basilisk/randomness/randomness.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/randomness

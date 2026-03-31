@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk update src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/update/update.did python -m basilisk update
+        src/main.py
       - cp .basilisk/update/update.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/update

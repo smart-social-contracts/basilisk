@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk quicksort src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/quicksort/quicksort.did python -m basilisk
+        quicksort src/main.py
       - cp .basilisk/quicksort/quicksort.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/quicksort

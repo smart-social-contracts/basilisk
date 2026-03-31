@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk timers src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/timers/timers.did python -m basilisk timers
+        src/main.py
       - cp .basilisk/timers/timers.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/timers

@@ -4,7 +4,8 @@ canisters:
     steps:
     - type: script
       commands:
-      - python -m basilisk phone_book src/main.py
+      - CANISTER_CANDID_PATH=.basilisk/phone_book/phone_book.did python -m basilisk
+        phone_book src/main.py
       - cp .basilisk/phone_book/phone_book.wasm "$ICP_WASM_OUTPUT_PATH"
   declarations:
     output: test/dfx_generated/phone_book
