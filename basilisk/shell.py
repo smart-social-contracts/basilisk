@@ -1596,6 +1596,90 @@ _INDEX_IDS = {
 }
 
 
+def _parse_candid_text(text):
+    """Parse candid text output from icp CLI into Python dicts/lists/values.
+
+    Handles: record, variant, vec, nat, int, text, principal, opt, null.
+    """
+    import re as _re
+
+    text = text.strip()
+    if text.startswith('(') and text.endswith(')'):
+        text = text[1:-1].strip()
+
+    if text == 'null':
+        return None
+    if text == 'true':
+        return True
+    if text == 'false':
+        return False
+    if text.startswith('opt '):
+        return _parse_candid_text(text[4:])
+    if text.startswith('principal "'):
+        return text[11:-1]
+
+    if text.startswith('"') and text.endswith('"'):
+        return text[1:-1]
+
+    # number with optional type annotation
+    m = _re.match(r'^([+-]?\d[\d_]*)\s*(?::\s*\w+)?\s*$', text)
+    if m:
+        return int(m.group(1).replace('_', ''))
+
+    def _split_items(s):
+        """Split semicolon-delimited items respecting nested braces/strings."""
+        items = []
+        depth = 0
+        in_str = False
+        start = 0
+        for i, c in enumerate(s):
+            if c == '"' and (i == 0 or s[i-1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if c in '({':
+                    depth += 1
+                elif c in ')}':
+                    depth -= 1
+                elif c == ';' and depth == 0:
+                    items.append(s[start:i].strip())
+                    start = i + 1
+        tail = s[start:].strip()
+        if tail:
+            items.append(tail)
+        return items
+
+    def _strip_type(v):
+        return _re.sub(r'\s*:\s*(?:nat\d*|int\d*|text|blob|bool|float\d*|principal)\s*$', '', v)
+
+    if text.startswith('record {') and text.endswith('}'):
+        inner = text[8:-1].strip()
+        result = {}
+        for item in _split_items(inner):
+            if '=' not in item:
+                continue
+            key, _, val = item.partition('=')
+            result[key.strip()] = _parse_candid_text(_strip_type(val.strip()))
+        return result
+
+    if text.startswith('variant {') and text.endswith('}'):
+        inner = text[9:-1].strip().rstrip(';').strip()
+        if '=' in inner:
+            key, _, val = inner.partition('=')
+            return {key.strip(): _parse_candid_text(_strip_type(val.strip()))}
+        return {inner: None}
+
+    if text.startswith('vec {') and text.endswith('}'):
+        inner = text[5:-1].strip()
+        if not inner:
+            return []
+        return [_parse_candid_text(_strip_type(item)) for item in _split_items(inner)]
+
+    if text.startswith('blob "'):
+        return text
+
+    return text
+
+
 def _parse_subaccount(args: str):
     """Extract --sub and --from-sub flags from args string.
 
@@ -1651,7 +1735,7 @@ def _wallet_balance(token: str, canister: str, network: str, subaccount: str = N
     if sub_candid is None:
         return f"Invalid subaccount hex: {subaccount}"
 
-    cmd = ["icp", "canister", "call", "--query", "--output", "json"]
+    cmd = ["icp", "canister", "call", "--query", "--output", "candid"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([
@@ -1660,11 +1744,10 @@ def _wallet_balance(token: str, canister: str, network: str, subaccount: str = N
     ])
 
     try:
-        import json as _json
         r = _run_icp_with_retries(cmd, timeout_s=30)
         if r.returncode != 0:
             return f"[icp error] {r.stderr.strip()}"
-        amount = int(_json.loads(r.stdout.strip()).replace('_', ''))
+        amount = int(_parse_candid_text(r.stdout.strip()))
         human = amount / (10 ** decimals)
         return f"{amount} e{decimals} ({human:.{decimals}f} {symbol})"
     except subprocess.TimeoutExpired:
@@ -1852,7 +1935,7 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
     if sub_candid is None:
         return f"Invalid subaccount hex: {subaccount}"
 
-    cmd = ["icp", "canister", "call", "--query", "--output", "json"]
+    cmd = ["icp", "canister", "call", "--query", "--output", "candid"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([
@@ -1871,8 +1954,8 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
         return "[error] icp not found — install the ICP CLI: npm install -g @icp-sdk/icp-cli"
 
     try:
-        data = _json.loads(r.stdout)
-    except _json.JSONDecodeError:
+        data = _parse_candid_text(r.stdout)
+    except Exception:
         return f"[error] failed to parse index response"
 
     if "Err" in data:
