@@ -47,7 +47,7 @@ jobs:
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  icp identity import ci-deploy --from-pem /tmp/ci-identity.pem --storage plaintext 2>/dev/null || true
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
                   icp identity default ci-deploy
 
