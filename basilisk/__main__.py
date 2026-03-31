@@ -21,13 +21,13 @@ from basilisk.types import Args, Paths
 @timed
 def main():
     # TODO this way of installing the extension is just temporary
-    # TODO we should use the official dfx extension install command
-    # TODO are the dfx extensions repository once those mature
-    if sys.argv[1] == "install-dfx-extension":
+    # TODO we should use the official icp extension install command
+    # TODO are the icp extensions repository once those mature
+    if sys.argv[1] == "install-icp-extension":
         subprocess.run(
             ["./install.sh"],
             cwd=os.path.join(
-                os.path.dirname(basilisk.__file__), "compiler", "dfx_extension"
+                os.path.dirname(basilisk.__file__), "compiler", "icp_extension"
             ),
         )
         return
@@ -44,7 +44,7 @@ def main():
         ]
     )
 
-    # This is the name of the canister passed into python -m basilisk from the dfx.json build command
+    # This is the name of the canister passed into python -m basilisk from the icp.yaml build command
     canister_name = args["canister_name"]
 
     verbose_mode_qualifier = " in verbose mode" if is_verbose else ""
@@ -143,10 +143,10 @@ def parse_args_or_exit(args: list[str]) -> Args:
 def create_paths(args: Args) -> Paths:
     canister_name = args["canister_name"]
 
-    # This is the path to the developer's entry point Python file passed into python -m basilisk from the dfx.json build command
+    # This is the path to the developer's entry point Python file passed into python -m basilisk from the icp.yaml build command
     py_entry_file_path = args["entry_point"]
 
-    # This is the Python module name of the developer's Python project, derived from the entry point Python file passed into python -m basilisk from the dfx.json build command
+    # This is the Python module name of the developer's Python project, derived from the entry point Python file passed into python -m basilisk from the icp.yaml build command
     py_entry_module_name = Path(py_entry_file_path).stem
 
     # This is the location of all code used to generate the final canister Rust code
@@ -159,7 +159,7 @@ def create_paths(args: Args) -> Paths:
 
     py_file_names_file_path = f"{canister_path}/py_file_names.csv"
 
-    # This is the path to the developer's Candid file as resolved by dfx
+    # This is the path to the developer's Candid file as resolved by icp
     did_path = os.environ.get("CANISTER_CANDID_PATH")
 
     if did_path is None:

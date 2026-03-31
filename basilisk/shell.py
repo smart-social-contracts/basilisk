@@ -92,7 +92,7 @@ def _get_git_info() -> dict:
 # ---------------------------------------------------------------------------
 
 def _parse_candid(output: str) -> str:
-    """Parse a Candid-encoded string response from dfx into plain text."""
+    """Parse a Candid-encoded string response from icp into plain text."""
     output = output.strip()
     m = re.search(r'\(\s*"(.*)"\s*,?\s*\)', output, re.DOTALL)
     if m:
@@ -107,7 +107,7 @@ def _parse_candid(output: str) -> str:
 # Canister communication
 # ---------------------------------------------------------------------------
 
-def _is_transient_dfx_error(stderr: str) -> bool:
+def _is_transient_icp_error(stderr: str) -> bool:
     s = (stderr or "").lower()
     transient_markers = [
         "temporary failure in name resolution",
@@ -126,7 +126,7 @@ def _is_transient_dfx_error(stderr: str) -> bool:
     return any(m in s for m in transient_markers)
 
 
-def _run_dfx_with_retries(
+def _run_icp_with_retries(
     cmd: list[str],
     *,
     timeout_s: int,
@@ -145,7 +145,7 @@ def _run_dfx_with_retries(
         last = r
         if r.returncode == 0:
             return r
-        if not _is_transient_dfx_error(r.stderr):
+        if not _is_transient_icp_error(r.stderr):
             return r
         if attempt >= attempts - 1:
             return r
@@ -156,20 +156,20 @@ def _run_dfx_with_retries(
 def canister_exec(code: str, canister: str, network: str = None) -> str:
     """Send Python code to the canister and return the output."""
     escaped = code.replace('"', '\\"').replace("\n", "\\n")
-    cmd = ["dfx", "canister", "call"]
+    cmd = ["icp", "canister", "call"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([canister, "execute_code_shell", f'("{escaped}")'])
 
     try:
-        r = _run_dfx_with_retries(cmd, timeout_s=120)
+        r = _run_icp_with_retries(cmd, timeout_s=120)
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
     except subprocess.TimeoutExpired:
         return "[error] canister call timed out (120s)"
     except FileNotFoundError:
-        return "[error] dfx not found — install the DFINITY SDK"
+        return "[error] icp not found — install the ICP CLI: npm install -g @icp-sdk/icp-cli"
 
 
 # ---------------------------------------------------------------------------
@@ -674,7 +674,7 @@ def _handle_db(args: str, canister: str, network: str) -> str:
 
 
 def _canister_info(canister: str, network: str) -> str:
-    """Gather comprehensive canister information from on-canister data + dfx."""
+    """Gather comprehensive canister information from on-canister data + icp."""
     lines = []
 
     # 1) On-canister info: principal, cycles, IC time
@@ -704,8 +704,8 @@ def _canister_info(canister: str, network: str) -> str:
     if cycles is not None:
         lines.append(f"  Cycles    : {cycles:,}")
 
-    # 2) dfx canister info — module hash, controllers
-    cmd_info = ["dfx", "canister", "info"]
+    # 2) icp canister info — module hash, controllers
+    cmd_info = ["icp", "canister", "info"]
     if network:
         cmd_info.extend(["--network", network])
     cmd_info.append(canister)
@@ -722,8 +722,8 @@ def _canister_info(canister: str, network: str) -> str:
     except Exception:
         pass
 
-    # 3) dfx canister status — status, memory, idle burn
-    cmd_status = ["dfx", "canister", "status"]
+    # 3) icp canister status — status, memory, idle burn
+    cmd_status = ["icp", "canister", "status"]
     if network:
         cmd_status.extend(["--network", network])
     cmd_status.append(canister)
@@ -1639,7 +1639,7 @@ def _candid_subaccount(hex_str):
 
 
 def _wallet_balance(token: str, canister: str, network: str, subaccount: str = None) -> str:
-    """Query the token ledger for the canister's balance via dfx (client-side)."""
+    """Query the token ledger for the canister's balance via icp (client-side)."""
     ledger = _LEDGER_IDS.get(token)
     if not ledger:
         return f"Unknown token: {token}. Supported: {', '.join(_LEDGER_IDS.keys())}"
@@ -1651,7 +1651,7 @@ def _wallet_balance(token: str, canister: str, network: str, subaccount: str = N
     if sub_candid is None:
         return f"Invalid subaccount hex: {subaccount}"
 
-    cmd = ["dfx", "canister", "call", "--query", "--output", "json"]
+    cmd = ["icp", "canister", "call", "--query", "--output", "json"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([
@@ -1661,16 +1661,16 @@ def _wallet_balance(token: str, canister: str, network: str, subaccount: str = N
 
     try:
         import json as _json
-        r = _run_dfx_with_retries(cmd, timeout_s=30)
+        r = _run_icp_with_retries(cmd, timeout_s=30)
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
         amount = int(_json.loads(r.stdout.strip()).replace('_', ''))
         human = amount / (10 ** decimals)
         return f"{amount} e{decimals} ({human:.{decimals}f} {symbol})"
     except subprocess.TimeoutExpired:
         return "[error] balance query timed out"
     except FileNotFoundError:
-        return "[error] dfx not found — install the DFINITY SDK"
+        return "[error] icp not found — install the ICP CLI: npm install -g @icp-sdk/icp-cli"
 
 
 def _wallet_deposit(token: str, canister: str, subaccount: str = None) -> str:
@@ -1685,8 +1685,8 @@ def _wallet_deposit(token: str, canister: str, subaccount: str = None) -> str:
         f"  Principal: {canister}\n"
         + sub_display +
         f"\n"
-        f"From dfx:\n"
-        f'  dfx canister call {_LEDGER_IDS.get(token, "<ledger>")} icrc1_transfer \\\n'
+        f"From icp:\n"
+        f'  icp canister call {_LEDGER_IDS.get(token, "<ledger>")} icrc1_transfer \\\n'
         f'    \'(record {{ to = record {{ owner = principal "{canister}"; subaccount = {sub_candid} }};'
         f' amount = <AMOUNT> : nat; fee = opt ({_LEDGER_FEES.get(token, 0)} : nat);'
         f" memo = null; from_subaccount = null; created_at_time = null }})'"
@@ -1852,7 +1852,7 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
     if sub_candid is None:
         return f"Invalid subaccount hex: {subaccount}"
 
-    cmd = ["dfx", "canister", "call", "--query", "--output", "json"]
+    cmd = ["icp", "canister", "call", "--query", "--output", "json"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([
@@ -1862,13 +1862,13 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
     ])
 
     try:
-        r = _run_dfx_with_retries(cmd, timeout_s=30)
+        r = _run_icp_with_retries(cmd, timeout_s=30)
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
     except subprocess.TimeoutExpired:
         return "[error] index query timed out"
     except FileNotFoundError:
-        return "[error] dfx not found — install the DFINITY SDK"
+        return "[error] icp not found — install the ICP CLI: npm install -g @icp-sdk/icp-cli"
 
     try:
         data = _json.loads(r.stdout)
@@ -2759,23 +2759,23 @@ def _task_log_follow(tid: str, canister: str, network: str):
 
 
 def _wget(url: str, dest: str, canister: str, network: str) -> str:
-    """Call the canister's download_to_file endpoint directly via dfx."""
+    """Call the canister's download_to_file endpoint directly via icp."""
     escaped_url = url.replace('"', '\\"')
     escaped_dest = dest.replace('"', '\\"')
-    cmd = ["dfx", "canister", "call"]
+    cmd = ["icp", "canister", "call"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([canister, "download_to_file", f'("{escaped_url}", "{escaped_dest}")'])
 
     try:
-        r = _run_dfx_with_retries(cmd, timeout_s=120)
+        r = _run_icp_with_retries(cmd, timeout_s=120)
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
     except subprocess.TimeoutExpired:
         return "[error] download timed out (120s)"
     except FileNotFoundError:
-        return "[error] dfx not found — install the DFINITY SDK"
+        return "[error] icp not found — install the ICP CLI: npm install -g @icp-sdk/icp-cli"
 
 
 def _handle_task(args: str, canister: str, network: str) -> str:
