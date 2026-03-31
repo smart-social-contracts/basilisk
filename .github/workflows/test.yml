@@ -194,6 +194,11 @@ jobs:
                   curl -fsSL "https://github.com/dfinity/candid/releases/download/${DIDC_VERSION}/didc-linux64" -o /usr/local/bin/didc
                   chmod +x /usr/local/bin/didc
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
+              name: Install dfx compatibility shim
+              run: |
+                  cp scripts/dfx-compat-shim.sh /usr/local/bin/dfx
+                  chmod +x /usr/local/bin/dfx
+            - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               working-directory: ${{ matrix.example_directories }}
               run: curl https://pyenv.run | bash
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
@@ -351,6 +356,11 @@ jobs:
                   DIDC_VERSION="2025-12-18"
                   curl -fsSL "https://github.com/dfinity/candid/releases/download/${DIDC_VERSION}/didc-linux64" -o /usr/local/bin/didc
                   chmod +x /usr/local/bin/didc
+
+            - name: Install dfx compatibility shim
+              run: |
+                  cp scripts/dfx-compat-shim.sh /usr/local/bin/dfx
+                  chmod +x /usr/local/bin/dfx
 
             - name: Install WASI SDK
               run: |
