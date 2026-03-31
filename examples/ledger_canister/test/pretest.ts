@@ -48,8 +48,25 @@ async function pretest(icp_ledger_path: string) {
         stdio: 'inherit'
     });
 
+    // Pre-compute account IDs to avoid nested bash substitution issues
+    const mintingAccount = execSync(`icp identity account-id`)
+        .toString()
+        .trim();
+
+    // Read ledger_canister principal from icp CLI mapping file
+    const fs = require('fs');
+    const mappingsPath = '.icp/cache/mappings/local.ids.json';
+    const mappings = JSON.parse(fs.readFileSync(mappingsPath, 'utf8'));
+    const ledgerCanisterPrincipal = mappings['ledger_canister'];
+
+    const ledgerAccount = execSync(
+        `icp identity account-id --of-principal ${ledgerCanisterPrincipal}`
+    )
+        .toString()
+        .trim();
+
     execSync(
-        `icp canister install icp_ledger --args '(record {minting_account = "'$(icp identity account-id)'"; initial_values = vec { record { "'$(icp identity account-id --of-principal $(icp canister status ledger_canister 2>&1 | grep -oP "Principal: \\K\\S+"))'"; record { e8s=100_000_000_000 } }; }; send_whitelist = vec {}})' --mode reinstall --yes`,
+        `icp canister install icp_ledger --args '(record {minting_account = "${mintingAccount}"; initial_values = vec { record { "${ledgerAccount}"; record { e8s=100_000_000_000 } }; }; send_whitelist = vec {}})' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
