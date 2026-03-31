@@ -135,7 +135,7 @@ def cmd_build():
 
     canisters = icp.get("canisters", {})
     if not canisters:
-        print("Error: no canisters defined in dfx.json.", file=sys.stderr)
+        print("Error: no canisters defined in icp.yaml.", file=sys.stderr)
         sys.exit(1)
 
     # Build each canister
@@ -166,7 +166,7 @@ def cmd_build():
 
 
 def _parse_candid_string(output: str) -> str:
-    """Parse a Candid-encoded string response from dfx into plain text."""
+    """Parse a Candid-encoded string response from icp into plain text."""
     output = output.strip()
     # General tuple pattern: (  "content"  ) or (  "content",  )
     m = re.search(r'\(\s*"(.*)"\s*,?\s*\)', output, re.DOTALL)

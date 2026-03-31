@@ -1,20 +1,20 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`dfx canister uninstall-code stable_memory || true`, {
+    execSync(`icp canister uninstall-code stable_memory || true`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx deploy`, {
+    execSync(`icp deploy`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx generate`, {
+    execSync(`icp generate`, {
         stdio: 'inherit'
     });
 
     execSync(
-        `dfx ledger fabricate-cycles --canister stable_memory --cycles 100000000000000`,
+        `icp ledger fabricate-cycles --canister stable_memory --cycles 100000000000000`,
         {
             stdio: 'inherit'
         }

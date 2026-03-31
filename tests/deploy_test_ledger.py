@@ -3,7 +3,7 @@
 Deploy local ckBTC ledger and indexer for Basilisk wallet integration tests.
 
 This script:
-1. Starts dfx (if not running)
+1. Starts icp (if not running)
 2. Creates and deploys ckBTC ledger with initial balance
 3. Creates and deploys ckBTC indexer
 4. Sends test tokens to the shell_test canister
@@ -13,7 +13,7 @@ Usage:
     cd basilisk/tests/test_canister
     python3 ../deploy_test_ledger.py
 
-Requires: dfx installed and shell_test canister deployed locally.
+Requires: icp installed and shell_test canister deployed locally.
 """
 
 import json
@@ -37,14 +37,14 @@ def run_command(cmd, capture_output=True, check=True):
 
 
 def get_principal():
-    """Get the current dfx identity principal."""
-    result = run_command(["dfx", "identity", "get-principal"])
+    """Get the current icp identity principal."""
+    result = run_command(["icp", "identity", "get-principal"])
     return result.stdout.strip()
 
 
 def get_canister_id(name):
     """Get canister ID by name."""
-    result = run_command(["dfx", "canister", "id", name])
+    result = run_command(["icp", "canister", "id", name])
     return result.stdout.strip()
 
 
@@ -67,7 +67,7 @@ def deploy_ledger(principal):
     )
 
     run_command(
-        ["dfx", "deploy", "ckbtc_ledger", "--no-wallet", "--yes",
+        ["icp", "deploy", "ckbtc_ledger", "--no-wallet", "--yes",
          f"--argument={init_arg}"],
         capture_output=False,
     )
@@ -89,7 +89,7 @@ def deploy_indexer(ledger_id):
     )
 
     run_command(
-        ["dfx", "deploy", "ckbtc_indexer", "--no-wallet",
+        ["icp", "deploy", "ckbtc_indexer", "--no-wallet",
          f"--argument={init_arg}"],
         capture_output=False,
     )
@@ -116,7 +116,7 @@ def send_tokens(ledger_id, to_principal, amount):
     )
 
     result = run_command([
-        "dfx", "canister", "call", "--output", "json",
+        "icp", "canister", "call", "--output", "json",
         ledger_id, "icrc1_transfer", transfer_arg,
     ])
 
@@ -137,7 +137,7 @@ def check_balance(ledger_id, principal):
         f"}})"
     )
     result = run_command([
-        "dfx", "canister", "call", "--output", "json",
+        "icp", "canister", "call", "--output", "json",
         ledger_id, "icrc1_balance_of", balance_arg,
     ])
     balance_str = result.stdout.strip().strip('"')
@@ -155,7 +155,7 @@ def main():
     # Create all canisters
     print("\n[0/5] Creating canisters...")
     run_command(
-        ["dfx", "canister", "create", "--all", "--no-wallet"],
+        ["icp", "canister", "create", "--all", "--no-wallet"],
         capture_output=False, check=False,
     )
 

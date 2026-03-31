@@ -342,6 +342,7 @@ jobs:
 
             - name: Install WASI SDK
               run: |
+                  mkdir -p ~/.local/share
                   curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
@@ -471,6 +472,7 @@ jobs:
 
             - name: Install WASI SDK
               run: |
+                  mkdir -p ~/.local/share
                   curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
@@ -517,7 +519,7 @@ jobs:
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
                   icp identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext
                   rm /tmp/ci-identity.pem
-                  icp identity use ci-deploy
+                  icp identity default ci-deploy
 
             - name: Build canister wasm
               shell: bash -l {0}
@@ -641,7 +643,7 @@ jobs:
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
                   icp identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  icp identity use ci-deploy
+                  icp identity default ci-deploy
 
             - name: Set up Python
               uses: actions/setup-python@v5

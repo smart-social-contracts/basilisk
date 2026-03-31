@@ -12,6 +12,8 @@ Tests are organized in layers:
      with vetKD-enabled replica (mainnet test_key_1 or local
      dfx_test_key).
 
+Note: dfx_test_key is the actual IC key name for local replicas.
+
 Configuration:
     Set environment variables or use defaults:
         BASILISK_TEST_CANISTER  — canister ID (default from conftest)
@@ -24,7 +26,7 @@ Usage:
     # Full integration tests against live canister:
     pytest tests/test_vetkeys.py -v
 
-    # Against local replica with dfx_test_key:
+    # Against local replica with dfx_test_key (IC key name):
     BASILISK_TEST_NETWORK=local pytest tests/test_vetkeys.py -v
 """
 
@@ -65,10 +67,10 @@ def _vetkey_name():
 
 
 def _local_canister_exec(code, canister, network):
-    """Execute code on canister via dfx."""
+    """Execute code on canister via icp."""
     from basilisk.shell import _parse_candid
     escaped = code.replace('"', '\\"').replace("\n", "\\n")
-    cmd = ["dfx", "canister", "call"]
+    cmd = ["icp", "canister", "call"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([canister, "execute_code_shell", f'("{escaped}")'])
@@ -78,12 +80,12 @@ def _local_canister_exec(code, canister, network):
             cwd=_TEST_CANISTER_DIR if os.path.isdir(_TEST_CANISTER_DIR) else None,
         )
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
     except subprocess.TimeoutExpired:
         return "[error] canister call timed out (120s)"
     except FileNotFoundError:
-        return "[error] dfx not found"
+        return "[error] icp not found"
 
 
 def _write_file_on_canister(path, content, canister, network):
@@ -107,7 +109,7 @@ def _extract_task_id(output):
 
 
 def _task_magic(cmd, canister, network):
-    """Run a magic command via dfx by converting it to code."""
+    """Run a magic command via icp by converting it to code."""
     from basilisk.shell import (
         _task_list_code, _task_create_code, _task_add_step_code,
         _task_info_code, _task_start_code, _task_stop_code,

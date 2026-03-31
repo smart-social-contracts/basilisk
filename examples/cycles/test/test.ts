@@ -20,7 +20,7 @@ const intermediaryCanister = createIntermediaryActor(
     }
 );
 
-// TODO for now these tests need to be run on a fresh dfx start --clean, since cycles are not discarded on uninstall-code
+// TODO for now these tests need to be run on a fresh icp start --clean, since cycles are not discarded on uninstall-code
 runTests(
     getTests(
         createSnakeCaseProxy(cyclesCanister),

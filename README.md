@@ -27,7 +27,7 @@ Write **Python canisters** for the [Internet Computer](https://internetcomputer.
 
 ### Prerequisites
 
-- [dfx](https://internetcomputer.org/docs/current/developer-docs/setup/install/) (IC SDK)
+- [icp](https://internetcomputer.org/docs/current/developer-docs/setup/install/) (IC SDK)
 - Python 3.10+
 
 ### Install
@@ -44,11 +44,11 @@ basilisk new my_project
 cd my_project
 
 # 2. Start the local replica and deploy (builds in ~2 seconds)
-dfx start --background
-dfx deploy
+icp network start -d
+icp deploy
 
 # 3. Call your canister
-dfx canister call my_project greet '("World")'
+icp canister call my_project greet '("World")'
 # ("Hello, World! The counter is at 0.")
 
 # 4. Open an interactive Python shell inside the canister
@@ -284,13 +284,13 @@ def db_get(key: text) -> Opt[text]:
 ```
 
 ```bash
-dfx canister call my_project db_set '("name", "Alice")'
-dfx canister call my_project db_get '("name")'
+icp canister call my_project db_set '("name", "Alice")'
+icp canister call my_project db_get '("name")'
 # (opt "Alice")
 
 # Data survives upgrades:
-dfx deploy my_project --upgrade-unchanged
-dfx canister call my_project db_get '("name")'
+icp deploy my_project --upgrade-unchanged
+icp canister call my_project db_get '("name")'
 # (opt "Alice")  ← still there!
 ```
 

@@ -5,15 +5,15 @@ async function pretest() {
         stdio: 'inherit'
     });
 
-    execSync(`dfx canister uninstall-code imports || true`, {
+    execSync(`icp canister uninstall-code imports || true`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx deploy`, {
+    execSync(`icp deploy`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx generate`, {
+    execSync(`icp generate`, {
         stdio: 'inherit'
     });
 }

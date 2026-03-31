@@ -2,20 +2,20 @@ import { getCanisterId } from 'azle/test';
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`dfx canister uninstall-code rejections || true`, {
+    execSync(`icp canister uninstall-code rejections || true`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx canister uninstall-code some_service || true`, {
+    execSync(`icp canister uninstall-code some_service || true`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx deploy some_service`, {
+    execSync(`icp deploy some_service`, {
         stdio: 'inherit'
     });
 
     execSync(
-        `dfx deploy rejections --argument '(principal "${getCanisterId(
+        `icp deploy rejections --argument '(principal "${getCanisterId(
             'some_service'
         )}")'`,
         {
@@ -23,7 +23,7 @@ async function pretest() {
         }
     );
 
-    execSync(`dfx generate`, {
+    execSync(`icp generate`, {
         stdio: 'inherit'
     });
 }

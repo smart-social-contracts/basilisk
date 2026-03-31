@@ -23,7 +23,7 @@ runTests(
             };
         }
 
-        // TODO we can use the Azle test again once we update Azle to dfx 0.19.0
+        // TODO we can use the Azle test again once we update Azle to icp 0.19.0
         // TODO Rejection code was changed from 3 to 5
         // TODO Update: This will probably just hang around until we update to jest
         if (test.name === 'update_query test') {

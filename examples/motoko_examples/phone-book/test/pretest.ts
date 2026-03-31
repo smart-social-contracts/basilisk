@@ -1,15 +1,15 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`dfx canister uninstall-code phone_book || true`, {
+    execSync(`icp canister uninstall-code phone_book || true`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx deploy`, {
+    execSync(`icp deploy`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx generate`, {
+    execSync(`icp generate`, {
         stdio: 'inherit'
     });
 }

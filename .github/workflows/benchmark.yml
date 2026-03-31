@@ -132,7 +132,7 @@ jobs:
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
                   icp identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  icp identity use ci-deploy
+                  icp identity default ci-deploy
 
             # ─── Build + Deploy + Benchmark ──────────────────────────────
             - name: Run full benchmark

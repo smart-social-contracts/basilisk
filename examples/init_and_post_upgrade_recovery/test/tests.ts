@@ -14,7 +14,7 @@ export function getTests(
             skip: true,
             test: async () => {
                 execSync(
-                    `dfx canister uninstall-code init_and_post_upgrade_recovery || true`,
+                    `icp canister uninstall-code init_and_post_upgrade_recovery || true`,
                     {
                         stdio: 'inherit'
                     }
@@ -22,7 +22,7 @@ export function getTests(
 
                 try {
                     execSync(
-                        `dfx deploy init_and_post_upgrade_recovery --argument '(true)'`
+                        `icp deploy init_and_post_upgrade_recovery --argument '(true)'`
                     );
                 } catch (error: any) {
                     return {
@@ -39,7 +39,7 @@ export function getTests(
             name: 'init should succeed',
             test: async () => {
                 execSync(
-                    `dfx deploy init_and_post_upgrade_recovery --argument '(false)'`,
+                    `icp deploy init_and_post_upgrade_recovery --argument '(false)'`,
                     {
                         stdio: 'inherit'
                     }
@@ -59,7 +59,7 @@ export function getTests(
             test: async () => {
                 try {
                     execSync(
-                        `dfx deploy --upgrade-unchanged init_and_post_upgrade_recovery --argument '(true)'`
+                        `icp deploy --upgrade-unchanged init_and_post_upgrade_recovery --argument '(true)'`
                     );
                 } catch (error: any) {
                     return {
@@ -78,7 +78,7 @@ export function getTests(
             name: 'post_upgrade should succeed',
             test: async () => {
                 execSync(
-                    `dfx deploy --upgrade-unchanged init_and_post_upgrade_recovery --argument '(false)'`,
+                    `icp deploy --upgrade-unchanged init_and_post_upgrade_recovery --argument '(false)'`,
                     {
                         stdio: 'inherit'
                     }

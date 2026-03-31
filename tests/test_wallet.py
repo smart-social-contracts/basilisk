@@ -1,7 +1,7 @@
 """
 Integration tests for Basilisk OS Wallet — ICRC-1 token management.
 
-Tests run against a local dfx replica with locally deployed ckBTC ledger
+Tests run against a local icp replica with locally deployed ckBTC ledger
 and indexer canisters. The test canister (shell_test) must be deployed
 locally with funds sent to it via deploy_test_ledger.py.
 
@@ -23,7 +23,7 @@ Configuration:
 
 Usage:
     # First deploy local test infrastructure:
-    cd basilisk/tests/test_canister && dfx start --background
+    cd basilisk/tests/test_canister && icp network start -d
     python3 ../deploy_test_ledger.py
 
     # Then run tests:
@@ -44,14 +44,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from basilisk.shell import _parse_candid
 
-# Directory containing dfx.json with local network config
+# Directory containing icp.yaml with local network config
 _TEST_CANISTER_DIR = os.path.join(os.path.dirname(__file__), "test_canister")
 
 
 def _local_canister_exec(code, canister, network):
-    """canister_exec variant that runs dfx from the test_canister dir."""
+    """canister_exec variant that runs icp from the test_canister dir."""
     escaped = code.replace('"', '\\"').replace("\n", "\\n")
-    cmd = ["dfx", "canister", "call"]
+    cmd = ["icp", "canister", "call"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([canister, "execute_code_shell", f'("{escaped}")'])
@@ -61,12 +61,12 @@ def _local_canister_exec(code, canister, network):
             cwd=_TEST_CANISTER_DIR,
         )
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
     except subprocess.TimeoutExpired:
         return "[error] canister call timed out (120s)"
     except FileNotFoundError:
-        return "[error] dfx not found"
+        return "[error] icp not found"
 
 
 # ---------------------------------------------------------------------------
@@ -82,13 +82,13 @@ def _get_network():
 
 
 def _get_ledger_id():
-    """Get ckBTC ledger canister ID, auto-detect from dfx if not set."""
+    """Get ckBTC ledger canister ID, auto-detect from icp if not set."""
     env = os.environ.get("BASILISK_WALLET_LEDGER")
     if env:
         return env
     try:
         result = subprocess.run(
-            ["dfx", "canister", "id", "ckbtc_ledger"],
+            ["icp", "canister", "id", "ckbtc_ledger"],
             capture_output=True, text=True, check=True,
             cwd=os.path.join(os.path.dirname(__file__), "test_canister"),
         )
@@ -98,13 +98,13 @@ def _get_ledger_id():
 
 
 def _get_indexer_id():
-    """Get ckBTC indexer canister ID, auto-detect from dfx if not set."""
+    """Get ckBTC indexer canister ID, auto-detect from icp if not set."""
     env = os.environ.get("BASILISK_WALLET_INDEXER")
     if env:
         return env
     try:
         result = subprocess.run(
-            ["dfx", "canister", "id", "ckbtc_indexer"],
+            ["icp", "canister", "id", "ckbtc_indexer"],
             capture_output=True, text=True, check=True,
             cwd=os.path.join(os.path.dirname(__file__), "test_canister"),
         )
@@ -263,7 +263,7 @@ def _extract_task_id(output):
 
 
 def _task_magic(cmd, canister, network):
-    """Run a magic command via dfx from the test_canister dir."""
+    """Run a magic command via icp from the test_canister dir."""
     result = _local_canister_exec(
         _magic_to_code(cmd), canister, network,
     )

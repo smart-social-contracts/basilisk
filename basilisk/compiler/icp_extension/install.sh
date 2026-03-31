@@ -1,10 +1,10 @@
 #!/bin/bash
 
-DFX_CACHE_DIR="$(dfx cache show)"
+ICP_CACHE_DIR="$(icp cache show)"
 
-if [ ! -d "$DFX_CACHE_DIR" ]; then
-    dfx cache install
+if [ ! -d "$ICP_CACHE_DIR" ]; then
+    icp cache install
 fi
 
-mkdir -p "$DFX_CACHE_DIR/extensions/basilisk"
-cp extension.json "$DFX_CACHE_DIR/extensions/basilisk/extension.json"
+mkdir -p "$ICP_CACHE_DIR/extensions/basilisk"
+cp extension.json "$ICP_CACHE_DIR/extensions/basilisk/extension.json"

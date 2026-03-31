@@ -36,7 +36,7 @@ const stableStructuresCanister3 = createActorCanister3(
 //     {
 //         name: 'redeploy canisters',
 //         prep: async () => {
-//             execSync(`dfx deploy`, {
+//             execSync(`icp deploy`, {
 //                 stdio: 'inherit'
 //             });
 //         }
