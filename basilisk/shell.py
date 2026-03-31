@@ -1606,6 +1606,9 @@ def _parse_candid_text(text):
     text = text.strip()
     if text.startswith('(') and text.endswith(')'):
         text = text[1:-1].strip()
+    # icp CLI adds trailing comma before closing paren: (value,)
+    if text.endswith(','):
+        text = text[:-1].strip()
 
     if text == 'null':
         return None
@@ -1959,8 +1962,7 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
         return f"[error] failed to parse index response"
 
     if not isinstance(data, dict):
-        raw_preview = repr(r.stdout[:300])
-        return f"[error] unexpected index response format (raw={raw_preview})"
+        return f"[error] unexpected index response format"
 
     if "Err" in data:
         return f"[error] index returned: {data['Err']}"
