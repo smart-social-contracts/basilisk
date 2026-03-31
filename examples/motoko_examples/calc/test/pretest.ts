@@ -5,7 +5,7 @@ async function pretest() {
         stdio: 'inherit'
     });
 
-    execSync(`bash ../../scripts/icp-generate.sh`, {
+    execSync(`bash ../../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

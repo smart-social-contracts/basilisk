@@ -13,7 +13,7 @@ async function pretest() {
         }
     );
 
-    execSync(`bash ../../scripts/icp-generate.sh`, {
+    execSync(`bash ../../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

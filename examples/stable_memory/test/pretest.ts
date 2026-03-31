@@ -9,12 +9,7 @@ async function pretest() {
         stdio: 'inherit'
     });
 
-    execSync(
-        `icp ledger fabricate-cycles --canister stable_memory --cycles 100000000000000`,
-        {
-            stdio: 'inherit'
-        }
-    );
+    // Note: icp CLI local network provides cycles automatically
 }
 
 pretest();

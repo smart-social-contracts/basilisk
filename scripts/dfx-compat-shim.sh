@@ -5,6 +5,26 @@
 
 set -e
 
+# Strip --network flag (dfx canister --network local id X -> canister id X)
+ARGS=("$@")
+FILTERED=()
+SKIP_NEXT=false
+for arg in "${ARGS[@]}"; do
+    if $SKIP_NEXT; then
+        SKIP_NEXT=false
+        continue
+    fi
+    if [[ "$arg" == "--network" ]]; then
+        SKIP_NEXT=true
+        continue
+    fi
+    if [[ "$arg" == --network=* ]]; then
+        continue
+    fi
+    FILTERED+=("$arg")
+done
+set -- "${FILTERED[@]}"
+
 CMD="${1:-}"
 SUB="${2:-}"
 
@@ -57,6 +77,10 @@ case "$CMD" in
         case "$SUB" in
             get-principal)
                 exec icp identity principal "${@:3}"
+                ;;
+            whoami)
+                # dfx identity whoami -> icp identity default
+                exec icp identity default "${@:3}"
                 ;;
             *)
                 exec icp identity "$SUB" "${@:3}"
