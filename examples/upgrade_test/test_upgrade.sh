@@ -9,11 +9,23 @@ icp network stop 2>/dev/null || true
 icp network start -d
 sleep 3
 
+# Helper: extract canister ID from 'icp canister create' output
+extract_id() {
+    echo "$1" | grep -oP 'with ID \K\S+'
+}
+
 # 2. Create canisters individually (icp CLI has no --all flag)
 echo "Creating canisters..."
-icp canister create controller
-icp canister create target
-icp canister create target_v2
+CREATE_OUT=$(icp canister create controller)
+echo "$CREATE_OUT"
+CONTROLLER_ID=$(extract_id "$CREATE_OUT")
+
+CREATE_OUT=$(icp canister create target)
+echo "$CREATE_OUT"
+TARGET_ID=$(extract_id "$CREATE_OUT")
+
+CREATE_OUT=$(icp canister create target_v2)
+echo "$CREATE_OUT"
 
 # 3. Build and deploy with per-canister backends
 # Controller needs RustPython (uses basilisk.canisters.management, async/yield)
@@ -26,10 +38,6 @@ icp build target
 echo "=== Installing controller and target canisters ==="
 icp canister install controller
 icp canister install target
-
-# 3. Get canister IDs
-CONTROLLER_ID=$(icp canister id controller)
-TARGET_ID=$(icp canister id target)
 
 echo "Controller: $CONTROLLER_ID"
 echo "Target: $TARGET_ID"

@@ -81,20 +81,26 @@ def _get_network():
     return os.environ.get("BASILISK_TEST_NETWORK", "local")
 
 
+def _read_canister_id_from_mappings(name, project_dir):
+    """Read canister ID from icp CLI mappings file."""
+    import json as _json
+    for subdir in ["cache", "data"]:
+        mappings_path = os.path.join(project_dir, ".icp", subdir, "mappings", "local.ids.json")
+        if os.path.exists(mappings_path):
+            with open(mappings_path) as f:
+                mappings = _json.load(f)
+            if name in mappings:
+                return mappings[name]
+    return None
+
+
 def _get_ledger_id():
     """Get ckBTC ledger canister ID, auto-detect from icp if not set."""
     env = os.environ.get("BASILISK_WALLET_LEDGER")
     if env:
         return env
-    try:
-        result = subprocess.run(
-            ["icp", "canister", "id", "ckbtc_ledger"],
-            capture_output=True, text=True, check=True,
-            cwd=os.path.join(os.path.dirname(__file__), "test_canister"),
-        )
-        return result.stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+    project_dir = os.path.join(os.path.dirname(__file__), "test_canister")
+    return _read_canister_id_from_mappings("ckbtc_ledger", project_dir)
 
 
 def _get_indexer_id():
@@ -102,15 +108,8 @@ def _get_indexer_id():
     env = os.environ.get("BASILISK_WALLET_INDEXER")
     if env:
         return env
-    try:
-        result = subprocess.run(
-            ["icp", "canister", "id", "ckbtc_indexer"],
-            capture_output=True, text=True, check=True,
-            cwd=os.path.join(os.path.dirname(__file__), "test_canister"),
-        )
-        return result.stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
+    project_dir = os.path.join(os.path.dirname(__file__), "test_canister")
+    return _read_canister_id_from_mappings("ckbtc_indexer", project_dir)
 
 
 # ---------------------------------------------------------------------------

@@ -43,9 +43,17 @@ def get_principal():
 
 
 def get_canister_id(name):
-    """Get canister ID by name."""
-    result = run_command(["icp", "canister", "id", name])
-    return result.stdout.strip()
+    """Get canister ID by name from icp CLI mappings file."""
+    import json as _json
+    mappings_path = os.path.join(".icp", "cache", "mappings", "local.ids.json")
+    if not os.path.exists(mappings_path):
+        # Fallback: try connected network mappings
+        mappings_path = os.path.join(".icp", "data", "mappings", "local.ids.json")
+    with open(mappings_path) as f:
+        mappings = _json.load(f)
+    if name in mappings:
+        return mappings[name]
+    raise KeyError(f"Canister '{name}' not found in {mappings_path}")
 
 
 def deploy_ledger(principal):
@@ -67,7 +75,7 @@ def deploy_ledger(principal):
     )
 
     run_command(
-        ["icp", "deploy", "ckbtc_ledger", "--no-wallet", "--yes",
+        ["icp", "deploy", "ckbtc_ledger",
          f"--argument={init_arg}"],
         capture_output=False,
     )
@@ -89,7 +97,7 @@ def deploy_indexer(ledger_id):
     )
 
     run_command(
-        ["icp", "deploy", "ckbtc_indexer", "--no-wallet",
+        ["icp", "deploy", "ckbtc_indexer",
          f"--argument={init_arg}"],
         capture_output=False,
     )
@@ -154,10 +162,12 @@ def main():
 
     # Create all canisters
     print("\n[0/5] Creating canisters...")
-    run_command(
-        ["icp", "canister", "create", "--all", "--no-wallet"],
-        capture_output=False, check=False,
-    )
+    # Create canisters individually (icp CLI has no --all flag)
+    for cname in ["ckbtc_ledger", "ckbtc_indexer", "shell_test"]:
+        run_command(
+            ["icp", "canister", "create", cname],
+            capture_output=False, check=False,
+        )
 
     # Deploy ledger & indexer
     ledger_id = deploy_ledger(principal)
