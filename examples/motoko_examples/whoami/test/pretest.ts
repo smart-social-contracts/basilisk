@@ -2,7 +2,11 @@ import { execSync } from 'child_process';
 import { someonePrincipal } from './tests';
 
 async function pretest() {
-    execSync(`icp deploy whoami`, {
+    execSync(`icp canister create whoami`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build whoami`, {
         stdio: 'inherit'
     });
 

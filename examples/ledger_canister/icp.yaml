@@ -8,3 +8,5 @@ canisters:
         -m basilisk ledger_canister src/ledger_canister/ledger_canister.py
       - cp .basilisk/ledger_canister/ledger_canister.wasm "$ICP_WASM_OUTPUT_PATH"
 - name: icp_ledger
+  candid: src/icp_ledger/ledger.private.did
+  wasm: src/icp_ledger/ledger.wasm
