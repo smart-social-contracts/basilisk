@@ -44,7 +44,7 @@ async function pretest(icp_ledger_path: string) {
     });
 
     execSync(
-        `icp deploy icp_ledger --argument='(record {minting_account = "'$(dfx ledger account-id)'"; initial_values = vec { record { "'$(dfx ledger account-id --of-canister ledger_canister)'"; record { e8s=100_000_000_000 } }; }; send_whitelist = vec {}})'`,
+        `icp deploy icp_ledger --argument='(record {minting_account = "'$(icp identity account-id)'"; initial_values = vec { record { "'$(icp identity account-id --of-principal $(icp canister status ledger_canister 2>&1 | grep -oP "Principal: \\K\\S+"))'"; record { e8s=100_000_000_000 } }; }; send_whitelist = vec {}})'`,
         {
             stdio: 'inherit'
         }
