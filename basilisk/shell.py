@@ -1989,10 +1989,12 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
         dt = datetime.datetime.utcfromtimestamp(ts_s).strftime('%Y-%m-%d %H:%M') if ts_s else "?"
 
         if kind == "transfer":
-            transfers = tx.get("transfer", [])
-            if not transfers:
+            _xfer = tx.get("transfer", [])
+            if not _xfer:
                 continue
-            t = transfers[0]
+            t = _xfer if isinstance(_xfer, dict) else (_xfer[0] if isinstance(_xfer, list) and _xfer else None)
+            if not t or not isinstance(t, dict):
+                continue
             _from = t.get("from", {})
             from_p = _from.get("owner", "?") if isinstance(_from, dict) else "?"
             _to = t.get("to", {})
@@ -2016,18 +2018,24 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
             rows.append(f"  {dt}  #{tx_id}  {arrow} {human_amt:.{decimals}f} {symbol}  {peer}")
 
         elif kind == "mint":
-            mints = tx.get("mint", [])
-            if mints:
-                amt = int(mints[0].get("amount", "0").replace("_", ""))
-                human_amt = amt / (10 ** decimals)
-                rows.append(f"  {dt}  #{tx_id}  ⊕ {human_amt:.{decimals}f} {symbol}  mint")
+            _mint = tx.get("mint", [])
+            if _mint:
+                m = _mint if isinstance(_mint, dict) else (_mint[0] if isinstance(_mint, list) and _mint else None)
+                if m and isinstance(m, dict):
+                    _a = m.get("amount", 0)
+                    amt = int(str(_a).replace('_', '')) if _a else 0
+                    human_amt = amt / (10 ** decimals)
+                    rows.append(f"  {dt}  #{tx_id}  ⊕ {human_amt:.{decimals}f} {symbol}  mint")
 
         elif kind == "burn":
-            burns = tx.get("burn", [])
-            if burns:
-                amt = int(burns[0].get("amount", "0").replace("_", ""))
-                human_amt = amt / (10 ** decimals)
-                rows.append(f"  {dt}  #{tx_id}  ⊖ {human_amt:.{decimals}f} {symbol}  burn")
+            _burn = tx.get("burn", [])
+            if _burn:
+                b = _burn if isinstance(_burn, dict) else (_burn[0] if isinstance(_burn, list) and _burn else None)
+                if b and isinstance(b, dict):
+                    _a = b.get("amount", 0)
+                    amt = int(str(_a).replace('_', '')) if _a else 0
+                    human_amt = amt / (10 ** decimals)
+                    rows.append(f"  {dt}  #{tx_id}  ⊖ {human_amt:.{decimals}f} {symbol}  burn")
 
     if not rows:
         return f"No {symbol} transactions found."
