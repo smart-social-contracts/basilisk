@@ -425,7 +425,7 @@ jobs:
               working-directory: ${{ matrix.example_directories }}
               run: |
                   CANISTER_NAME=$(ls -1 src/*.py 2>/dev/null | head -1 | xargs -I{} basename {} .py || echo "")
-                  ICP_CANISTER=$(yq -r '.canisters | keys[0]' icp.yaml 2>/dev/null || echo "")
+                  ICP_CANISTER=$(yq -r '.canisters[0].name' icp.yaml 2>/dev/null || echo "")
                   NAME="${ICP_CANISTER:-$CANISTER_NAME}"
                   if [ -n "$NAME" ]; then
                     echo "Canister: $NAME"
@@ -656,7 +656,7 @@ jobs:
 
             - name: Verify canister reachable
               run: |
-                  icp canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' -e "$BASILISK_TEST_NETWORK"
+                  icp canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' -n "$BASILISK_TEST_NETWORK"
 
             - name: Run tests (${{ matrix.shard }})
               run: |
