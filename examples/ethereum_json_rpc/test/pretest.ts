@@ -1,18 +1,18 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`icp canister uninstall-code ethereum_json_rpc || true`, {
+    execSync(`icp deploy ethereum_json_rpc`, {
         stdio: 'inherit'
     });
 
     execSync(
-        `icp deploy --argument '("${process.env.ETHEREUM_URL}")' ethereum_json_rpc`,
+        `icp canister install ethereum_json_rpc --args '("${process.env.ETHEREUM_URL}")' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
-    execSync(`icp generate`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

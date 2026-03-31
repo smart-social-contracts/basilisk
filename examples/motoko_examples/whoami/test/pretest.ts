@@ -2,18 +2,18 @@ import { execSync } from 'child_process';
 import { someonePrincipal } from './tests';
 
 async function pretest() {
-    execSync(`icp canister uninstall-code whoami || true`, {
+    execSync(`icp deploy whoami`, {
         stdio: 'inherit'
     });
 
     execSync(
-        `icp deploy --argument '(principal "${someonePrincipal}")' whoami`,
+        `icp canister install whoami --args '(principal "${someonePrincipal}")' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
-    execSync(`icp generate`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

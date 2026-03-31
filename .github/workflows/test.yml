@@ -188,6 +188,12 @@ jobs:
                   npm install -g @icp-sdk/icp-cli
                   echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
+              name: Install didc (Candid compiler)
+              run: |
+                  DIDC_VERSION="2025-12-18"
+                  curl -fsSL "https://github.com/dfinity/candid/releases/download/${DIDC_VERSION}/didc-linux64" -o /usr/local/bin/didc
+                  chmod +x /usr/local/bin/didc
+            - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               working-directory: ${{ matrix.example_directories }}
               run: curl https://pyenv.run | bash
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
@@ -339,6 +345,12 @@ jobs:
               run: |
                   npm install -g @icp-sdk/icp-cli
                   echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
+
+            - name: Install didc (Candid compiler)
+              run: |
+                  DIDC_VERSION="2025-12-18"
+                  curl -fsSL "https://github.com/dfinity/candid/releases/download/${DIDC_VERSION}/didc-linux64" -o /usr/local/bin/didc
+                  chmod +x /usr/local/bin/didc
 
             - name: Install WASI SDK
               run: |

@@ -2,28 +2,25 @@ import { getCanisterId } from 'azle/test';
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`icp canister uninstall-code cycles || true`, {
-        stdio: 'inherit'
-    });
-
-    execSync(`icp canister uninstall-code intermediary || true`, {
-        stdio: 'inherit'
-    });
 
     execSync(`icp deploy cycles`, {
         stdio: 'inherit'
     });
+    execSync(`bash ../../scripts/sync-canister-ids.sh`, {
+        stdio: 'inherit'
+    });
+
 
     execSync(
-        `icp deploy intermediary --argument '(principal "${getCanisterId(
+        `icp canister install intermediary --args '(principal "${getCanisterId(
             'cycles'
-        )}")'`,
+        )}")' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
-    execSync(`icp generate`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

@@ -1,18 +1,18 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`icp canister uninstall-code complex_init || true`, {
+    execSync(`icp deploy complex_init`, {
         stdio: 'inherit'
     });
 
     execSync(
-        `icp deploy --argument 'record {"Oh hello there user"; record { id = "1" }}' complex_init`,
+        `icp canister install complex_init --args 'record {"Oh hello there user"; record { id = "1" }}' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
-    execSync(`icp generate`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

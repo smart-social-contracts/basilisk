@@ -2,13 +2,6 @@ import { getCanisterId } from 'azle/test';
 import { execSync } from 'child_process';
 
 async function pretest(icp_ledger_path: string) {
-    execSync(`icp canister uninstall-code icp_ledger || true`, {
-        stdio: 'inherit'
-    });
-
-    execSync(`icp canister uninstall-code ledger_canister || true`, {
-        stdio: 'inherit'
-    });
 
     execSync(`mkdir -p ${icp_ledger_path}`, {
         stdio: 'inherit'
@@ -43,23 +36,27 @@ async function pretest(icp_ledger_path: string) {
         stdio: 'inherit'
     });
 
+    execSync(`bash ../../scripts/sync-canister-ids.sh`, {
+        stdio: 'inherit'
+    });
+
     execSync(
-        `icp deploy icp_ledger --argument='(record {minting_account = "'$(icp identity account-id)'"; initial_values = vec { record { "'$(icp identity account-id --of-principal $(icp canister status ledger_canister 2>&1 | grep -oP "Principal: \\K\\S+"))'"; record { e8s=100_000_000_000 } }; }; send_whitelist = vec {}})'`,
+        `icp canister install icp_ledger --args '(record {minting_account = "'$(icp identity account-id)'"; initial_values = vec { record { "'$(icp identity account-id --of-principal $(icp canister status ledger_canister 2>&1 | grep -oP "Principal: \\K\\S+"))'"; record { e8s=100_000_000_000 } }; }; send_whitelist = vec {}})' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
     execSync(
-        `icp deploy ledger_canister --argument '(principal "${getCanisterId(
+        `icp canister install ledger_canister --args '(principal "${getCanisterId(
             'icp_ledger'
-        )}")'`,
+        )}")' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
-    execSync(`icp generate ledger_canister`, {
+    execSync(`bash ../../scripts/icp-generate.sh ledger_canister`, {
         stdio: 'inherit'
     });
 }

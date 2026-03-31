@@ -2,41 +2,35 @@ import { getCanisterId } from 'azle/test';
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`icp canister uninstall-code canister1 || true`, {
-        stdio: 'inherit'
-    });
 
-    execSync(`icp canister uninstall-code canister2 || true`, {
-        stdio: 'inherit'
-    });
-
-    execSync(`icp canister uninstall-code canister3 || true`, {
-        stdio: 'inherit'
-    });
 
     execSync(`icp deploy canister3`, {
         stdio: 'inherit'
     });
+    execSync(`bash ../../scripts/sync-canister-ids.sh`, {
+        stdio: 'inherit'
+    });
+
 
     execSync(
-        `icp deploy canister2 --argument '(principal "${getCanisterId(
+        `icp canister install canister2 --args '(principal "${getCanisterId(
             'canister3'
-        )}")'`,
+        )}")' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
     execSync(
-        `icp deploy canister1 --argument '(principal "${getCanisterId(
+        `icp canister install canister1 --args '(principal "${getCanisterId(
             'canister2'
-        )}")'`,
+        )}")' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
-    execSync(`icp generate`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

@@ -1,10 +1,6 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`icp canister uninstall-code management_canister || true`, {
-        stdio: 'inherit'
-    });
-
     execSync(`icp deploy management_canister`, {
         stdio: 'inherit'
     });
@@ -16,7 +12,7 @@ async function pretest() {
         }
     );
 
-    execSync(`icp generate management_canister`, {
+    execSync(`bash ../../scripts/icp-generate.sh management_canister`, {
         stdio: 'inherit'
     });
 }
