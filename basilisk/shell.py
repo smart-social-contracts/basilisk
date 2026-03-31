@@ -1958,10 +1958,15 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
     except Exception:
         return f"[error] failed to parse index response"
 
+    if not isinstance(data, dict):
+        return f"[error] unexpected index response format"
+
     if "Err" in data:
         return f"[error] index returned: {data['Err']}"
 
     ok = data.get("Ok", {})
+    if not isinstance(ok, dict):
+        return f"[error] unexpected Ok format in index response"
     txns = ok.get("transactions", [])
 
     if not txns:
@@ -1969,10 +1974,14 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
 
     rows = []
     for entry in txns:
-        tx_id = entry.get("id", "?").replace("_", "")
+        _tid = entry.get("id", "?")
+        tx_id = str(_tid).replace("_", "") if _tid != "?" else "?"
         tx = entry.get("transaction", {})
+        if not isinstance(tx, dict):
+            continue
         kind = tx.get("kind", "")
-        ts_ns = int(tx.get("timestamp", "0"))
+        _ts = tx.get("timestamp", 0)
+        ts_ns = int(str(_ts).replace('_', '')) if _ts else 0
         ts_s = ts_ns // 1_000_000_000
         dt = datetime.datetime.utcfromtimestamp(ts_s).strftime('%Y-%m-%d %H:%M') if ts_s else "?"
 
@@ -1981,9 +1990,12 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
             if not transfers:
                 continue
             t = transfers[0]
-            from_p = t.get("from", {}).get("owner", "?")
-            to_p = t.get("to", {}).get("owner", "?")
-            amt = int(t.get("amount", "0").replace("_", ""))
+            _from = t.get("from", {})
+            from_p = _from.get("owner", "?") if isinstance(_from, dict) else "?"
+            _to = t.get("to", {})
+            to_p = _to.get("owner", "?") if isinstance(_to, dict) else "?"
+            _a = t.get("amount", 0)
+            amt = int(str(_a).replace('_', '')) if _a else 0
             human_amt = amt / (10 ** decimals)
 
             if from_p == canister and to_p == canister:
