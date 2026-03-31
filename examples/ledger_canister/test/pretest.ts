@@ -36,6 +36,14 @@ async function pretest(icp_ledger_path: string) {
         stdio: 'inherit'
     });
 
+    execSync(`icp canister create icp_ledger`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build icp_ledger`, {
+        stdio: 'inherit'
+    });
+
     execSync(`bash ../../scripts/sync-canister-ids.sh`, {
         stdio: 'inherit'
     });
@@ -46,6 +54,14 @@ async function pretest(icp_ledger_path: string) {
             stdio: 'inherit'
         }
     );
+
+    execSync(`bash ../../scripts/sync-canister-ids.sh`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build ledger_canister`, {
+        stdio: 'inherit'
+    });
 
     execSync(
         `icp canister install ledger_canister --args '(principal "${getCanisterId(
