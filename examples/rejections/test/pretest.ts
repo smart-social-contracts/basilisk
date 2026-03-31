@@ -12,7 +12,15 @@ async function pretest() {
 
 
     execSync(
-        `icp canister install rejections --args '(principal "${getCanisterId(
+        `icp canister create rejections`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build rejections`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp canister install rejections --args '(principal "${getCanisterId(
             'some_service'
         )}")' --mode reinstall --yes`,
         {

@@ -1,7 +1,11 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`icp deploy init`, {
+    execSync(`icp canister create init`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build init`, {
         stdio: 'inherit'
     });
 

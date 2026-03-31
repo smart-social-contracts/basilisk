@@ -12,7 +12,15 @@ async function pretest() {
 
 
     execSync(
-        `icp canister install func_types --args '(principal "${getCanisterId(
+        `icp canister create func_types`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build func_types`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp canister install func_types --args '(principal "${getCanisterId(
             'notifiers'
         )}")' --mode reinstall --yes`,
         {

@@ -1,7 +1,11 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`icp deploy complex_init`, {
+    execSync(`icp canister create complex_init`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build complex_init`, {
         stdio: 'inherit'
     });
 

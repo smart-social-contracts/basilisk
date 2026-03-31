@@ -13,7 +13,15 @@ async function pretest() {
 
 
     execSync(
-        `icp canister install canister2 --args '(principal "${getCanisterId(
+        `icp canister create canister2`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build canister2`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp canister install canister2 --args '(principal "${getCanisterId(
             'canister3'
         )}")' --mode reinstall --yes`,
         {
@@ -21,8 +29,20 @@ async function pretest() {
         }
     );
 
+    execSync(`bash ../../scripts/sync-canister-ids.sh`, {
+        stdio: 'inherit'
+    });
+
     execSync(
-        `icp canister install canister1 --args '(principal "${getCanisterId(
+        `icp canister create canister1`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build canister1`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp canister install canister1 --args '(principal "${getCanisterId(
             'canister2'
         )}")' --mode reinstall --yes`,
         {

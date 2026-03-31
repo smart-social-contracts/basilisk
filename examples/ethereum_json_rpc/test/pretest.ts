@@ -1,7 +1,11 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`icp deploy ethereum_json_rpc`, {
+    execSync(`icp canister create ethereum_json_rpc`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build ethereum_json_rpc`, {
         stdio: 'inherit'
     });
 

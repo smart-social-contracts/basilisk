@@ -12,7 +12,15 @@ async function pretest() {
 
 
     execSync(
-        `icp canister install intermediary --args '(principal "${getCanisterId(
+        `icp canister create intermediary`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build intermediary`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp canister install intermediary --args '(principal "${getCanisterId(
             'cycles'
         )}")' --mode reinstall --yes`,
         {
