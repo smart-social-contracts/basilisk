@@ -593,7 +593,7 @@ jobs:
               working-directory: examples/query
               run: |
                   CANISTER_ID="2i66l-saaaa-aaaas-qe3sq-cai"
-                  RESULT=$(icp canister call "${CANISTER_ID}" simple_query --query -e ic --identity ci-deploy 2>&1) || true
+                  RESULT=$(icp canister call "${CANISTER_ID}" simple_query '()' --query -e ic --identity ci-deploy 2>&1) || true
                   echo "Result: ${RESULT}"
                   if echo "${RESULT}" | grep -q "This is a query function"; then
                     echo "Deployment verified successfully"
