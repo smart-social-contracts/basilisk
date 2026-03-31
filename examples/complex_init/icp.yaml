@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/complex_init/complex_init.did python -m basilisk
         complex_init src/main.py
       - cp .basilisk/complex_init/complex_init.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/complex_init
-    node_compatibility: true

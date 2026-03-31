@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/superheroes/superheroes.did python -m basilisk
         superheroes src/main.py
       - cp .basilisk/superheroes/superheroes.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/superheroes
-    node_compatibility: true

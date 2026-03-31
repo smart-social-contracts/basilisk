@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/ic_api/ic_api.did python -m basilisk ic_api
         src/main.py
       - cp .basilisk/ic_api/ic_api.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/ic_api
-    node_compatibility: true

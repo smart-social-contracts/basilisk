@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/hello_world/hello_world.did python -m basilisk
         hello_world src/main.py
       - cp .basilisk/hello_world/hello_world.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/hello_world
-    node_compatibility: true

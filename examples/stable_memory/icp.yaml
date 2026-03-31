@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/stable_memory/stable_memory.did python -m basilisk
         stable_memory src/main.py
       - cp .basilisk/stable_memory/stable_memory.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/stable_memory
-    node_compatibility: true

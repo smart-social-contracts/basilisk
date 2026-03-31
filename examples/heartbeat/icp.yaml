@@ -7,9 +7,6 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/heartbeat_async/heartbeat_async.did python
         -m basilisk heartbeat_async src/heartbeat_async/main.py
       - cp .basilisk/heartbeat_async/heartbeat_async.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/heartbeat_async
-    node_compatibility: true
 - name: heartbeat_sync
   build:
     steps:
@@ -18,6 +15,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/heartbeat_sync/heartbeat_sync.did python -m
         basilisk heartbeat_sync src/heartbeat_sync/main.py
       - cp .basilisk/heartbeat_sync/heartbeat_sync.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/heartbeat_sync
-    node_compatibility: true

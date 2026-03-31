@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/inspect_message/inspect_message.did python
         -m basilisk inspect_message src/main.py
       - cp .basilisk/inspect_message/inspect_message.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/inspect_message
-    node_compatibility: true

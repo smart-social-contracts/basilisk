@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/audio_recorder/audio_recorder.did python -m
         basilisk audio_recorder src/main.py
       - cp .basilisk/audio_recorder/audio_recorder.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/audio_recorder
-    node_compatibility: true

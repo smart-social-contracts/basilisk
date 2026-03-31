@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/generators/generators.did python -m basilisk
         generators src/main.py
       - cp .basilisk/generators/generators.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/generators
-    node_compatibility: true

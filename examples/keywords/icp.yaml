@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/keywords/keywords.did python -m basilisk keywords
         src/main.py
       - cp .basilisk/keywords/keywords.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/keywords
-    node_compatibility: true

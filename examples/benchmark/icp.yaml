@@ -7,6 +7,3 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/benchmark/benchmark.did python -m basilisk
         benchmark src/main.py
       - cp .basilisk/benchmark/benchmark.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/benchmark
-    node_compatibility: true

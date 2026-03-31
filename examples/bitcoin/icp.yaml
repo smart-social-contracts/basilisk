@@ -7,9 +7,6 @@ canisters:
       - CANISTER_CANDID_PATH=.basilisk/bitcoin/bitcoin.did python -m basilisk bitcoin
         src/main.py
       - cp .basilisk/bitcoin/bitcoin.wasm "$ICP_WASM_OUTPUT_PATH"
-  declarations:
-    output: test/dfx_generated/bitcoin
-    node_compatibility: true
 defaults:
   bitcoin:
     enabled: true
