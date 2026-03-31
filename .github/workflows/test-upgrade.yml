@@ -24,13 +24,13 @@ jobs:
 
             - uses: actions/cache@v4
               with:
-                  path: ~/.cache/dfinity
-                  key: basilisk-dfx-0.23.0
+                  path: ~/.cache/icp
+                  key: basilisk-icp-latest
 
-            - name: Install dfx
+            - name: Install icp
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.23.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  npm install -g @icp-sdk/icp-cli
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
             - name: Install WASI SDK
               run: |
@@ -65,11 +65,11 @@ jobs:
                   source venv/bin/activate
                   pip install ../..
 
-            - name: Install basilisk dfx extension
+            - name: Install basilisk icp extension
               working-directory: examples/upgrade_test
               run: |
                   source venv/bin/activate
-                  python -m basilisk install-dfx-extension
+                  python -m basilisk install-icp-extension
 
             - name: Run upgrade test
               working-directory: examples/upgrade_test

@@ -1,4 +1,4 @@
-# TODO the next great simplification might be deploying multiple examples to one dfx replica instance: https://forum.dfinity.org/t/use-the-same-local-replica-for-multiple-projects/11900
+# TODO the next great simplification might be deploying multiple examples to one icp replica instance: https://forum.dfinity.org/t/use-the-same-local-replica-for-multiple-projects/11900
 # TODO this might allow us to avoid spinning up so many jobs in the matrix
 
 # This GitHub Action flow works as follows:
@@ -38,10 +38,10 @@ jobs:
                   ref: ${{ contains(github.head_ref, 'release--') && github.event.pull_request.head.ref || github.ref }} # This is necessary for this job to be able to commit and push to the origin remote properly
                   token: ${{ secrets.LASTMJS_GITHUB_TOKEN || github.token }} # A personal GitHub token is setup as a secret so that committing and pushing to GitHub from the Action will trigger another workflow
             - if: contains(github.head_ref, 'release--')
-              name: Install dfx
+              name: Install icp
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.23.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  npm install -g @icp-sdk/icp-cli
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
             # TODO we should use some Action-specific bot account
             - if: contains(github.head_ref, 'release--')
               run: git config --global user.name 'Jordan Last'
@@ -153,7 +153,7 @@ jobs:
         strategy:
             fail-fast: false # We want to see which example tests succeed and which ones fail, we don't want one example test to cancel the rest
             matrix:
-                # TODO perhaps we should start testing on different versions of dfx as well
+                # TODO perhaps we should start testing on different versions of icp as well
                 include_pypi:
                     # Only include pypi in the matrix if you've pushed to main and the last commit was a merge of a release branch, or the base branch of the pull request is a release branch
                     - ${{ (github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'Merge pull request') && contains(github.event.head_commit.message, 'smart-social-contracts/release--')) || contains(github.head_ref, 'release--') }}
@@ -180,13 +180,13 @@ jobs:
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               uses: actions/cache@v4
               with:
-                  path: ~/.cache/dfinity
-                  key: basilisk-dfx-0.23.0
+                  path: ~/.cache/icp
+                  key: basilisk-icp-latest
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
-              name: Install dfx
+              name: Install icp
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.23.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  npm install -g @icp-sdk/icp-cli
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               working-directory: ${{ matrix.example_directories }}
               run: curl https://pyenv.run | bash
@@ -210,10 +210,10 @@ jobs:
               run: source venv/bin/activate && pip install -r requirements.txt
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               working-directory: ${{ matrix.example_directories }}
-              run: source venv/bin/activate && python -m basilisk install-dfx-extension
+              run: source venv/bin/activate && python -m basilisk install-icp-extension
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               working-directory: ${{ matrix.example_directories }}
-              run: dfx start --clean --background --host 127.0.0.1:8000
+              run: icp network start -d
             - if: ${{ needs.release-candidate-deploy.outputs.should_run_tests }}
               shell: bash -l {0}
               working-directory: ${{ matrix.example_directories }}/test
@@ -329,16 +329,16 @@ jobs:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-cpython-v4-${{ hashFiles('basilisk/cargotoml.py') }}
 
-            - name: Cache dfx
+            - name: Cache icp
               uses: actions/cache@v4
               with:
-                  path: ~/.cache/dfinity
-                  key: basilisk-dfx-0.29.0
+                  path: ~/.cache/icp
+                  key: basilisk-icp-latest
 
-            - name: Install dfx
+            - name: Install icp
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  npm install -g @icp-sdk/icp-cli
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
             - name: Install WASI SDK
               run: |
@@ -396,15 +396,15 @@ jobs:
                   fi
 
             - working-directory: ${{ matrix.example_directories }}
-              run: source venv/bin/activate && python -m basilisk install-dfx-extension
+              run: source venv/bin/activate && python -m basilisk install-icp-extension
 
             - name: Configure system subnet for PocketIC
               run: |
-                  mkdir -p ~/.config/dfx
-                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/dfx/networks.json
+                  mkdir -p ~/.config/icp
+                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/icp/networks.json
 
             - working-directory: ${{ matrix.example_directories }}
-              run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
+              run: icp network start -d
 
             - name: Install test dependencies
               shell: bash -l {0}
@@ -424,11 +424,11 @@ jobs:
               working-directory: ${{ matrix.example_directories }}
               run: |
                   CANISTER_NAME=$(ls -1 src/*.py 2>/dev/null | head -1 | xargs -I{} basename {} .py || echo "")
-                  DFX_CANISTER=$(jq -r '.canisters | keys[0]' dfx.json 2>/dev/null || echo "")
-                  NAME="${DFX_CANISTER:-$CANISTER_NAME}"
+                  ICP_CANISTER=$(yq -r '.canisters | keys[0]' icp.yaml 2>/dev/null || echo "")
+                  NAME="${ICP_CANISTER:-$CANISTER_NAME}"
                   if [ -n "$NAME" ]; then
                     echo "Canister: $NAME"
-                    dfx canister status "$NAME" 2>&1 || true
+                    icp canister status "$NAME" 2>&1 || true
                   fi
 
             - name: Run tests
@@ -451,7 +451,7 @@ jobs:
             BASILISK_COMPILE_RUST_PYTHON_STDLIB: false
             WASI_SDK_VERSION: "24"
             WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
-            DFX_WARNING: -mainnet_plaintext_identity
+            ICP_WARNING: -mainnet_plaintext_identity
         steps:
             - uses: actions/checkout@v4
             - uses: actions/setup-node@v4
@@ -464,10 +464,10 @@ jobs:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-cpython-v4-${{ hashFiles('basilisk/cargotoml.py') }}
 
-            - name: Install dfx
+            - name: Install icp
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  npm install -g @icp-sdk/icp-cli
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
             - name: Install WASI SDK
               run: |
@@ -504,20 +504,20 @@ jobs:
               working-directory: examples/query
               run: source venv/bin/activate && pip install ../..
 
-            - name: Install dfx extension
+            - name: Install icp extension
               working-directory: examples/query
-              run: source venv/bin/activate && python -m basilisk install-dfx-extension
+              run: source venv/bin/activate && python -m basilisk install-icp-extension
 
-            - name: Import DFX identity for IC deployment
+            - name: Import ICP identity for IC deployment
               run: |
                   if [ -z "${{ secrets.IC_IDENTITY_PEM }}" ]; then
                     echo "::error::IC_IDENTITY_PEM secret is not set. Add the PEM file contents as a repository secret."
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext
+                  icp identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext
                   rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
+                  icp identity use ci-deploy
 
             - name: Build canister wasm
               shell: bash -l {0}
@@ -541,20 +541,20 @@ jobs:
                   echo "Wasm size: $(wc -c < "${WASM_FILE}") bytes"
 
                   # Clear any leftover chunks from previous attempts
-                  dfx canister call aaaaa-aa clear_chunk_store \
+                  icp canister call aaaaa-aa clear_chunk_store \
                     "(record { canister_id = principal \"${CANISTER_ID}\" })" \
-                    --network ic --identity ci-deploy 2>/dev/null || true
+                    -e ic --identity ci-deploy 2>/dev/null || true
 
-                  # Install with --async-call: dfx may timeout but DTS completes in background
-                  dfx canister install "${CANISTER_ID}" \
+                  # Install with --async-call: icp may timeout but DTS completes in background
+                  icp canister install "${CANISTER_ID}" \
                     --wasm "${WASM_FILE}" \
-                    --network ic --mode reinstall --yes \
+                    -e ic --mode reinstall --yes \
                     --async-call --identity ci-deploy || true
 
                   # Poll for completion (up to 10 minutes)
                   for i in $(seq 1 20); do
                     sleep 30
-                    STATUS=$(dfx canister status "${CANISTER_ID}" --network ic --identity ci-deploy 2>&1 || true)
+                    STATUS=$(icp canister status "${CANISTER_ID}" -e ic --identity ci-deploy 2>&1 || true)
                     if echo "$STATUS" | grep -q "Module hash: 0x"; then
                       echo "Canister installed after $((i * 30))s"
                       exit 0
@@ -569,7 +569,7 @@ jobs:
               working-directory: examples/query
               run: |
                   CANISTER_ID="2i66l-saaaa-aaaas-qe3sq-cai"
-                  RESULT=$(dfx canister call "${CANISTER_ID}" simple_query --network ic --identity ci-deploy 2>&1)
+                  RESULT=$(icp canister call "${CANISTER_ID}" simple_query -e ic --identity ci-deploy 2>&1)
                   echo "Result: ${RESULT}"
                   if echo "${RESULT}" | grep -q "This is a query function"; then
                     echo "Deployment verified successfully"
@@ -620,28 +620,28 @@ jobs:
                     - shard: crypto
                       pytest_args: tests/test_crypto.py
         env:
-            DFX_WARNING: -mainnet_plaintext_identity
+            ICP_WARNING: -mainnet_plaintext_identity
             BASILISK_TEST_CANISTER: ru4ga-siaaa-aaaai-q7f3a-cai
             BASILISK_TEST_NETWORK: ic
         name: shell-integration-tests (${{ matrix.shard }})
         steps:
             - uses: actions/checkout@v4
 
-            - name: Install dfx
+            - name: Install icp
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  npm install -g @icp-sdk/icp-cli
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
-            - name: Import DFX identity
+            - name: Import ICP identity
               run: |
                   if [ -z "${{ secrets.IC_IDENTITY_PEM }}" ]; then
                     echo "::error::IC_IDENTITY_PEM secret is not set."
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  icp identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
+                  icp identity use ci-deploy
 
             - name: Set up Python
               uses: actions/setup-python@v5
@@ -654,7 +654,7 @@ jobs:
 
             - name: Verify canister reachable
               run: |
-                  dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
+                  icp canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' -e "$BASILISK_TEST_NETWORK"
 
             - name: Run tests (${{ matrix.shard }})
               run: |
