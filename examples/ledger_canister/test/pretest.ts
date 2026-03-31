@@ -66,7 +66,7 @@ async function pretest(icp_ledger_path: string) {
         .trim();
 
     execSync(
-        `icp canister install icp_ledger --args '(record {minting_account = "${mintingAccount}"; initial_values = vec { record { "${ledgerAccount}"; record { e8s=100_000_000_000 } }; }; send_whitelist = vec {}})' --mode reinstall --yes`,
+        `icp canister install icp_ledger --args '(variant { Init = record {minting_account = "${mintingAccount}"; initial_values = vec { record { "${ledgerAccount}"; record { e8s=100_000_000_000 : nat64 } }; }; send_whitelist = vec {}}})' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
