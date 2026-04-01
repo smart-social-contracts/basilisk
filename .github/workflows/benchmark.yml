@@ -35,15 +35,15 @@ jobs:
         env:
             WASI_SDK_VERSION: "24"
             WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
-            DFX_WARNING: -mainnet_plaintext_identity
+            ICP_WARNING: -mainnet_plaintext_identity
         steps:
             - uses: actions/checkout@v4
 
-            # ─── Install dfx ─────────────────────────────────────────────
-            - name: Install dfx
+            # ─── Install icp ─────────────────────────────────────────────
+            - name: Install icp
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  npm install -g @icp-sdk/icp-cli
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
             # ─── Install Python via pyenv ────────────────────────────────
             - name: Install Python 3.10.7
@@ -93,10 +93,10 @@ jobs:
               working-directory: benchmarks/counter
               run: source venv/bin/activate && pip install ../..
 
-            - name: Install dfx extension (CPython)
+            - name: Install icp extension (CPython)
               if: matrix.backend == 'cpython'
               working-directory: benchmarks/counter
-              run: source venv/bin/activate && python -m basilisk install-dfx-extension
+              run: source venv/bin/activate && python -m basilisk install-icp-extension
 
             # ─── RustPython-specific setup ───────────────────────────────
             - name: Install Basilisk (RustPython)
@@ -105,22 +105,22 @@ jobs:
               working-directory: benchmarks/counter
               run: source venv/bin/activate && pip install ../..
 
-            - name: Install dfx extension (RustPython)
+            - name: Install icp extension (RustPython)
               if: matrix.backend == 'rustpython'
               working-directory: benchmarks/counter
-              run: source venv/bin/activate && python -m basilisk install-dfx-extension
+              run: source venv/bin/activate && python -m basilisk install-icp-extension
 
             # ─── Network setup ───────────────────────────────────────────
             - name: Configure system subnet (local)
               if: github.event.inputs.network == 'local'
               run: |
-                  mkdir -p ~/.config/dfx
-                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/dfx/networks.json
+                  mkdir -p ~/.config/icp
+                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/icp/networks.json
 
             - name: Start local replica
               if: github.event.inputs.network == 'local'
               working-directory: benchmarks/counter
-              run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
+              run: icp network start -d
 
             - name: Import IC identity
               if: github.event.inputs.network == 'ic'
@@ -130,9 +130,9 @@ jobs:
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
+                  icp identity default ci-deploy
 
             # ─── Build + Deploy + Benchmark ──────────────────────────────
             - name: Run full benchmark

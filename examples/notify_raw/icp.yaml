@@ -1,0 +1,17 @@
+canisters:
+- name: canister1
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/canister1/canister1.did python -m basilisk
+        canister1 canisters/canister1/canister1.py
+      - cp .basilisk/canister1/canister1.wasm "$ICP_WASM_OUTPUT_PATH"
+- name: canister2
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/canister2/canister2.did python -m basilisk
+        canister2 canisters/canister2/canister2.py
+      - cp .basilisk/canister2/canister2.wasm "$ICP_WASM_OUTPUT_PATH"

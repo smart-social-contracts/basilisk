@@ -1,18 +1,22 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`dfx canister uninstall-code init || true`, {
+    execSync(`icp canister create init`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build init`, {
         stdio: 'inherit'
     });
 
     execSync(
-        `dfx deploy --argument '(record { id = "0" }, variant { Fire }, principal "rrkah-fqaaa-aaaaa-aaaaq-cai")' init`,
+        `icp canister install init --args '(record { id = "0" }, variant { Fire }, principal "rrkah-fqaaa-aaaaa-aaaaq-cai")' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
-    execSync(`dfx generate`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

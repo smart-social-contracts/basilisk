@@ -92,7 +92,7 @@ def _get_git_info() -> dict:
 # ---------------------------------------------------------------------------
 
 def _parse_candid(output: str) -> str:
-    """Parse a Candid-encoded string response from dfx into plain text."""
+    """Parse a Candid-encoded string response from icp into plain text."""
     output = output.strip()
     m = re.search(r'\(\s*"(.*)"\s*,?\s*\)', output, re.DOTALL)
     if m:
@@ -107,7 +107,7 @@ def _parse_candid(output: str) -> str:
 # Canister communication
 # ---------------------------------------------------------------------------
 
-def _is_transient_dfx_error(stderr: str) -> bool:
+def _is_transient_icp_error(stderr: str) -> bool:
     s = (stderr or "").lower()
     transient_markers = [
         "temporary failure in name resolution",
@@ -126,7 +126,7 @@ def _is_transient_dfx_error(stderr: str) -> bool:
     return any(m in s for m in transient_markers)
 
 
-def _run_dfx_with_retries(
+def _run_icp_with_retries(
     cmd: list[str],
     *,
     timeout_s: int,
@@ -145,7 +145,7 @@ def _run_dfx_with_retries(
         last = r
         if r.returncode == 0:
             return r
-        if not _is_transient_dfx_error(r.stderr):
+        if not _is_transient_icp_error(r.stderr):
             return r
         if attempt >= attempts - 1:
             return r
@@ -156,20 +156,20 @@ def _run_dfx_with_retries(
 def canister_exec(code: str, canister: str, network: str = None) -> str:
     """Send Python code to the canister and return the output."""
     escaped = code.replace('"', '\\"').replace("\n", "\\n")
-    cmd = ["dfx", "canister", "call"]
+    cmd = ["icp", "canister", "call"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([canister, "execute_code_shell", f'("{escaped}")'])
 
     try:
-        r = _run_dfx_with_retries(cmd, timeout_s=120)
+        r = _run_icp_with_retries(cmd, timeout_s=120)
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
     except subprocess.TimeoutExpired:
         return "[error] canister call timed out (120s)"
     except FileNotFoundError:
-        return "[error] dfx not found — install the DFINITY SDK"
+        return "[error] icp not found — install the ICP CLI: npm install -g @icp-sdk/icp-cli"
 
 
 # ---------------------------------------------------------------------------
@@ -674,7 +674,7 @@ def _handle_db(args: str, canister: str, network: str) -> str:
 
 
 def _canister_info(canister: str, network: str) -> str:
-    """Gather comprehensive canister information from on-canister data + dfx."""
+    """Gather comprehensive canister information from on-canister data + icp."""
     lines = []
 
     # 1) On-canister info: principal, cycles, IC time
@@ -704,8 +704,8 @@ def _canister_info(canister: str, network: str) -> str:
     if cycles is not None:
         lines.append(f"  Cycles    : {cycles:,}")
 
-    # 2) dfx canister info — module hash, controllers
-    cmd_info = ["dfx", "canister", "info"]
+    # 2) icp canister info — module hash, controllers
+    cmd_info = ["icp", "canister", "info"]
     if network:
         cmd_info.extend(["--network", network])
     cmd_info.append(canister)
@@ -722,8 +722,8 @@ def _canister_info(canister: str, network: str) -> str:
     except Exception:
         pass
 
-    # 3) dfx canister status — status, memory, idle burn
-    cmd_status = ["dfx", "canister", "status"]
+    # 3) icp canister status — status, memory, idle burn
+    cmd_status = ["icp", "canister", "status"]
     if network:
         cmd_status.extend(["--network", network])
     cmd_status.append(canister)
@@ -1596,6 +1596,93 @@ _INDEX_IDS = {
 }
 
 
+def _parse_candid_text(text):
+    """Parse candid text output from icp CLI into Python dicts/lists/values.
+
+    Handles: record, variant, vec, nat, int, text, principal, opt, null.
+    """
+    import re as _re
+
+    text = text.strip()
+    if text.startswith('(') and text.endswith(')'):
+        text = text[1:-1].strip()
+    # icp CLI adds trailing comma before closing paren: (value,)
+    if text.endswith(','):
+        text = text[:-1].strip()
+
+    if text == 'null':
+        return None
+    if text == 'true':
+        return True
+    if text == 'false':
+        return False
+    if text.startswith('opt '):
+        return _parse_candid_text(text[4:])
+    if text.startswith('principal "'):
+        return text[11:-1]
+
+    if text.startswith('"') and text.endswith('"'):
+        return text[1:-1]
+
+    # number with optional type annotation
+    m = _re.match(r'^([+-]?\d[\d_]*)\s*(?::\s*\w+)?\s*$', text)
+    if m:
+        return int(m.group(1).replace('_', ''))
+
+    def _split_items(s):
+        """Split semicolon-delimited items respecting nested braces/strings."""
+        items = []
+        depth = 0
+        in_str = False
+        start = 0
+        for i, c in enumerate(s):
+            if c == '"' and (i == 0 or s[i-1] != '\\'):
+                in_str = not in_str
+            elif not in_str:
+                if c in '({':
+                    depth += 1
+                elif c in ')}':
+                    depth -= 1
+                elif c == ';' and depth == 0:
+                    items.append(s[start:i].strip())
+                    start = i + 1
+        tail = s[start:].strip()
+        if tail:
+            items.append(tail)
+        return items
+
+    def _strip_type(v):
+        return _re.sub(r'\s*:\s*(?:nat\d*|int\d*|text|blob|bool|float\d*|principal)\s*$', '', v)
+
+    if text.startswith('record {') and text.endswith('}'):
+        inner = text[8:-1].strip()
+        result = {}
+        for item in _split_items(inner):
+            if '=' not in item:
+                continue
+            key, _, val = item.partition('=')
+            result[key.strip()] = _parse_candid_text(_strip_type(val.strip()))
+        return result
+
+    if text.startswith('variant {') and text.endswith('}'):
+        inner = text[9:-1].strip().rstrip(';').strip()
+        if '=' in inner:
+            key, _, val = inner.partition('=')
+            return {key.strip(): _parse_candid_text(_strip_type(val.strip()))}
+        return {inner: None}
+
+    if text.startswith('vec {') and text.endswith('}'):
+        inner = text[5:-1].strip()
+        if not inner:
+            return []
+        return [_parse_candid_text(_strip_type(item)) for item in _split_items(inner)]
+
+    if text.startswith('blob "'):
+        return text
+
+    return text
+
+
 def _parse_subaccount(args: str):
     """Extract --sub and --from-sub flags from args string.
 
@@ -1639,7 +1726,7 @@ def _candid_subaccount(hex_str):
 
 
 def _wallet_balance(token: str, canister: str, network: str, subaccount: str = None) -> str:
-    """Query the token ledger for the canister's balance via dfx (client-side)."""
+    """Query the token ledger for the canister's balance via icp (client-side)."""
     ledger = _LEDGER_IDS.get(token)
     if not ledger:
         return f"Unknown token: {token}. Supported: {', '.join(_LEDGER_IDS.keys())}"
@@ -1651,7 +1738,7 @@ def _wallet_balance(token: str, canister: str, network: str, subaccount: str = N
     if sub_candid is None:
         return f"Invalid subaccount hex: {subaccount}"
 
-    cmd = ["dfx", "canister", "call", "--query", "--output", "json"]
+    cmd = ["icp", "canister", "call", "--query", "--output", "candid"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([
@@ -1660,17 +1747,16 @@ def _wallet_balance(token: str, canister: str, network: str, subaccount: str = N
     ])
 
     try:
-        import json as _json
-        r = _run_dfx_with_retries(cmd, timeout_s=30)
+        r = _run_icp_with_retries(cmd, timeout_s=30)
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
-        amount = int(_json.loads(r.stdout.strip()).replace('_', ''))
+            return f"[icp error] {r.stderr.strip()}"
+        amount = int(_parse_candid_text(r.stdout.strip()))
         human = amount / (10 ** decimals)
         return f"{amount} e{decimals} ({human:.{decimals}f} {symbol})"
     except subprocess.TimeoutExpired:
         return "[error] balance query timed out"
     except FileNotFoundError:
-        return "[error] dfx not found — install the DFINITY SDK"
+        return "[error] icp not found — install the ICP CLI: npm install -g @icp-sdk/icp-cli"
 
 
 def _wallet_deposit(token: str, canister: str, subaccount: str = None) -> str:
@@ -1685,8 +1771,8 @@ def _wallet_deposit(token: str, canister: str, subaccount: str = None) -> str:
         f"  Principal: {canister}\n"
         + sub_display +
         f"\n"
-        f"From dfx:\n"
-        f'  dfx canister call {_LEDGER_IDS.get(token, "<ledger>")} icrc1_transfer \\\n'
+        f"From icp:\n"
+        f'  icp canister call {_LEDGER_IDS.get(token, "<ledger>")} icrc1_transfer \\\n'
         f'    \'(record {{ to = record {{ owner = principal "{canister}"; subaccount = {sub_candid} }};'
         f' amount = <AMOUNT> : nat; fee = opt ({_LEDGER_FEES.get(token, 0)} : nat);'
         f" memo = null; from_subaccount = null; created_at_time = null }})'"
@@ -1852,7 +1938,7 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
     if sub_candid is None:
         return f"Invalid subaccount hex: {subaccount}"
 
-    cmd = ["dfx", "canister", "call", "--query", "--output", "json"]
+    cmd = ["icp", "canister", "call", "--query", "--output", "candid"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([
@@ -1862,23 +1948,28 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
     ])
 
     try:
-        r = _run_dfx_with_retries(cmd, timeout_s=30)
+        r = _run_icp_with_retries(cmd, timeout_s=30)
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
     except subprocess.TimeoutExpired:
         return "[error] index query timed out"
     except FileNotFoundError:
-        return "[error] dfx not found — install the DFINITY SDK"
+        return "[error] icp not found — install the ICP CLI: npm install -g @icp-sdk/icp-cli"
 
     try:
-        data = _json.loads(r.stdout)
-    except _json.JSONDecodeError:
+        data = _parse_candid_text(r.stdout)
+    except Exception:
         return f"[error] failed to parse index response"
+
+    if not isinstance(data, dict):
+        return f"[error] unexpected index response format"
 
     if "Err" in data:
         return f"[error] index returned: {data['Err']}"
 
     ok = data.get("Ok", {})
+    if not isinstance(ok, dict):
+        return f"[error] unexpected Ok format in index response"
     txns = ok.get("transactions", [])
 
     if not txns:
@@ -1886,21 +1977,30 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
 
     rows = []
     for entry in txns:
-        tx_id = entry.get("id", "?").replace("_", "")
+        _tid = entry.get("id", "?")
+        tx_id = str(_tid).replace("_", "") if _tid != "?" else "?"
         tx = entry.get("transaction", {})
+        if not isinstance(tx, dict):
+            continue
         kind = tx.get("kind", "")
-        ts_ns = int(tx.get("timestamp", "0"))
+        _ts = tx.get("timestamp", 0)
+        ts_ns = int(str(_ts).replace('_', '')) if _ts else 0
         ts_s = ts_ns // 1_000_000_000
         dt = datetime.datetime.utcfromtimestamp(ts_s).strftime('%Y-%m-%d %H:%M') if ts_s else "?"
 
         if kind == "transfer":
-            transfers = tx.get("transfer", [])
-            if not transfers:
+            _xfer = tx.get("transfer", [])
+            if not _xfer:
                 continue
-            t = transfers[0]
-            from_p = t.get("from", {}).get("owner", "?")
-            to_p = t.get("to", {}).get("owner", "?")
-            amt = int(t.get("amount", "0").replace("_", ""))
+            t = _xfer if isinstance(_xfer, dict) else (_xfer[0] if isinstance(_xfer, list) and _xfer else None)
+            if not t or not isinstance(t, dict):
+                continue
+            _from = t.get("from", {})
+            from_p = _from.get("owner", "?") if isinstance(_from, dict) else "?"
+            _to = t.get("to", {})
+            to_p = _to.get("owner", "?") if isinstance(_to, dict) else "?"
+            _a = t.get("amount", 0)
+            amt = int(str(_a).replace('_', '')) if _a else 0
             human_amt = amt / (10 ** decimals)
 
             if from_p == canister and to_p == canister:
@@ -1918,18 +2018,24 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
             rows.append(f"  {dt}  #{tx_id}  {arrow} {human_amt:.{decimals}f} {symbol}  {peer}")
 
         elif kind == "mint":
-            mints = tx.get("mint", [])
-            if mints:
-                amt = int(mints[0].get("amount", "0").replace("_", ""))
-                human_amt = amt / (10 ** decimals)
-                rows.append(f"  {dt}  #{tx_id}  ⊕ {human_amt:.{decimals}f} {symbol}  mint")
+            _mint = tx.get("mint", [])
+            if _mint:
+                m = _mint if isinstance(_mint, dict) else (_mint[0] if isinstance(_mint, list) and _mint else None)
+                if m and isinstance(m, dict):
+                    _a = m.get("amount", 0)
+                    amt = int(str(_a).replace('_', '')) if _a else 0
+                    human_amt = amt / (10 ** decimals)
+                    rows.append(f"  {dt}  #{tx_id}  ⊕ {human_amt:.{decimals}f} {symbol}  mint")
 
         elif kind == "burn":
-            burns = tx.get("burn", [])
-            if burns:
-                amt = int(burns[0].get("amount", "0").replace("_", ""))
-                human_amt = amt / (10 ** decimals)
-                rows.append(f"  {dt}  #{tx_id}  ⊖ {human_amt:.{decimals}f} {symbol}  burn")
+            _burn = tx.get("burn", [])
+            if _burn:
+                b = _burn if isinstance(_burn, dict) else (_burn[0] if isinstance(_burn, list) and _burn else None)
+                if b and isinstance(b, dict):
+                    _a = b.get("amount", 0)
+                    amt = int(str(_a).replace('_', '')) if _a else 0
+                    human_amt = amt / (10 ** decimals)
+                    rows.append(f"  {dt}  #{tx_id}  ⊖ {human_amt:.{decimals}f} {symbol}  burn")
 
     if not rows:
         return f"No {symbol} transactions found."
@@ -2759,23 +2865,23 @@ def _task_log_follow(tid: str, canister: str, network: str):
 
 
 def _wget(url: str, dest: str, canister: str, network: str) -> str:
-    """Call the canister's download_to_file endpoint directly via dfx."""
+    """Call the canister's download_to_file endpoint directly via icp."""
     escaped_url = url.replace('"', '\\"')
     escaped_dest = dest.replace('"', '\\"')
-    cmd = ["dfx", "canister", "call"]
+    cmd = ["icp", "canister", "call"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([canister, "download_to_file", f'("{escaped_url}", "{escaped_dest}")'])
 
     try:
-        r = _run_dfx_with_retries(cmd, timeout_s=120)
+        r = _run_icp_with_retries(cmd, timeout_s=120)
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
     except subprocess.TimeoutExpired:
         return "[error] download timed out (120s)"
     except FileNotFoundError:
-        return "[error] dfx not found — install the DFINITY SDK"
+        return "[error] icp not found — install the ICP CLI: npm install -g @icp-sdk/icp-cli"
 
 
 def _handle_task(args: str, canister: str, network: str) -> str:

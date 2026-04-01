@@ -1,19 +1,12 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`dfx canister uninstall-code rejections || true`, {
+
+    execSync(`icp deploy`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx canister uninstall-code some_service || true`, {
-        stdio: 'inherit'
-    });
-
-    execSync(`dfx deploy`, {
-        stdio: 'inherit'
-    });
-
-    execSync(`dfx generate`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

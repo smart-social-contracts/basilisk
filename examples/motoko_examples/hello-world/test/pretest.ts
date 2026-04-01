@@ -8,8 +8,8 @@ async function pretest() {
     // Try regular deploy. On a system subnet (no instruction limit),
     // this may timeout but PocketIC continues compiling in the background.
     try {
-        execSync('dfx deploy', { stdio: 'inherit' });
-        execSync('dfx generate', { stdio: 'inherit' });
+        execSync('icp deploy', { stdio: 'inherit' });
+        execSync('bash ../../../scripts/icp-generate.sh', { stdio: 'inherit' });
         return;
     } catch {
         console.log(
@@ -30,12 +30,12 @@ async function pretest() {
         const elapsed = Math.round((Date.now() - startTime) / 1000);
         try {
             const status = execSync(
-                `dfx canister status ${canisterName} 2>&1`,
+                `icp canister status ${canisterName} 2>&1`,
                 { timeout: 15_000 }
             ).toString();
             if (status.includes('Module hash: 0x')) {
                 console.log(`Canister ${canisterName} installed after ~${elapsed}s`);
-                execSync('dfx generate', { stdio: 'inherit' });
+                execSync('bash ../../../scripts/icp-generate.sh', { stdio: 'inherit' });
                 return;
             }
         } catch {}

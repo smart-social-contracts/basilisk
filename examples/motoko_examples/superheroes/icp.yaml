@@ -1,0 +1,9 @@
+canisters:
+- name: superheroes
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/superheroes/superheroes.did python -m basilisk
+        superheroes src/main.py
+      - cp .basilisk/superheroes/superheroes.wasm "$ICP_WASM_OUTPUT_PATH"

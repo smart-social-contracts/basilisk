@@ -29,27 +29,27 @@ jobs:
     shell-tests:
         runs-on: ubuntu-latest
         env:
-            DFX_WARNING: -mainnet_plaintext_identity
+            ICP_WARNING: -mainnet_plaintext_identity
             BASILISK_TEST_CANISTER: ${{ inputs.canister }}
             BASILISK_TEST_NETWORK: ${{ inputs.network }}
         steps:
             - uses: actions/checkout@v4
 
-            - name: Install dfx
+            - name: Install icp
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  npm install -g @icp-sdk/icp-cli
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
-            - name: Import DFX identity
+            - name: Import ICP identity
               run: |
                   if [ -z "${{ secrets.IC_IDENTITY_PEM }}" ]; then
                     echo "::error::IC_IDENTITY_PEM secret is not set."
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
+                  icp identity default ci-deploy
 
             - name: Set up Python
               uses: actions/setup-python@v5
@@ -62,7 +62,7 @@ jobs:
 
             - name: Verify canister reachable
               run: |
-                  dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
+                  icp canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' -e "$BASILISK_TEST_NETWORK"
 
             - name: Run tests
               run: |

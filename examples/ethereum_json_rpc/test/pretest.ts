@@ -1,18 +1,22 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`dfx canister uninstall-code ethereum_json_rpc || true`, {
+    execSync(`icp canister create ethereum_json_rpc`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build ethereum_json_rpc`, {
         stdio: 'inherit'
     });
 
     execSync(
-        `dfx deploy --argument '("${process.env.ETHEREUM_URL}")' ethereum_json_rpc`,
+        `icp canister install ethereum_json_rpc --args '("${process.env.ETHEREUM_URL}")' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
-    execSync(`dfx generate`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

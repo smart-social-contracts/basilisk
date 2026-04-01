@@ -1,0 +1,9 @@
+canisters:
+- name: stdlib
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/stdlib/stdlib.did python -m basilisk stdlib
+        src/main.py
+      - cp .basilisk/stdlib/stdlib.wasm "$ICP_WASM_OUTPUT_PATH"

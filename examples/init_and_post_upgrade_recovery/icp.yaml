@@ -1,0 +1,10 @@
+canisters:
+- name: init_and_post_upgrade_recovery
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/init_and_post_upgrade_recovery/init_and_post_upgrade_recovery.did
+        python -m basilisk init_and_post_upgrade_recovery src/main.py
+      - cp .basilisk/init_and_post_upgrade_recovery/init_and_post_upgrade_recovery.wasm
+        "$ICP_WASM_OUTPUT_PATH"

@@ -11,7 +11,7 @@ directories_json_string="${directories_json_string_with_linebreaks//$'\\n'/''}"
 directories=$(echo "$directories_json_string" | jq -c -r '.[]')
 
 sed -E -i "s/(__version__ = \")(.*)(\")/\1$VERSION\3/" basilisk/__init__.py
-sed -E -i "s/(\"version\": \")(.*)(\")/\1$VERSION\3/" basilisk/compiler/dfx_extension/extension.json
+sed -E -i "s/(\"version\": \")(.*)(\")/\1$VERSION\3/" basilisk/compiler/icp_extension/extension.json
 
 # prepare on new machine
 ~/.pyenv/versions/3.10.7/bin/python -m pip install --upgrade build
@@ -41,9 +41,9 @@ cd examples/simple_erc20
 ~/.pyenv/versions/3.10.7/bin/python -m venv venv
 source venv/bin/activate
 pip install ../..
-python -m basilisk install-dfx-extension
-dfx start --background
-BASILISK_COMPILE_RUST_PYTHON_STDLIB=true BASILISK_REBUILD=true dfx deploy
+python -m basilisk install-icp-extension
+icp network start -d
+BASILISK_COMPILE_RUST_PYTHON_STDLIB=true BASILISK_REBUILD=true icp deploy
 cd .basilisk/simple_erc20
 tar -czf "$HOME/.config/basilisk/$VERSION/rust_python_stdlib.tar.gz" "rust_python_stdlib"
 

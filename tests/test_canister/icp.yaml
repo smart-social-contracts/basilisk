@@ -1,0 +1,18 @@
+canisters:
+- name: shell_test
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=./shell_test.did python -m basilisk shell_test src/main.py
+      - cp .basilisk/shell_test/shell_test.wasm "$ICP_WASM_OUTPUT_PATH"
+- name: ckbtc_ledger
+- name: ckbtc_indexer
+networks:
+  local:
+    bind: 127.0.0.1:4943
+    type: ephemeral
+  ic:
+    providers:
+    - https://icp0.io
+    type: persistent

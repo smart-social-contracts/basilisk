@@ -1,0 +1,9 @@
+canisters:
+- name: simple_user_accounts
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/simple_user_accounts/simple_user_accounts.did
+        python -m basilisk simple_user_accounts src/main.py
+      - cp .basilisk/simple_user_accounts/simple_user_accounts.wasm "$ICP_WASM_OUTPUT_PATH"

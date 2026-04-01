@@ -1,0 +1,9 @@
+canisters:
+- name: stable_memory
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/stable_memory/stable_memory.did python -m basilisk
+        stable_memory src/main.py
+      - cp .basilisk/stable_memory/stable_memory.wasm "$ICP_WASM_OUTPUT_PATH"

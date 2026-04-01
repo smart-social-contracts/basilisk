@@ -1,0 +1,15 @@
+canisters:
+- name: ledger_canister
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/ledger_canister/ledger_canister.did python
+        -m basilisk ledger_canister src/ledger_canister/ledger_canister.py
+      - cp .basilisk/ledger_canister/ledger_canister.wasm "$ICP_WASM_OUTPUT_PATH"
+- name: icp_ledger
+  build:
+    steps:
+    - type: script
+      commands:
+      - cp src/icp_ledger/ledger.wasm "$ICP_WASM_OUTPUT_PATH"

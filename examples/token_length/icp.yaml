@@ -1,0 +1,23 @@
+canisters:
+- name: works
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/works/works.did python -m basilisk works src/works/works.py
+      - cp .basilisk/works/works.wasm "$ICP_WASM_OUTPUT_PATH"
+- name: wip
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/wip/wip.did python -m basilisk wip src/wip/wip.py
+      - cp .basilisk/wip/wip.wasm "$ICP_WASM_OUTPUT_PATH"
+- name: breaks
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/breaks/breaks.did python -m basilisk breaks
+        src/breaks/breaks.py
+      - cp .basilisk/breaks/breaks.wasm "$ICP_WASM_OUTPUT_PATH"

@@ -1,0 +1,9 @@
+canisters:
+- name: list_of_lists
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/list_of_lists/list_of_lists.did python -m basilisk
+        list_of_lists src/main.py
+      - cp .basilisk/list_of_lists/list_of_lists.wasm "$ICP_WASM_OUTPUT_PATH"

@@ -1,0 +1,17 @@
+canisters:
+- name: func_types
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/func_types/func_types.did python -m basilisk
+        func_types src/func_types/main.py
+      - cp .basilisk/func_types/func_types.wasm "$ICP_WASM_OUTPUT_PATH"
+- name: notifiers
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/notifiers/notifiers.did python -m basilisk
+        notifiers src/notifiers/main.py
+      - cp .basilisk/notifiers/notifiers.wasm "$ICP_WASM_OUTPUT_PATH"

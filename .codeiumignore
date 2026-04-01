@@ -1,0 +1,8 @@
+.dfx/
+.icp/
+node_modules/
+venv/
+dist/
+*.wasm
+package-lock.json
+Cargo.lock

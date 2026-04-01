@@ -1,0 +1,9 @@
+canisters:
+- name: annotated_tests
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/annotated_tests/annotated_tests.did python
+        -m basilisk annotated_tests src/main.py
+      - cp .basilisk/annotated_tests/annotated_tests.wasm "$ICP_WASM_OUTPUT_PATH"

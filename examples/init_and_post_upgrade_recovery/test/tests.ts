@@ -13,16 +13,9 @@ export function getTests(
             name: 'init should fail',
             skip: true,
             test: async () => {
-                execSync(
-                    `dfx canister uninstall-code init_and_post_upgrade_recovery || true`,
-                    {
-                        stdio: 'inherit'
-                    }
-                );
-
                 try {
                     execSync(
-                        `dfx deploy init_and_post_upgrade_recovery --argument '(true)'`
+                        `icp canister install init_and_post_upgrade_recovery --args '(true)' --mode reinstall --yes`
                     );
                 } catch (error: any) {
                     return {
@@ -39,7 +32,7 @@ export function getTests(
             name: 'init should succeed',
             test: async () => {
                 execSync(
-                    `dfx deploy init_and_post_upgrade_recovery --argument '(false)'`,
+                    `icp canister install init_and_post_upgrade_recovery --args '(false)' --mode reinstall --yes`,
                     {
                         stdio: 'inherit'
                     }
@@ -59,7 +52,7 @@ export function getTests(
             test: async () => {
                 try {
                     execSync(
-                        `dfx deploy --upgrade-unchanged init_and_post_upgrade_recovery --argument '(true)'`
+                        `icp canister install init_and_post_upgrade_recovery --args '(true)' --mode upgrade --yes`
                     );
                 } catch (error: any) {
                     return {
@@ -78,7 +71,7 @@ export function getTests(
             name: 'post_upgrade should succeed',
             test: async () => {
                 execSync(
-                    `dfx deploy --upgrade-unchanged init_and_post_upgrade_recovery --argument '(false)'`,
+                    `icp canister install init_and_post_upgrade_recovery --args '(false)' --mode upgrade --yes`,
                     {
                         stdio: 'inherit'
                     }

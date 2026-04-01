@@ -1,0 +1,9 @@
+canisters:
+- name: http_counter
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/http_counter/http_counter.did python -m basilisk
+        http_counter src/main.py
+      - cp .basilisk/http_counter/http_counter.wasm "$ICP_WASM_OUTPUT_PATH"

@@ -1,0 +1,17 @@
+canisters:
+- name: service
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/service/service.did python -m basilisk service
+        src/service/service.py
+      - cp .basilisk/service/service.wasm "$ICP_WASM_OUTPUT_PATH"
+- name: some_service
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/some_service/some_service.did python -m basilisk
+        some_service src/some_service/some_service.py
+      - cp .basilisk/some_service/some_service.wasm "$ICP_WASM_OUTPUT_PATH"

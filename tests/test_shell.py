@@ -35,7 +35,7 @@ class TestCandidParsing:
         assert _parse_candid('("say \\"hi\\"")') == 'say "hi"'
 
     def test_trailing_comma(self):
-        """dfx sometimes returns trailing comma in tuple."""
+        """icp sometimes returns trailing comma in tuple."""
         assert _parse_candid('("hello",)') == "hello"
 
     def test_empty_string(self):
@@ -134,10 +134,10 @@ class TestShellExec:
 class TestPersistentVariables:
     """Test variable persistence in execute_code_shell.
 
-    IMPORTANT FINDING: Variables do NOT persist across separate dfx canister
+    IMPORTANT FINDING: Variables do NOT persist across separate icp canister
     calls. Each call gets a fresh execution context. This is a known Basilisk
     OS limitation — within one interactive basilisk shell session the canister maintains
-    state, but each `dfx canister call` is independent.
+    state, but each `icp canister call` is independent.
     """
 
     def test_variable_within_single_call(self, canister_reachable, canister, network):

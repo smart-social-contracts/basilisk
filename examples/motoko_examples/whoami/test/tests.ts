@@ -78,7 +78,7 @@ export function getTests(
             name: 'redeploy',
             prep: async () => {
                 execSync(
-                    `dfx deploy --upgrade-unchanged ${canisterName} --argument '(principal "${callingPrincipal}")'`,
+                    `icp canister install ${canisterName} --args '(principal "${callingPrincipal}")' --mode upgrade --yes`,
                     {
                         stdio: 'inherit'
                     }

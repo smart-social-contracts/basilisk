@@ -2,28 +2,33 @@ import { getCanisterId } from 'azle/test';
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`dfx canister uninstall-code cycles || true`, {
+
+    execSync(`icp deploy cycles`, {
+        stdio: 'inherit'
+    });
+    execSync(`bash ../../scripts/sync-canister-ids.sh`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx canister uninstall-code intermediary || true`, {
-        stdio: 'inherit'
-    });
-
-    execSync(`dfx deploy cycles`, {
-        stdio: 'inherit'
-    });
 
     execSync(
-        `dfx deploy intermediary --argument '(principal "${getCanisterId(
+        `icp canister create intermediary`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp build intermediary`, {
+        stdio: 'inherit'
+    });
+
+    execSync(`icp canister install intermediary --args '(principal "${getCanisterId(
             'cycles'
-        )}")'`,
+        )}")' --mode reinstall --yes`,
         {
             stdio: 'inherit'
         }
     );
 
-    execSync(`dfx generate`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 }

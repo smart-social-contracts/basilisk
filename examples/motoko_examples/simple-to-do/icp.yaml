@@ -1,0 +1,9 @@
+canisters:
+- name: simple_to_do
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/simple_to_do/simple_to_do.did python -m basilisk
+        simple_to_do src/main.py
+      - cp .basilisk/simple_to_do/simple_to_do.wasm "$ICP_WASM_OUTPUT_PATH"

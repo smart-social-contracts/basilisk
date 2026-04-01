@@ -20,7 +20,7 @@ export function getTests(): Test[] {
             name: 'serviceParam',
             test: async () => {
                 const result = execSync(
-                    `dfx canister call service service_param '(service "aaaaa-aa")'`
+                    `icp canister call service service_param '(service "aaaaa-aa")'`
                 )
                     .toString()
                     .trim();
@@ -36,7 +36,7 @@ export function getTests(): Test[] {
             name: 'serviceReturnType',
             test: async () => {
                 const result = execSync(
-                    `dfx canister call service service_return_type`
+                    `icp canister call service service_return_type '()'`
                 )
                     .toString()
                     .trim();
@@ -52,7 +52,7 @@ export function getTests(): Test[] {
             name: 'serviceList',
             test: async () => {
                 const result = execSync(
-                    `dfx canister call service service_list '(vec { service "r7inp-6aaaa-aaaaa-aaabq-cai"; service "rrkah-fqaaa-aaaaa-aaaaq-cai" })'`
+                    `icp canister call service service_list '(vec { service "r7inp-6aaaa-aaaaa-aaabq-cai"; service "rrkah-fqaaa-aaaaa-aaaaq-cai" })'`
                 )
                     .toString()
                     .trim();
@@ -75,7 +75,7 @@ export function getTests(): Test[] {
             name: 'serviceCrossCanisterCall',
             test: async () => {
                 const result = execSync(
-                    `dfx canister call service service_cross_canister_call '(service "${getCanisterId(
+                    `icp canister call service service_cross_canister_call '(service "${getCanisterId(
                         'some_service'
                     )}")'`
                 )

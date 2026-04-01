@@ -1,0 +1,9 @@
+canisters:
+- name: key_value_store
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/key_value_store/key_value_store.did python
+        -m basilisk key_value_store src/main.py
+      - cp .basilisk/key_value_store/key_value_store.wasm "$ICP_WASM_OUTPUT_PATH"

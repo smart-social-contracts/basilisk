@@ -1,0 +1,9 @@
+canisters:
+- name: update
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/update/update.did python -m basilisk update
+        src/main.py
+      - cp .basilisk/update/update.wasm "$ICP_WASM_OUTPUT_PATH"

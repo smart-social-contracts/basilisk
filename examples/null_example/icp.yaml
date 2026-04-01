@@ -1,0 +1,9 @@
+canisters:
+- name: null_example
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/null_example/null_example.did python -m basilisk
+        null_example src/main.py
+      - cp .basilisk/null_example/null_example.wasm "$ICP_WASM_OUTPUT_PATH"

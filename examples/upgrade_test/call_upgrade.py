@@ -16,7 +16,7 @@ def call_canister(method: str, arg: str) -> tuple[int, str, str]:
         f.write(arg)
     
     result = subprocess.run(
-        ["dfx", "canister", "call", "controller", method, "--argument-file", "/tmp/canister_arg.txt"],
+        ["icp", "canister", "call", "controller", method, "--args-file", "/tmp/canister_arg.txt"],
         capture_output=True,
         text=True
     )

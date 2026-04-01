@@ -1,0 +1,9 @@
+canisters:
+- name: bitcoin
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/bitcoin/bitcoin.did python -m basilisk bitcoin
+        src/main.py
+      - cp .basilisk/bitcoin/bitcoin.wasm "$ICP_WASM_OUTPUT_PATH"

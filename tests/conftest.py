@@ -62,18 +62,18 @@ def network():
 
 
 @pytest.fixture(scope="session")
-def dfx_available():
-    """Check that dfx is installed and accessible."""
+def icp_available():
+    """Check that icp CLI is installed and accessible."""
     try:
-        r = subprocess.run(["dfx", "--version"], capture_output=True, text=True)
-        assert r.returncode == 0, "dfx not found"
+        r = subprocess.run(["icp", "--version"], capture_output=True, text=True)
+        assert r.returncode == 0, "icp not found"
         return True
     except FileNotFoundError:
-        pytest.skip("dfx not installed")
+        pytest.skip("icp not installed")
 
 
 @pytest.fixture(scope="session")
-def canister_reachable(canister, network, dfx_available):
+def canister_reachable(canister, network, icp_available):
     """Verify the canister is reachable before running tests."""
     result = canister_exec("print('ping')", canister, network)
     if "error" in result.lower() or "Error" in result:

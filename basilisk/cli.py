@@ -10,7 +10,7 @@ Usage:
     basilisk --version             Print version
 
 Exec options:
-    --canister <name_or_id>   Canister name or ID (default: auto-detect from dfx.json)
+    --canister <name_or_id>   Canister name or ID (default: auto-detect from icp.yaml)
     --network <network>       Network: local, ic, or URL (default: local)
     -f <file>                 Execute a local Python file on the canister
 """
@@ -52,19 +52,17 @@ def cmd_new(project_name: str, backend: str = "cpython"):
     else:
         build_cmd = f"CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
 
-    dfx_json = f"""\
-{{
-    "canisters": {{
-        "{project_name}": {{
-            "type": "custom",
-            "build": "{build_cmd}",
-            "candid": "{project_name}.did",
-            "wasm": ".basilisk/{project_name}/{project_name}.wasm"
-        }}
-    }}
-}}
+    icp_yaml = f"""\
+canisters:
+- name: {project_name}
+  build:
+    steps:
+    - type: script
+      commands:
+      - {build_cmd}
+      - cp .basilisk/{project_name}/{project_name}.wasm "$ICP_WASM_OUTPUT_PATH"
 """
-    (project_dir / "dfx.json").write_text(dfx_json)
+    (project_dir / "icp.yaml").write_text(icp_yaml)
 
     # src/main.py
     main_py = """\
@@ -104,8 +102,7 @@ def whoami() -> text:
     (src_dir / "main.py").write_text(main_py)
 
     # .gitignore
-    gitignore = """\
-.dfx/
+    gitignore = """\.icp/
 .basilisk/
 node_modules/
 """
@@ -115,49 +112,59 @@ node_modules/
     print(f"""
 Done! Created {project_name}/ ({build_note})
   src/main.py    — your canister code (query + update examples)
-  dfx.json       — IC project config (backend: {backend})
+  icp.yaml       — IC project config (backend: {backend})
 
 Next steps:
   cd {project_name}
-  dfx start --background
-  dfx deploy
-  dfx canister call {project_name} greet '("World")'
-  dfx canister call {project_name} increment
-  dfx canister call {project_name} get_counter
+  icp network start -d
+  icp deploy
+  icp canister call {project_name} greet '("World")'
+  icp canister call {project_name} increment
+  icp canister call {project_name} get_counter
 """)
 
 
 def cmd_build():
     """Build the canister in the current directory."""
-    # Find dfx.json
-    if not Path("dfx.json").exists():
-        print("Error: no dfx.json found. Run this from a basilisk project directory.", file=sys.stderr)
+    # Find icp.yaml
+    if not Path("icp.yaml").exists():
+        print("Error: no icp.yaml found. Run this from a basilisk project directory.", file=sys.stderr)
         sys.exit(1)
 
-    import json
-    with open("dfx.json") as f:
-        dfx = json.load(f)
+    import yaml
+    with open("icp.yaml") as f:
+        icp = yaml.safe_load(f)
 
-    canisters = dfx.get("canisters", {})
+    canisters = icp.get("canisters", [])
     if not canisters:
-        print("Error: no canisters defined in dfx.json.", file=sys.stderr)
+        print("Error: no canisters defined in icp.yaml.", file=sys.stderr)
         sys.exit(1)
 
-    # Build each canister
-    for name, config in canisters.items():
-        build_cmd = config.get("build", "")
-        if "basilisk" in build_cmd:
+    # Build each canister (icp.yaml uses list format with 'name' field)
+    for config in canisters:
+        name = config.get("name", "")
+        build_section = config.get("build", {})
+
+        # Extract build commands from steps
+        build_commands = []
+        if isinstance(build_section, dict):
+            for step in build_section.get("steps", []):
+                build_commands.extend(step.get("commands", []))
+        elif isinstance(build_section, str):
+            build_commands = [build_section]
+
+        # Find the basilisk build command
+        basilisk_cmd = next((c for c in build_commands if "basilisk" in c), None)
+        if basilisk_cmd:
             print(f"Building canister: {name}")
             # Extract entry point from build command
-            parts = build_cmd.split()
-            # Expected: python -m basilisk <name> <entry_point>
-            if len(parts) >= 5:
-                entry_point = parts[4]
-            else:
+            parts = basilisk_cmd.split()
+            # Expected: ... python -m basilisk <name> <entry_point>
+            try:
+                idx = parts.index("basilisk")
+                entry_point = parts[idx + 2] if idx + 2 < len(parts) else "src/main.py"
+            except (ValueError, IndexError):
                 entry_point = "src/main.py"
-
-            candid_path = config.get("candid", f"{name}.did")
-            os.environ["CANISTER_CANDID_PATH"] = f"./{candid_path}"
 
             # Run the basilisk build
             import subprocess
@@ -171,7 +178,7 @@ def cmd_build():
 
 
 def _parse_candid_string(output: str) -> str:
-    """Parse a Candid-encoded string response from dfx into plain text."""
+    """Parse a Candid-encoded string response from icp into plain text."""
     output = output.strip()
     # General tuple pattern: (  "content"  ) or (  "content",  )
     m = re.search(r'\(\s*"(.*)"\s*,?\s*\)', output, re.DOTALL)
@@ -183,15 +190,15 @@ def _parse_candid_string(output: str) -> str:
     return output
 
 
-def _detect_canister_from_dfx() -> str | None:
-    """Try to find the first basilisk canister name from dfx.json."""
-    import json
-    if not Path("dfx.json").exists():
+def _detect_canister_from_icp() -> str | None:
+    """Try to find the first basilisk canister name from icp.yaml."""
+    import yaml
+    if not Path("icp.yaml").exists():
         return None
     try:
-        with open("dfx.json") as f:
-            dfx = json.load(f)
-        for name, config in dfx.get("canisters", {}).items():
+        with open("icp.yaml") as f:
+            icp = yaml.safe_load(f)
+        for name, config in icp.get("canisters", {}).items():
             if "basilisk" in config.get("build", ""):
                 return name
     except Exception:
@@ -236,14 +243,14 @@ def cmd_exec(args: list[str]):
 
     # Auto-detect canister if not specified
     if not canister:
-        canister = _detect_canister_from_dfx()
+        canister = _detect_canister_from_icp()
         if not canister:
-            print("Error: --canister required (could not auto-detect from dfx.json)", file=sys.stderr)
+            print("Error: --canister required (could not auto-detect from icp.yaml)", file=sys.stderr)
             sys.exit(1)
 
-    # Build dfx command
+    # Build icp command
     escaped_code = code.replace('"', '\\"').replace("\n", "\\n")
-    cmd = ["dfx", "canister", "call"]
+    cmd = ["icp", "canister", "call"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([canister, "execute_code_shell", f'("{escaped_code}")'])
@@ -260,7 +267,7 @@ def cmd_exec(args: list[str]):
         print("Error: canister call timed out (120s)", file=sys.stderr)
         sys.exit(1)
     except FileNotFoundError:
-        print("Error: dfx not found. Install the DFINITY SDK.", file=sys.stderr)
+        print("Error: icp not found. Install the ICP CLI: npm install -g @icp-sdk/icp-cli", file=sys.stderr)
         sys.exit(1)
 
 

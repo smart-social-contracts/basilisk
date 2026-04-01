@@ -23,7 +23,7 @@ Usage:
     pytest tests/test_fx.py -v
 
     # Against local replica:
-    cd basilisk/tests/test_canister && dfx start --background
+    cd basilisk/tests/test_canister && icp network start -d
     BASILISK_TEST_NETWORK=local pytest tests/test_fx.py -v
 """
 
@@ -40,14 +40,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from basilisk.shell import _parse_candid
 
-# Directory containing dfx.json with local network config
+# Directory containing icp.yaml with local network config
 _TEST_CANISTER_DIR = os.path.join(os.path.dirname(__file__), "test_canister")
 
 
 def _local_canister_exec(code, canister, network):
-    """canister_exec variant that runs dfx from the test_canister dir."""
+    """canister_exec variant that runs icp from the test_canister dir."""
     escaped = code.replace('"', '\\"').replace("\n", "\\n")
-    cmd = ["dfx", "canister", "call"]
+    cmd = ["icp", "canister", "call"]
     if network:
         cmd.extend(["--network", network])
     cmd.extend([canister, "execute_code_shell", f'("{escaped}")'])
@@ -57,12 +57,12 @@ def _local_canister_exec(code, canister, network):
             cwd=_TEST_CANISTER_DIR,
         )
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
     except subprocess.TimeoutExpired:
         return "[error] canister call timed out (120s)"
     except FileNotFoundError:
-        return "[error] dfx not found"
+        return "[error] icp not found"
 
 
 # ---------------------------------------------------------------------------
@@ -247,7 +247,7 @@ def _magic_to_code(cmd):
 
 
 def _task_magic(cmd, canister, network):
-    """Run a magic command via dfx from the test_canister dir."""
+    """Run a magic command via icp from the test_canister dir."""
     result = _local_canister_exec(
         _magic_to_code(cmd), canister, network,
     )

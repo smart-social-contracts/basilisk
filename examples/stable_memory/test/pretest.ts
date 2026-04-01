@@ -1,24 +1,15 @@
 import { execSync } from 'child_process';
 
 async function pretest() {
-    execSync(`dfx canister uninstall-code stable_memory || true`, {
+    execSync(`icp deploy`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx deploy`, {
+    execSync(`bash ../../scripts/icp-generate.sh`, {
         stdio: 'inherit'
     });
 
-    execSync(`dfx generate`, {
-        stdio: 'inherit'
-    });
-
-    execSync(
-        `dfx ledger fabricate-cycles --canister stable_memory --cycles 100000000000000`,
-        {
-            stdio: 'inherit'
-        }
-    );
+    // Note: icp CLI local network provides cycles automatically
 }
 
 pretest();

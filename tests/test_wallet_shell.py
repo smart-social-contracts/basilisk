@@ -5,7 +5,7 @@ Unit tests (TestParseSubaccount, TestCandidSubaccount, TestHandleWalletDispatch)
 run without a canister.
 
 Integration tests (TestWalletBalance, TestWalletHistory, TestWalletOneshot)
-run against a live canister on IC mainnet via dfx.
+run against a live canister on IC mainnet via icp.
 """
 
 import os
@@ -197,7 +197,7 @@ class TestHandleWalletDispatch:
 
 
 # ===========================================================================
-# Integration tests — require live canister + dfx
+# Integration tests — require live canister + icp
 # ===========================================================================
 
 class TestWalletBalance:

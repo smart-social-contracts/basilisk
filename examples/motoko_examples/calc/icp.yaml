@@ -1,0 +1,8 @@
+canisters:
+- name: calc
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/calc/calc.did python -m basilisk calc src/main.py
+      - cp .basilisk/calc/calc.wasm "$ICP_WASM_OUTPUT_PATH"

@@ -5,7 +5,7 @@ Unit tests (TestDbCodeGeneration, TestHandleDbDispatch) run without a canister.
 
 Integration tests (TestDbTypes, TestDbList, TestDbShow, TestDbSearch,
 TestDbExportImport, TestDbDelete, TestDbCountDumpClear) run against
-a live canister on IC mainnet via dfx.
+a live canister on IC mainnet via icp.
 """
 
 import base64

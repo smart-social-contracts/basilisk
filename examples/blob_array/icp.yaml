@@ -1,0 +1,9 @@
+canisters:
+- name: blob_array
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/blob_array/blob_array.did python -m basilisk
+        blob_array src/main.py
+      - cp .basilisk/blob_array/blob_array.wasm "$ICP_WASM_OUTPUT_PATH"

@@ -1,0 +1,9 @@
+canisters:
+- name: outgoing_http_requests
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/outgoing_http_requests/outgoing_http_requests.did
+        python -m basilisk outgoing_http_requests src/main.py
+      - cp .basilisk/outgoing_http_requests/outgoing_http_requests.wasm "$ICP_WASM_OUTPUT_PATH"

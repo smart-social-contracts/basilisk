@@ -10,7 +10,7 @@ These tests verify:
   5. Hook is reset between tests (no leakage)
   6. Hook returning various error types is handled
 
-These are unit tests that do NOT require a running dfx replica.
+These are unit tests that do NOT require a running icp replica.
 They test the hook dispatch logic, not the actual ICRC-1 transfer.
 """
 

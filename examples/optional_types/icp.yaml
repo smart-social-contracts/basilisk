@@ -1,0 +1,9 @@
+canisters:
+- name: optional_types
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/optional_types/optional_types.did python -m
+        basilisk optional_types src/main.py
+      - cp .basilisk/optional_types/optional_types.wasm "$ICP_WASM_OUTPUT_PATH"

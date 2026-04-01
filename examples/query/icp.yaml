@@ -1,0 +1,8 @@
+canisters:
+- name: query
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/query/query.did python -m basilisk query src/main.py
+      - cp .basilisk/query/query.wasm "$ICP_WASM_OUTPUT_PATH"

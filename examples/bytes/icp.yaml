@@ -1,0 +1,8 @@
+canisters:
+- name: bytes
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/bytes/bytes.did python -m basilisk bytes src/main.py
+      - cp .basilisk/bytes/bytes.wasm "$ICP_WASM_OUTPUT_PATH"

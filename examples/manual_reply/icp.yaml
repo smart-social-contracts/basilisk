@@ -1,0 +1,9 @@
+canisters:
+- name: manual_reply
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/manual_reply/manual_reply.did python -m basilisk
+        manual_reply src/main.py
+      - cp .basilisk/manual_reply/manual_reply.wasm "$ICP_WASM_OUTPUT_PATH"

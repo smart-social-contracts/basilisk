@@ -1,0 +1,9 @@
+canisters:
+- name: management_canister
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/management_canister/management_canister.did
+        python -m basilisk management_canister src/management_canister.py
+      - cp .basilisk/management_canister/management_canister.wasm "$ICP_WASM_OUTPUT_PATH"

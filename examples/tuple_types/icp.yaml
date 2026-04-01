@@ -1,0 +1,9 @@
+canisters:
+- name: tuple_types
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/tuple_types/tuple_types.did python -m basilisk
+        tuple_types src/main.py
+      - cp .basilisk/tuple_types/tuple_types.wasm "$ICP_WASM_OUTPUT_PATH"

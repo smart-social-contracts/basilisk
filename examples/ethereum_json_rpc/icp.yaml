@@ -1,0 +1,9 @@
+canisters:
+- name: ethereum_json_rpc
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/ethereum_json_rpc/ethereum_json_rpc.did python
+        -m basilisk ethereum_json_rpc src/main.py
+      - cp .basilisk/ethereum_json_rpc/ethereum_json_rpc.wasm "$ICP_WASM_OUTPUT_PATH"

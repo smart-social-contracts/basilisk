@@ -1,0 +1,25 @@
+canisters:
+- name: controller
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/controller/controller.did python -m basilisk
+        controller src/controller/main.py
+      - cp .basilisk/controller/controller.wasm "$ICP_WASM_OUTPUT_PATH"
+- name: target
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/target/target.did python -m basilisk target
+        src/target_v1/main.py
+      - cp .basilisk/target/target.wasm "$ICP_WASM_OUTPUT_PATH"
+- name: target_v2
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/target_v2/target_v2.did python -m basilisk
+        target_v2 src/target_v2/main.py
+      - cp .basilisk/target_v2/target_v2.wasm "$ICP_WASM_OUTPUT_PATH"

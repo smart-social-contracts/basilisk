@@ -1,0 +1,9 @@
+canisters:
+- name: persistent_storage
+  build:
+    steps:
+    - type: script
+      commands:
+      - CANISTER_CANDID_PATH=.basilisk/persistent_storage/persistent_storage.did python
+        -m basilisk persistent_storage src/main.py
+      - cp .basilisk/persistent_storage/persistent_storage.wasm "$ICP_WASM_OUTPUT_PATH"
