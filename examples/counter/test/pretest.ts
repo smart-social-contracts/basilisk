@@ -9,7 +9,7 @@ async function pretest() {
     // this may timeout but PocketIC continues compiling in the background.
     try {
         execSync('icp deploy', { stdio: 'inherit' });
-        execSync('icp generate', { stdio: 'inherit' });
+        execSync('bash ../../scripts/icp-generate.sh', { stdio: 'inherit' });
         return;
     } catch {
         console.log(
@@ -35,7 +35,7 @@ async function pretest() {
             ).toString();
             if (status.includes('Module hash: 0x')) {
                 console.log(`Canister ${canisterName} installed after ~${elapsed}s`);
-                execSync('icp generate', { stdio: 'inherit' });
+                execSync('bash ../../scripts/icp-generate.sh', { stdio: 'inherit' });
                 return;
             }
         } catch {}
