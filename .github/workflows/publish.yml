@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.bump_version.outputs.NEW_VERSION }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -108,3 +110,88 @@ jobs:
               --generate-notes \
               $TEMPLATE_FLAG
           fi
+
+  verify:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install icp
+        run: |
+          npm install -g @icp-sdk/icp-cli
+          echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
+
+      - name: Wait for PyPI propagation
+        run: |
+          VERSION="${{ needs.publish.outputs.version }}"
+          echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
+          for i in $(seq 1 30); do
+            if pip install "ic-basilisk==${VERSION}" --dry-run 2>&1 | grep -q "Would install"; then
+              echo "✅ Version ${VERSION} available on PyPI after $((i * 10))s"
+              exit 0
+            fi
+            echo "Not yet available, retrying in 10s... (attempt ${i}/30)"
+            sleep 10
+          done
+          echo "::error::ic-basilisk==${VERSION} not found on PyPI after 5 minutes"
+          exit 1
+
+      - name: Install from PyPI
+        run: |
+          VERSION="${{ needs.publish.outputs.version }}"
+          pip install "ic-basilisk==${VERSION}"
+          INSTALLED=$(basilisk --version)
+          echo "Installed: ${INSTALLED}"
+          echo "${INSTALLED}" | grep -q "${VERSION}" || {
+            echo "::error::Version mismatch: expected ${VERSION}, got ${INSTALLED}"
+            exit 1
+          }
+
+      - name: Scaffold project
+        run: |
+          basilisk new smoke_test
+          test -f smoke_test/icp.yaml
+          test -f smoke_test/src/main.py
+          echo "✅ Project scaffolded"
+
+      - name: Build canister (tests template WASM download)
+        working-directory: smoke_test
+        run: |
+          CANISTER_CANDID_PATH=./smoke_test.did python -m basilisk smoke_test src/main.py
+          test -f .basilisk/smoke_test/smoke_test.wasm
+          echo "✅ WASM built: $(wc -c < .basilisk/smoke_test/smoke_test.wasm) bytes"
+
+      - name: Configure system subnet for PocketIC
+        run: |
+          mkdir -p ~/.config/icp
+          echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/icp/networks.json
+
+      - name: Deploy to local replica and test
+        working-directory: smoke_test
+        run: |
+          icp network start -d
+          icp deploy
+
+          RESULT=$(icp canister call smoke_test greet '("World")' --query)
+          echo "greet result: ${RESULT}"
+          echo "${RESULT}" | grep -q "Hello, World" || {
+            echo "::error::Unexpected greet result: ${RESULT}"
+            exit 1
+          }
+
+          icp canister call smoke_test increment
+          RESULT=$(icp canister call smoke_test get_counter --query)
+          echo "counter result: ${RESULT}"
+          echo "${RESULT}" | grep -q "1" || {
+            echo "::error::Counter should be 1, got: ${RESULT}"
+            exit 1
+          }
+
+          echo "✅ Local deploy and canister calls verified"
