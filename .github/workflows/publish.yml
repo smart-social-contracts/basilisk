@@ -186,8 +186,8 @@ jobs:
             exit 1
           }
 
-          icp canister call smoke_test increment
-          RESULT=$(icp canister call smoke_test get_counter --query)
+          icp canister call smoke_test increment '()'
+          RESULT=$(icp canister call smoke_test get_counter '()' --query)
           echo "counter result: ${RESULT}"
           echo "${RESULT}" | grep -q "1" || {
             echo "::error::Counter should be 1, got: ${RESULT}"
