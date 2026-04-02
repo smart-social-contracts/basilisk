@@ -4,6 +4,7 @@
 name: Shell Integration Tests
 
 on:
+    workflow_call: # Called by test-all.yml orchestrator
     workflow_dispatch:
         inputs:
             test_filter:
@@ -30,8 +31,8 @@ jobs:
         runs-on: ubuntu-latest
         env:
             DFX_WARNING: -mainnet_plaintext_identity
-            BASILISK_TEST_CANISTER: ${{ inputs.canister }}
-            BASILISK_TEST_NETWORK: ${{ inputs.network }}
+            BASILISK_TEST_CANISTER: ${{ inputs.canister || 'ru4ga-siaaa-aaaai-q7f3a-cai' }}
+            BASILISK_TEST_NETWORK: ${{ inputs.network || 'ic' }}
         steps:
             - uses: actions/checkout@v4
 

@@ -1,0 +1,20 @@
+# Orchestrator workflow that runs all test suites in parallel on push to main
+
+name: All Tests
+on:
+    push:
+        branches:
+            - main
+
+jobs:
+    tests:
+        uses: ./.github/workflows/test.yml
+        secrets: inherit
+
+    upgrade-test:
+        uses: ./.github/workflows/test-upgrade.yml
+        secrets: inherit
+
+    shell-tests:
+        uses: ./.github/workflows/test-shell.yml
+        secrets: inherit
