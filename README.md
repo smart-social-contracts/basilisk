@@ -9,25 +9,50 @@
 [![PyPI](https://img.shields.io/pypi/v/ic-basilisk)](https://pypi.org/project/ic-basilisk/)
 [![Test](https://github.com/smart-social-contracts/basilisk/actions/workflows/test.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test.yml)
 
-Write **Python canisters** for the [Internet Computer](https://internetcomputer.org/). Deploy in seconds, connect via SSH/SFTP. Forked from [Kybra](https://github.com/demergent-labs/kybra).
+Write **Python canisters** efficiently for the [Internet Computer](https://internetcomputer.org/, with additional Operating System-like features on top.
 
 ## Features
 
-- Write IC canisters in pure Python using `@query` and `@update` decorators
-- **Builds in seconds** — pre-compiled CPython 3.13 WASM template, no Rust toolchain needed
-- **SSH & SFTP access** — connect to any deployed canister with standard `ssh` and `sftp` clients
-- **Interactive shell** — Python REPL running inside the canister
-- **Basilisk OS** — task scheduling, code management (Codex), and process execution on-chain
-- **In-memory filesystem** — standard `os` and `open()` calls, accessible via SFTP
-- **Persistent storage** — `StableBTreeMap` survives canister upgrades
-- IC system APIs: `ic.caller()`, `ic.time()`, `ic.print()`, `ic.canister_balance()`, etc.
-- `Principal`, `Opt`, `Vec`, `Record`, `Variant` type support
+- **Based on CPython 3.13**, compiled to WASM — deploy in seconds with a pre-built template, no Rust toolchain needed
+- **Near-complete standard library** — `os`, `json`, `re`, `math`, `datetime`, `hashlib`, `collections`, networking stubs, and more. A few modules requiring native OS threads or sockets (e.g. `threading`, `subprocess`, `socket`) are not available
+
+**Added out-of-the-box Operating System-like features on top of standard Python:**
+
+- **Persistent ORM** — [ic-python-db](https://github.com/smart-social-contracts/ic-python-db) with typed fields, relationships, validation, and audit logging — stored in stable memory, survives canister upgrades
+- **In-memory filesystem** — standard `open()` and `os` calls, with optional persistence across upgrades
+- **Interactive shell** — Python REPL running inside the canister, accessible via an SSH/SFTP proxy
+- **Task management** — multi-step task execution that overcomes per-call cycle limits, with one-shot and recurring scheduling
+- **File transfer** — upload/download files to and from the canister; fetch from the internet with `wget`-like command.
+- **Encryption** — per-principal key envelopes, encrypted fields, and crypto groups
+- **Wallet** — ckBTC/ckETH and ICRC-1 token balances, transfers, and transaction history
+- **IC system APIs** — `ic.caller()`, `ic.time()`, `ic.canister_balance()`, inter-canister calls, timers, and Candid types (`Principal`, `Record`, `Variant`, etc.)
+
+```
+┌─────────────────────────────────────────────┐
+│                 Basilisk OS                  │
+├──────────────┬──────────────┬───────────────┤
+│ Task Manager │  Filesystem  │   Database    │
+│  Task        │  POSIX-like  │  ic-python-db │
+│  TaskStep    │  in-memory   │  Entity ORM   │
+│  TaskSchedule│  os / open() │  Stable Memory│
+│  Codex/Call  │              │               │
+├──────────────┴──────────────┴───────────────┤
+│           Basilisk CDK (Python → WASM)      │
+├─────────────────────────────────────────────┤
+│         Internet Computer (IC)              │
+└─────────────────────────────────────────────┘
+```
+
+
+## TODO: Use cases
+
+
 
 ## Quick Start
 
 ### Prerequisites
 
-- [dfx](https://internetcomputer.org/docs/current/developer-docs/setup/install/) (IC SDK)
+- [icp](https://internetcomputer.org/docs/current/developer-docs/setup/install/) (IC SDK)
 - Python 3.10+
 
 ### Install
@@ -43,155 +68,28 @@ pip install ic-basilisk
 basilisk new my_project
 cd my_project
 
-# 2. Start the local replica and deploy (builds in ~2 seconds)
-dfx start --background
-dfx deploy
+# 2. Start the local replica and deploy (builds in < 5 seconds)
+icp network start -d
+icp deploy
 
 # 3. Call your canister
-dfx canister call my_project greet '("World")'
+icp canister call my_project greet '("World")'
 # ("Hello, World! The counter is at 0.")
-
-# 4. Open an interactive Python shell inside the canister
-basilisk shell --canister my_project
 
 # 5. Or connect via SSH and SFTP
 basilisk sshd --canister my_project
 ssh -p 2222 localhost              # Python shell over SSH
 sftp -P 2222 localhost             # browse the canister filesystem
-```
 
-### The generated canister code
-
-```python
-from basilisk import query, update, text, nat64, ic
-
-counter = 0
-
-@query
-def greet(name: text) -> text:
-    return f"Hello, {name}! The counter is at {counter}."
-
-@query
-def get_counter() -> nat64:
-    return counter
-
-@update
-def increment() -> nat64:
-    global counter
-    counter += 1
-    return counter
-
-@query
-def get_time() -> nat64:
-    return ic.time()
-
-@query
-def whoami() -> text:
-    return str(ic.caller())
-```
-
-## SSH & SFTP Access
-
-Every Basilisk canister is accessible over SSH and SFTP. Start the proxy and connect with any standard client.
-
-### Start the SSH server
-
-```bash
-# Local replica
-basilisk sshd --canister my_project
-
-# IC mainnet
-basilisk sshd --canister my_project --network ic
-
-# Custom port
-basilisk sshd --canister my_project --port 3333
-```
-
-### Connect via SSH
-
-```bash
-ssh -p 2222 -o StrictHostKeyChecking=no localhost
-```
-
-This drops you into **Basilisk Shell** — a Python REPL running inside the canister:
+# 4. Open an interactive Python shell inside the canister
+basilisk shell --canister my_project
 
 ```
 basilisk>>> print("Hello from the IC!")
 Hello from the IC!
 basilisk>>> import os; os.listdir("/")
 ['data', 'config.json']
-basilisk>>> 1 + 1
-2
-```
 
-Run a single command over SSH:
-
-```bash
-ssh -p 2222 localhost 'print(ic.time())'
-```
-
-### Connect via SFTP
-
-```bash
-sftp -P 2222 -o StrictHostKeyChecking=no localhost
-```
-
-Browse, upload, and download files on the canister's in-memory filesystem:
-
-```
-sftp> ls /
-data        config.json
-sftp> put local_script.py /scripts/myscript.py
-sftp> get /data/results.json ./results.json
-sftp> mkdir /logs
-```
-
-### Shell commands
-
-| Command | Description |
-|---|---|
-| `%ls [path]` | List canister filesystem |
-| `%cat <file>` | Show file contents |
-| `%mkdir <path>` | Create directory |
-| `%wget <url> <dest>` | Download URL into canister filesystem |
-| `%run <file>` | Execute a local file on the canister |
-| `%task create/run/list` | Create and manage scheduled tasks |
-| `%db dump/clear/count` | Inspect the canister database |
-| `%info` | Show canister info (principal, cycles, status) |
-| `!<cmd>` | Run a local OS command |
-
-## Basilisk OS
-
-Basilisk OS provides operating-system-like services for IC canisters: **task management**, **code storage**, **scheduled execution**, and **persistent storage** — all running on-chain.
-
-```
-┌─────────────────────────────────────────────┐
-│                 Basilisk OS                  │
-├──────────────┬──────────────┬───────────────┤
-│ Task Manager │  Filesystem  │   Database    │
-│  Task        │  POSIX-like  │  ic-python-db │
-│  TaskStep    │  in-memory   │  Entity ORM   │
-│  TaskSchedule│  os / open() │  StableBTree  │
-│  Codex/Call  │              │               │
-├──────────────┴──────────────┴───────────────┤
-│           Basilisk CDK (Python → WASM)      │
-├─────────────────────────────────────────────┤
-│         Internet Computer (IC)              │
-└─────────────────────────────────────────────┘
-```
-
-### Entities
-
-- **Codex** — Stores executable Python code on the canister filesystem. Code is read/written transparently via the `code` property.
-- **Call** — Links a Codex to a TaskStep for execution (sync or async).
-- **Task** — A unit of work with one or more steps.
-- **TaskStep** — A single step in a multi-step task workflow.
-- **TaskSchedule** — Defines when and how often a Task runs (one-shot or recurring).
-- **TaskExecution** — Records the result of each execution attempt.
-
-### Task management
-
-```bash
 # Create a task with inline code
 basilisk>>> %task create my_report --code "print('Generating report...'); result = 42"
 
@@ -204,26 +102,7 @@ basilisk>>> %task create heartbeat every 60s --code "print('alive at', ic.time()
 # View task details and list all tasks
 basilisk>>> %task info 1
 basilisk>>> %task list
-```
-
-### Using Basilisk OS entities in canister code
-
-```python
-from basilisk.os import Task, TaskStep, Codex, Call, TaskSchedule
-
-@update
-def create_pipeline() -> text:
-    codex = Codex(name="etl_script")
-    codex.code = "data = [x * 2 for x in range(10)]; print(f'Processed {len(data)} items')"
-
-    task = Task(name="ETL Pipeline")
-    step = TaskStep(task=task)
-    call = Call(codex=codex, task_step=step)
-    schedule = TaskSchedule(name="hourly", task=task, repeat_every=3600)
-
-    return f"Created task: {task.name}"
-```
-
+<!-- 
 ## Remote Code Execution
 
 Execute Python on a deployed canister without redeploying:
@@ -240,8 +119,8 @@ echo "import os; print(os.listdir('/'))" | basilisk exec --canister my_project
 
 # Target IC mainnet
 basilisk exec --canister my_project --network ic 'print(ic.canister_balance())'
-```
-
+``` -->
+<!-- 
 ## Filesystem
 
 Standard Python `os` operations and `open()` work inside the canister. The filesystem is also accessible via SFTP (see above).
@@ -260,53 +139,53 @@ def setup() -> text:
 def load_config() -> text:
     with open("/data/config.json", "r") as f:
         return f.read()
-```
+``` -->
+<!-- 
+> **Note:** The filesystem is in-memory (heap). Data persists across calls but resets on canister upgrade. For persistent storage, use the [Database](#database). -->
 
-> **Note:** The filesystem is in-memory (heap). Data persists across calls but resets on canister upgrade. For persistent storage, use `StableBTreeMap`.
+## Database
 
-## StableBTreeMap
-
-Key-value storage that survives canister upgrades using IC stable memory:
+Basilisk includes [ic-python-db](https://github.com/smart-social-contracts/ic-python-db), an Entity ORM with typed fields, relationships, validation, and audit logging — all persisted to stable memory across canister upgrades:
 
 ```python
-from basilisk import query, update, text, Opt, StableBTreeMap
+from basilisk import query, update, text
+from ic_python_db import Entity, String, Integer, TimestampedMixin
 
-db = StableBTreeMap[str, str](memory_id=0, max_key_size=100, max_value_size=100)
+class User(Entity, TimestampedMixin):
+    __alias__ = "name"
+    name = String(min_length=2, max_length=50)
+    age = Integer(min_value=0)
 
 @update
-def db_set(key: text, value: text) -> text:
-    db.insert(key, value)
-    return f"set {key}={value}"
+def add_user(name: text, age: text) -> text:
+    user = User(name=name, age=int(age))
+    return f"Created user {user.name} with id {user._id}"
 
 @query
-def db_get(key: text) -> Opt[text]:
-    return db.get(key)
+def get_user(name: text) -> text:
+    user = User[name]  # Lookup by alias
+    return f"{user.name}, age {user.age}"
+
+@query
+def list_users() -> text:
+    return str([(u.name, u.age) for u in User.instances()])
 ```
 
 ```bash
-dfx canister call my_project db_set '("name", "Alice")'
-dfx canister call my_project db_get '("name")'
-# (opt "Alice")
+icp canister call my_project add_user '("Alice", "30")'
+# ("Created user Alice with id 1")
+icp canister call my_project get_user '("Alice")'
+# ("Alice, age 30")
 
 # Data survives upgrades:
-dfx deploy my_project --upgrade-unchanged
-dfx canister call my_project db_get '("name")'
-# (opt "Alice")  ← still there!
+icp deploy my_project --upgrade-unchanged
+icp canister call my_project get_user '("Alice")'
+# ("Alice, age 30")  ← still there!
 ```
 
-## Python Backends
+See the [ic-python-db documentation](https://github.com/smart-social-contracts/ic-python-db) for relationships (`OneToMany`, `ManyToOne`, etc.), access control, entity hooks, and more.
 
-Basilisk supports two Python backends:
-
-```bash
-# CPython 3.13 (default) -- fast template builds
-basilisk new my_project
-
-# RustPython -- legacy, full Rust build
-basilisk new --backend rustpython my_project
-```
-
-### CPython vs RustPython
+### Basilisk (CPython) vs Kybra (RustPython)
 
 |  | CPython 3.13 | RustPython |
 |---|---|---|
@@ -337,7 +216,7 @@ Full CI logs: [CPython run](https://github.com/smart-social-contracts/basilisk/a
 
 The benchmark source is in [`benchmarks/counter/`](benchmarks/counter/).
 
-## CLI Reference
+<!-- ## CLI Reference
 
 ```
 basilisk new [--backend cpython|rustpython] <name>   Create a new project
@@ -345,8 +224,25 @@ basilisk build                                       Build the canister
 basilisk exec [--canister <c>] [--network <n>] <code> Execute code on a deployed canister
 basilisk shell [--canister <c>] [--network <n>]      Interactive shell
 basilisk sshd [--canister <c>] [--network <n>] [--port <p>]  SSH/SFTP server
-basilisk --version                                   Print version
+basilisk --version                                   Print version -->
 ```
+
+## Why "Basilisk"?
+
+<div align="center">
+    <img width="400" src="logo/basilisk-fountain-basel.png" alt="Basilisk fountain in Basel, Switzerland">
+    <br><em>A basilisk fountain in Basel, Switzerland — where this project was written.</em>
+</div>
+
+<br>
+
+This project was written in **Basel, Switzerland** — a city guarded by basilisks since the Middle Ages. In European mythology, the basilisk is the king of serpents — part rooster, part snake — making it a fitting patron for a Python framework.
+
+According to local legend, a basilisk once dwelt beneath Basel's streets, turning to stone anyone who dared look upon it. The citizens, unable to defeat it by force, outwitted the creature with a mirror: confronted with its own reflection, the basilisk was petrified by its own gaze. Impressed by the creature's power, the people of Basel didn't destroy it — they adopted it. To this day, basilisk statues stand watch over the city's fountains, their water said to carry a faint enchantment of protection.
+
+In the shadow of the Tower of the Bank for International Settlements — where the world's central banks convene to shape global finance — a basilisk fountain stands watch. It is here, at the crossroads of ancient myth and modern power, that we chose to unleash the dormant power of Python onto the Internet Computer.
+
+The fountains still flow in Basel. And now, so does Python on the IC. Great power requires great responsibility. Handle with care.
 
 ## Disclaimer
 
