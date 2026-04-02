@@ -115,83 +115,55 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.10"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install icp
+      - name: Smoke test in Docker on IC mainnet
+        env:
+          IC_IDENTITY_PEM: ${{ secrets.IC_IDENTITY_PEM }}
+          VERSION: ${{ needs.publish.outputs.version }}
         run: |
-          npm install -g @icp-sdk/icp-cli
-          echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
+          echo "$IC_IDENTITY_PEM" > /tmp/ci-identity.pem
+          docker run --rm \
+            -e VERSION="$VERSION" \
+            -v /tmp/ci-identity.pem:/tmp/ci-identity.pem:ro \
+            python:3.10-slim-bookworm bash -c '
+              set -e
 
-      - name: Wait for PyPI propagation
-        run: |
-          VERSION="${{ needs.publish.outputs.version }}"
-          echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
-          for i in $(seq 1 30); do
-            if pip install "ic-basilisk==${VERSION}" --dry-run 2>&1 | grep -q "Would install"; then
-              echo "✅ Version ${VERSION} available on PyPI after $((i * 10))s"
-              exit 0
-            fi
-            echo "Not yet available, retrying in 10s... (attempt ${i}/30)"
-            sleep 10
-          done
-          echo "::error::ic-basilisk==${VERSION} not found on PyPI after 5 minutes"
-          exit 1
+              apt-get update -qq && apt-get install -y -qq curl ca-certificates npm > /dev/null 2>&1
+              npm install -g @icp-sdk/icp-cli > /dev/null 2>&1
+              export PATH="$HOME/.local/share/icp/bin:$PATH"
 
-      - name: Install from PyPI
-        run: |
-          VERSION="${{ needs.publish.outputs.version }}"
-          pip install "ic-basilisk==${VERSION}"
-          INSTALLED=$(basilisk --version)
-          echo "Installed: ${INSTALLED}"
-          echo "${INSTALLED}" | grep -q "${VERSION}" || {
-            echo "::error::Version mismatch: expected ${VERSION}, got ${INSTALLED}"
-            exit 1
-          }
+              # Wait for PyPI propagation
+              echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
+              for i in $(seq 1 30); do
+                if pip install "ic-basilisk==${VERSION}" 2>&1 | grep -q "Successfully installed"; then
+                  echo "✅ ic-basilisk==${VERSION} installed"
+                  break
+                fi
+                echo "  retrying in 10s... (${i}/30)"
+                sleep 10
+              done
+              basilisk --version | grep -q "${VERSION}" || { echo "::error::Version mismatch"; exit 1; }
 
-      - name: Scaffold project
-        run: |
-          basilisk new smoke_test
-          test -f smoke_test/icp.yaml
-          test -f smoke_test/src/main.py
-          echo "✅ Project scaffolded"
+              # Import IC identity
+              icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy
+              icp identity default ci-deploy
 
-      - name: Build canister (tests template WASM download)
-        working-directory: smoke_test
-        run: |
-          CANISTER_CANDID_PATH=./smoke_test.did python -m basilisk smoke_test src/main.py
-          test -f .basilisk/smoke_test/smoke_test.wasm
-          echo "✅ WASM built: $(wc -c < .basilisk/smoke_test/smoke_test.wasm) bytes"
+              # Scaffold, deploy, test
+              basilisk new smoke_test && cd smoke_test
+              icp deploy -e ic
 
-      - name: Configure system subnet for PocketIC
-        run: |
-          mkdir -p ~/.config/icp
-          echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/icp/networks.json
+              RESULT=$(icp canister call smoke_test greet '\''("World")'\'' -e ic --query)
+              echo "greet: ${RESULT}"
+              echo "${RESULT}" | grep -q "Hello, World" || { echo "::error::greet failed: ${RESULT}"; exit 1; }
 
-      - name: Deploy to local replica and test
-        working-directory: smoke_test
-        run: |
-          icp network start -d
-          icp deploy
+              icp canister call smoke_test increment '\''()'\'' -e ic
+              RESULT=$(icp canister call smoke_test get_counter '\''()'\'' -e ic --query)
+              echo "counter: ${RESULT}"
+              echo "${RESULT}" | grep -q "1" || { echo "::error::counter failed: ${RESULT}"; exit 1; }
 
-          RESULT=$(icp canister call smoke_test greet '("World")' --query)
-          echo "greet result: ${RESULT}"
-          echo "${RESULT}" | grep -q "Hello, World" || {
-            echo "::error::Unexpected greet result: ${RESULT}"
-            exit 1
-          }
+              # Cleanup
+              icp canister stop smoke_test -e ic
+              icp canister delete smoke_test -e ic
 
-          icp canister call smoke_test increment '()'
-          RESULT=$(icp canister call smoke_test get_counter '()' --query)
-          echo "counter result: ${RESULT}"
-          echo "${RESULT}" | grep -q "1" || {
-            echo "::error::Counter should be 1, got: ${RESULT}"
-            exit 1
-          }
-
-          echo "✅ Local deploy and canister calls verified"
+              echo "✅ IC mainnet smoke test passed"
+            '
+          rm -f /tmp/ci-identity.pem
