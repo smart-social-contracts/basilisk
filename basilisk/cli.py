@@ -18,6 +18,7 @@ Exec options:
 import ast
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -66,42 +67,9 @@ def cmd_new(project_name: str, backend: str = "cpython"):
 """
     (project_dir / "dfx.json").write_text(dfx_json)
 
-    # src/main.py
-    main_py = """\
-from basilisk import query, update, text, nat64, ic
-
-# A simple counter stored in a global variable.
-# State persists across calls but resets on canister upgrade.
-counter = 0
-
-@query
-def greet(name: text) -> text:
-    \"\"\"Return a greeting message.\"\"\"
-    return f"Hello, {name}! The counter is at {counter}."
-
-@query
-def get_counter() -> nat64:
-    \"\"\"Read the current counter value.\"\"\"
-    return counter
-
-@update
-def increment() -> nat64:
-    \"\"\"Increment the counter and return the new value.\"\"\"
-    global counter
-    counter += 1
-    return counter
-
-@query
-def get_time() -> nat64:
-    \"\"\"Return the current IC timestamp in nanoseconds.\"\"\"
-    return ic.time()
-
-@query
-def whoami() -> text:
-    \"\"\"Return the caller's principal ID.\"\"\"
-    return str(ic.caller())
-"""
-    (src_dir / "main.py").write_text(main_py)
+    # src/main.py — copy from bundled template
+    template_dir = Path(__file__).parent / "templates"
+    shutil.copy(template_dir / "main.py", src_dir / "main.py")
 
     # .gitignore
     gitignore = """\
@@ -114,7 +82,7 @@ node_modules/
     build_note = "⚡ fast template build" if backend == "cpython" else "🔨 full Rust build (~5-10 min first time)"
     print(f"""
 Done! Created {project_name}/ ({build_note})
-  src/main.py    — your canister code (query + update examples)
+  src/main.py    — your canister code (shell, DB, counter, HTTP outcalls)
   dfx.json       — IC project config (backend: {backend})
 
 Next steps:
@@ -124,6 +92,8 @@ Next steps:
   dfx canister call {project_name} greet '("World")'
   dfx canister call {project_name} increment
   dfx canister call {project_name} get_counter
+  basilisk shell --canister {project_name}          # interactive shell
+  basilisk exec --canister {project_name} 'print(1)'  # one-shot exec
 """)
 
 

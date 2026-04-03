@@ -19,6 +19,7 @@ setup(
         "compiler/**/LICENSE*",
         "canisters/**",
         "py.typed",
+        "templates/*.py",
         "*.wasm",
         "*.js",
     ]},
