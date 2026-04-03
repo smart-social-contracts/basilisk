@@ -1,6 +1,6 @@
 <div align="center">
     <a href="https://github.com/smart-social-contracts/basilisk" target="_blank" rel="noopener noreferrer">
-        <img height="150" src="https://raw.githubusercontent.com/smart-social-contracts/basilisk/main/logo/logo.png" alt="Basilisk logo">
+        <img height="150" src="https://raw.githubusercontent.com/smart-social-contracts/basilisk/main/img/logo.png" alt="Basilisk logo">
     </a>
 </div>
 
@@ -230,7 +230,7 @@ basilisk --version                                   Print version -->
 ## Why "Basilisk"?
 
 <div align="center">
-    <img width="400" src="logo/basilisk-fountain-basel.png" alt="Basilisk fountain in Basel, Switzerland">
+    <img width="400" src="img/basilisk-fountain-basel.png" alt="Basilisk fountain in Basel, Switzerland">
     <br><em>A basilisk fountain in Basel, Switzerland — where this project was written.</em>
 </div>
 

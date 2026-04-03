@@ -13,11 +13,11 @@
 # The basic-integration-tests matrix spins up one job per combination of example directory and code source (repo or pypi).
 # The check-basic-integration-tests-success job is designed to ensure that all jobs spun up from the matrix in the basic-integration-tests have succeeded
 
-name: Basilisk Tests
+name: Example Integration Tests
 on:
     pull_request: # Runs on pull requests to any branch
     workflow_call: # Called by test-all.yml orchestrator
-    workflow_dispatch: # Manual trigger or called by Build CPython Wasm after [rebuild]
+    workflow_dispatch: # Manual trigger or called by build-cpython-wasm.yml after [rebuild]
 jobs:
     release-candidate-deploy:
         runs-on: ubuntu-latest
@@ -576,97 +576,15 @@ jobs:
                     exit 1
                   fi
 
-    shell-integration-tests:
-        needs: release-candidate-deploy
-        runs-on: ubuntu-latest
-        if: ${{ needs.release-candidate-deploy.outputs.should_run_tests == 'true' }}
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
-                    - shard: tasks-1
-                      pytest_args: >-
-                          tests/test_tasks.py -k
-                          "TaskList or TaskCreate or TaskInfo or TaskLog
-                          or TaskLifecycle or TaskDelete or ShortcutAliases
-                          or TaskUsage or TaskEntities"
-                    - shard: tasks-2
-                      pytest_args: >-
-                          tests/test_tasks.py -k
-                          "TaskExecution or TaskTimerExecution"
-                    - shard: tasks-3
-                      pytest_args: >-
-                          tests/test_tasks.py -k
-                          "TaskNameLookup or TaskCreateFile or TaskTimestamps
-                          or TaskLogFeatures or TaskAddStep"
-                    - shard: tasks-4
-                      pytest_args: >-
-                          tests/test_tasks.py -k
-                          "MultiStepExecution or Wget or TaskRetryResume
-                          or E2EWriteAndRun or E2EDownloadAndRun
-                          or PersistentFileStorage or UsageStrings"
-                    - shard: filesystem
-                      pytest_args: tests/test_filesystem.py tests/test_sftp.py
-                    - shard: fx
-                      pytest_args: tests/test_fx.py
-                    - shard: shell-db
-                      pytest_args: tests/test_db_shell.py tests/test_shell.py
-                    - shard: vetkeys-wallet
-                      pytest_args: >-
-                          tests/test_vetkeys.py tests/test_wallet.py
-                          tests/test_wallet_shell.py tests/test_wallet_hook.py
-                    - shard: crypto
-                      pytest_args: tests/test_crypto.py
-        env:
-            DFX_WARNING: -mainnet_plaintext_identity
-            BASILISK_TEST_CANISTER: ru4ga-siaaa-aaaai-q7f3a-cai
-            BASILISK_TEST_NETWORK: ic
-        name: shell-integration-tests (${{ matrix.shard }})
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Install dfx
-              run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
-
-            - name: Import DFX identity
-              run: |
-                  if [ -z "${{ secrets.IC_IDENTITY_PEM }}" ]; then
-                    echo "::error::IC_IDENTITY_PEM secret is not set."
-                    exit 1
-                  fi
-                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
-                  rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
-
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.10"
-
-            - name: Install dependencies
-              run: |
-                  pip install -e ".[shell,test]"
-
-            - name: Verify canister reachable
-              run: |
-                  dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
-
-            - name: Run tests (${{ matrix.shard }})
-              run: |
-                  PYTHONPATH=. python -m pytest ${{ matrix.pytest_args }} -v
-
     check-basic-integration-tests-success:
-        needs: [cpython-integration-tests, cpython-ic-deploy, shell-integration-tests]
+        needs: [cpython-integration-tests, cpython-ic-deploy]
         runs-on: ubuntu-latest
         if: success()
         steps:
             - run: exit 0
 
     check-basic-integration-tests-failure:
-        needs: [cpython-integration-tests, cpython-ic-deploy, shell-integration-tests]
+        needs: [cpython-integration-tests, cpython-ic-deploy]
         runs-on: ubuntu-latest
         if: failure()
         steps:
