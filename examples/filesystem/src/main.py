@@ -125,3 +125,27 @@ def test_fs_nested_mkdir() -> Vec[str]:
     results.append(str(os.path.exists("/test_nested/a/b/c")))
     results.append(str(os.path.isdir("/test_nested/a/b/c")))
     return results
+
+
+@update
+def write_file(path: str, content: str) -> str:
+    """Write content to a file. Returns 'OK' on success or error message."""
+    try:
+        parent = os.path.dirname(path)
+        if parent and parent != "/":
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "w") as f:
+            f.write(content)
+        return "OK"
+    except Exception as e:
+        return f"ERROR: {e}"
+
+
+@query
+def read_file(path: str) -> str:
+    """Read content from a file. Returns file content or error message."""
+    try:
+        with open(path, "r") as f:
+            return f.read()
+    except Exception as e:
+        return f"ERROR: {e}"
