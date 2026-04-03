@@ -147,6 +147,25 @@ def build_with_template(
         if lifecycle:
             print(f"  Lifecycle hooks: {', '.join(lifecycle.keys())}")
 
+    # 3b. Add __get_candid_interface_tmp_hack built-in query method.
+    # The Candid UI calls this to fetch the .did interface at runtime.
+    hack_method = {
+        "name": "__get_candid_interface_tmp_hack",
+        "method_type": "query",
+        "params": [],
+        "returns": "text",
+    }
+    methods.append(hack_method)
+
+    # Generate .did content (including the hack method) so we can embed it
+    candid_content = generate_candid_from_methods(methods, type_defs, lifecycle)
+
+    # Append a Python function that returns the .did content
+    python_source += (
+        "\ndef __get_candid_interface_tmp_hack() -> str:\n"
+        "    return " + repr(candid_content) + "\n"
+    )
+
     # 4. Inject Python source + method metadata into template wasm
     output_wasm = f"{paths['canister']}/{canister_name}.wasm"
     os.makedirs(os.path.dirname(output_wasm), exist_ok=True)
@@ -156,8 +175,7 @@ def build_with_template(
     # Running wasm-opt again would strip the passive data segments we just injected.
     # Running wasi2ic again on an already-converted binary would corrupt it.
 
-    # 6. Generate .did file from method metadata
-    candid_content = generate_candid_from_methods(methods, type_defs, lifecycle)
+    # 6. Write .did file (already generated above with the hack method included)
     create_file(paths["did"], candid_content)
     if verbose:
         print(f"Generated Candid file: {paths['did']}")
