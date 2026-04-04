@@ -32,7 +32,7 @@ from basilisk.canisters.icrc import (
     ICRCLedger,
     TransferArg,
 )
-from ic_python_logging import get_logger
+from basilisk.logging import get_logger
 
 from .entities import Token, WalletBalance, WalletSubaccount, WalletTransfer
 

@@ -36,7 +36,7 @@ except ImportError:
             pass
     redirect_stdout = redirect_stderr = _NullRedirect
 
-from ic_python_logging import get_logger, get_logs
+from basilisk.logging import get_logger, get_logs
 
 if TYPE_CHECKING:
     from .entities import TaskExecution, Task
@@ -240,7 +240,7 @@ def run_code(source_code, locals={}, task: Optional["Task"] = None, task_executi
             execution_logger.info("Execution started")
             # Redirect any get_logger() calls in exec'd code to the execution logger
             # so codex log output is captured under the task execution's logger name
-            import ic_python_logging as _ipl
+            import basilisk.logging as _ipl
             _original_get_logger = _ipl.get_logger
             _ipl.get_logger = lambda name=None: execution_logger
             safe_globals["get_logger"] = lambda name=None: execution_logger

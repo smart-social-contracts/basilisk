@@ -47,7 +47,7 @@ from basilisk.canisters.management import (
     VetKDDeriveKeyArgs,
 )
 try:
-    from ic_python_logging import get_logger
+    from basilisk.logging import get_logger
 except ImportError:
     import logging
     get_logger = logging.getLogger

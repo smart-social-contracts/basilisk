@@ -1116,7 +1116,7 @@ def _task_log_code(tid: str) -> str:
         f"        print('Task not found: {esc_tid}')\n"
         "    else:\n"
         "        try:\n"
-        "            from ic_python_logging import get_logs as _get_logs\n"
+        "            from basilisk.logging import get_logs as _get_logs\n"
         "        except ImportError:\n"
         "            _get_logs = None\n"
         "        _execs = list(_t.executions)\n"
@@ -1372,7 +1372,7 @@ def _task_start_code(tid: str) -> str:
         "                        return\n"
         "                    try:\n"
         "                        try:\n"
-"                            from ic_python_logging import get_logger as _get_logger\n"
+"                            from basilisk.logging import get_logger as _get_logger\n"
 "                            _logger = _get_logger(f'task_{_task_id}_{_te._id}')\n"
 "                        except Exception:\n"
 "                            class _Logger:\n"
@@ -4098,9 +4098,9 @@ try:
     _libs.append(f'basilisk.db {_v}' if _v else 'basilisk.db')
 except: pass
 try:
-    import ic_python_logging
-    _v = getattr(ic_python_logging, '__version__', '')
-    _libs.append(f'ic_python_logging {_v}' if _v else 'ic_python_logging')
+    import basilisk.logging as _blog
+    _v = getattr(_blog, '__version__', '')
+    _libs.append(f'basilisk.logging {_v}' if _v else 'basilisk.logging')
 except: pass
 _info['libraries'] = _libs
 

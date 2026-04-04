@@ -48,7 +48,7 @@ Usage (canister-side)::
 
 from basilisk.db import Entity, String, TimestampedMixin
 try:
-    from ic_python_logging import get_logger
+    from basilisk.logging import get_logger
 except ImportError:
     import logging
     get_logger = logging.getLogger

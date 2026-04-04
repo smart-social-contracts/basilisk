@@ -445,6 +445,14 @@ class _LazyMod(_bMT):
     lines.append("if 'basilisk' in _bsys.modules and 'ic_python_db' in _bsys.modules:")
     lines.append("    _bsys.modules['basilisk'].db = _bsys.modules['ic_python_db']")
 
+    # Register basilisk.logging as an alias for ic_python_logging (and all submodules)
+    lines.append("# ── basilisk.logging alias for ic_python_logging ──")
+    lines.append("for _bk in list(_bsys.modules):")
+    lines.append("    if _bk == 'ic_python_logging' or _bk.startswith('ic_python_logging.'):")
+    lines.append("        _bsys.modules['basilisk.logging' + _bk[len('ic_python_logging'):]] = _bsys.modules[_bk]")
+    lines.append("if 'basilisk' in _bsys.modules and 'ic_python_logging' in _bsys.modules:")
+    lines.append("    _bsys.modules['basilisk'].logging = _bsys.modules['ic_python_logging']")
+
     # Read and append the entry module source at the end
     entry_path = os.path.join(source_dir, f"{entry_module}.py")
     with open(entry_path, "r") as f:

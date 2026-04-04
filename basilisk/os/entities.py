@@ -23,7 +23,7 @@ from basilisk.db import (
     String,
     TimestampedMixin,
 )
-from ic_python_logging import get_logger
+from basilisk.logging import get_logger
 
 from .status import TaskExecutionStatus
 
