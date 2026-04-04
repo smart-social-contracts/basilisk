@@ -4387,7 +4387,6 @@ def main():
     parser = argparse.ArgumentParser(
         prog="basilisk-shell",
         description="Basilisk Shell \u2014 a shell interpreter for IC canisters",
-        add_help=False,
     )
     parser.add_argument("--canister", required=True, help="Canister name or ID")
     parser.add_argument("--network", default=None, help="Network: local, ic, or URL")
@@ -4399,13 +4398,8 @@ def main():
     parser.add_argument("--login", action="store_true",
                         help="Force interactive mode (used by basilisk sshd)")
     parser.add_argument("file", nargs="?", default=None, help="Script file to execute")
-    parser.add_argument("-h", "--help", action="store_true", help="Show help")
 
     args = parser.parse_args()
-
-    if args.help:
-        print(__doc__.strip())
-        return
 
     if args.watch:
         run_watch(args.canister, args.network, args.watch, args.outbox)
