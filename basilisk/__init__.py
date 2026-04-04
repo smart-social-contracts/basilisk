@@ -1,4 +1,8 @@
 import sys
+
+# Register `bsk` as a convenience alias (like np for numpy)
+sys.modules['bsk'] = sys.modules[__name__]
+
 from typing import (
     Annotated,
     Any,

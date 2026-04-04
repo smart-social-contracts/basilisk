@@ -22,6 +22,53 @@ import builtins as _builtins
 _orig_import = _builtins.__import__
 _ModuleType = type(_sys)
 
+# Known Python stdlib top-level module names.
+# _wasi_safe_import only stubs these (plus _-prefixed internal modules)
+# so that truly non-existent modules raise ModuleNotFoundError normally.
+try:
+    _STDLIB_TOP_LEVEL = frozenset(
+        _n.split('.')[0] for _n in _sys.stdlib_module_names
+    )
+except AttributeError:
+    _STDLIB_TOP_LEVEL = frozenset({
+        '__future__', 'abc', 'aifc', 'argparse', 'array', 'ast', 'asyncio',
+        'atexit', 'base64', 'bdb', 'binascii', 'bisect', 'builtins', 'bz2',
+        'calendar', 'cgi', 'cgitb', 'chunk', 'cmath', 'cmd', 'code',
+        'codecs', 'codeop', 'collections', 'colorsys', 'compileall',
+        'concurrent', 'configparser', 'contextlib', 'contextvars', 'copy',
+        'copyreg', 'cProfile', 'crypt', 'csv', 'ctypes', 'curses',
+        'dataclasses', 'datetime', 'dbm', 'decimal', 'difflib', 'dis',
+        'distutils', 'doctest', 'email', 'encodings', 'enum', 'errno',
+        'faulthandler', 'fcntl', 'filecmp', 'fileinput', 'fnmatch',
+        'fractions', 'ftplib', 'functools', 'gc', 'getopt', 'getpass',
+        'gettext', 'glob', 'graphlib', 'grp', 'gzip', 'hashlib', 'heapq',
+        'hmac', 'html', 'http', 'idlelib', 'imaplib', 'imghdr', 'imp',
+        'importlib', 'inspect', 'io', 'ipaddress', 'itertools', 'json',
+        'keyword', 'lib2to3', 'linecache', 'locale', 'logging', 'lzma',
+        'mailbox', 'mailcap', 'marshal', 'math', 'mimetypes', 'mmap',
+        'modulefinder', 'multiprocessing', 'netrc', 'nis', 'nntplib',
+        'numbers', 'operator', 'optparse', 'os', 'ossaudiodev', 'pathlib',
+        'pdb', 'pickle', 'pickletools', 'pipes', 'pkgutil', 'platform',
+        'plistlib', 'poplib', 'posix', 'posixpath', 'pprint', 'profile',
+        'pstats', 'pty', 'pwd', 'py_compile', 'pyclbr', 'pydoc',
+        'queue', 'quopri', 'random', 're', 'readline', 'reprlib',
+        'resource', 'rlcompleter', 'runpy', 'sched', 'secrets', 'select',
+        'selectors', 'shelve', 'shlex', 'shutil', 'signal', 'site',
+        'smtpd', 'smtplib', 'sndhdr', 'socket', 'socketserver', 'spwd',
+        'sqlite3', 'ssl', 'stat', 'statistics', 'string', 'stringprep',
+        'struct', 'subprocess', 'sunau', 'symtable', 'sys', 'sysconfig',
+        'syslog', 'tabnanny', 'tarfile', 'telnetlib', 'tempfile', 'termios',
+        'test', 'textwrap', 'threading', 'time', 'timeit', 'tkinter',
+        'token', 'tokenize', 'tomllib', 'trace', 'traceback', 'tracemalloc',
+        'tty', 'turtle', 'turtledemo', 'types', 'typing', 'unicodedata',
+        'unittest', 'urllib', 'uu', 'uuid', 'venv', 'warnings', 'wave',
+        'weakref', 'webbrowser', 'winreg', 'winsound', 'wsgiref',
+        'xdrlib', 'xml', 'xmlrpc', 'zipapp', 'zipfile', 'zipimport',
+        'zlib', 'zoneinfo',
+        'genericpath', 'ntpath', 'opcode',
+        'sre_compile', 'sre_constants', 'sre_parse',
+    })
+
 def _wasi_safe_import(name, globals=None, locals=None, fromlist=(), level=0):
     try:
         return _orig_import(name, globals, locals, fromlist, level)
@@ -33,6 +80,11 @@ def _wasi_safe_import(name, globals=None, locals=None, fromlist=(), level=0):
         # If the module is already in sys.modules, the error came from INSIDE
         # module loading (e.g. a sub-import failed) - let it propagate.
         if name in _sys.modules:
+            raise
+        # Only stub known stdlib and internal (_-prefixed) modules.
+        # Unknown modules raise ModuleNotFoundError like normal Python.
+        _top = name.split('.')[0]
+        if _top not in _STDLIB_TOP_LEVEL and not _top.startswith('_'):
             raise
         # Create a stub module so the import doesn't crash
         mod = _ModuleType(name)

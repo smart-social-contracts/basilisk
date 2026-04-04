@@ -46,6 +46,51 @@ logger = get_logger("basilisk.os.execution")
 _codex_lazy_loading_installed = False
 
 
+class _CodexModuleFinder:
+    """sys.meta_path finder for Codex entity modules (lazy-loading).
+
+    Installed once by _ensure_codex_lazy_loading so that ``import some_codex``
+    works even when the module was never pre-stubbed by _wasi_safe_import.
+    """
+
+    @staticmethod
+    def _make_lazy_getattr(mod):
+        def _lazy_codex_getattr(attr, _mod=mod):
+            from .entities import Codex
+            for c in Codex.instances():
+                if c.name == _mod.__name__ and c.code:
+                    exec(compile(c.code, _mod.__name__ + '.py', 'exec'), _mod.__dict__)
+                    if attr in _mod.__dict__:
+                        return _mod.__dict__[attr]
+                    break
+            raise AttributeError(f"module '{_mod.__name__}' has no attribute '{attr}'")
+        return _lazy_codex_getattr
+
+    def find_module(self, fullname, path=None):
+        if fullname in sys.modules:
+            return None
+        try:
+            from .entities import Codex
+            for c in Codex.instances():
+                if c.name == fullname:
+                    return self
+        except Exception:
+            pass
+        return None
+
+    def load_module(self, fullname):
+        if fullname in sys.modules:
+            return sys.modules[fullname]
+        mod = type(sys)(fullname)
+        mod.__file__ = "<codex>"
+        mod.__path__ = []
+        mod.__package__ = fullname
+        mod.__loader__ = self
+        mod.__getattr__ = self._make_lazy_getattr(mod)
+        sys.modules[fullname] = mod
+        return mod
+
+
 def _ensure_codex_lazy_loading():
     """Patch wasi-stub modules with __getattr__ so codex source loads on first use.
 
@@ -54,6 +99,9 @@ def _ensure_codex_lazy_loading():
     entity and exec's its source into the module dict.  After that first load
     __getattr__ is never called again for cached attributes.
 
+    Also installs a sys.meta_path finder so that ``import codex_name`` works
+    for codex modules that were never pre-stubbed.
+
     This is idempotent — safe to call on every run_code / execute_code_shell
     invocation; the actual patching only happens once.
     """
@@ -61,6 +109,9 @@ def _ensure_codex_lazy_loading():
     if _codex_lazy_loading_installed:
         return
     _codex_lazy_loading_installed = True
+
+    # Install meta_path finder for future codex imports
+    sys.meta_path.append(_CodexModuleFinder())
 
     # Stdlib modules that basilisk stubs as wasi-stub but should never be
     # treated as codex modules.
@@ -80,6 +131,7 @@ def _ensure_codex_lazy_loading():
         'email', 'html', 'xml', 'webbrowser', 'cgi', 'cgitb',
     })
 
+    # Patch existing wasi-stub modules (backward compat with old preamble)
     for name, mod in list(sys.modules.items()):
         # Check __dict__ directly to avoid triggering _LazyMod.__getattr__
         if mod.__dict__.get('__file__') != '<wasi-stub>':
@@ -90,17 +142,7 @@ def _ensure_codex_lazy_loading():
         if name in _SKIP_MODULES or name.split('.')[0] in _SKIP_MODULES:
             continue
 
-        def _lazy_codex_getattr(attr, _mod=mod):
-            from .entities import Codex
-            for c in Codex.instances():
-                if c.name == _mod.__name__ and c.code:
-                    exec(compile(c.code, _mod.__name__ + '.py', 'exec'), _mod.__dict__)
-                    if attr in _mod.__dict__:
-                        return _mod.__dict__[attr]
-                    break
-            raise AttributeError(f"module '{_mod.__name__}' has no attribute '{attr}'")
-
-        mod.__getattr__ = _lazy_codex_getattr
+        mod.__getattr__ = _CodexModuleFinder._make_lazy_getattr(mod)
 
 
 def create_task_entity_class(task_name):

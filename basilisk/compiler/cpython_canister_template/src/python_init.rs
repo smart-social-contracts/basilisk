@@ -1161,6 +1161,7 @@ _mod.candid_decode = _basilisk_ic.candid_decode
 _mod.candid_encode = _basilisk_ic.candid_encode
 
 _sys.modules["basilisk"] = _mod
+_sys.modules["bsk"] = _mod  # convenience alias (like np for numpy)
 
 # === Stub: basilisk.canisters.management ===
 _M = type(_sys)

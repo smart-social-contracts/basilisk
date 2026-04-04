@@ -9,3 +9,4 @@ build
 .basilisk
 node_modules
 __pycache__
+.test

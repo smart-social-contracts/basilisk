@@ -615,6 +615,40 @@ class TestEdgeCases:
         for i in range(5):
             assert results[i] == str(i), f"Call {i} returned {results[i]!r}"
 
+    def test_import_nonexistent_module_raises(self, canister_reachable, canister, network):
+        """Importing a truly nonexistent module should raise ModuleNotFoundError."""
+        code = (
+            "try:\n"
+            "    import thisdoesntexistforsure_xyz\n"
+            "    print('BUG: should have raised')\n"
+            "except ModuleNotFoundError as e:\n"
+            "    print(f'OK: {e}')\n"
+        )
+        result = exec_on_canister(code, canister, network)
+        assert "OK:" in result, f"Expected ModuleNotFoundError, got: {result}"
+        assert "thisdoesntexistforsure_xyz" in result
+
+    def test_import_stdlib_still_works(self, canister_reachable, canister, network):
+        """Stdlib modules should still be importable (stubbed if unavailable in WASI)."""
+        code = (
+            "import socket\n"
+            "print(type(socket).__name__)\n"
+            "import json\n"
+            "print(json.dumps({'ok': True}))\n"
+        )
+        result = exec_on_canister(code, canister, network)
+        assert "module" in result
+        assert '{"ok":true}' in result or '{"ok": true}' in result
+
+    def test_import_internal_underscore_module(self, canister_reachable, canister, network):
+        """Internal _-prefixed modules should still be stubbable."""
+        code = (
+            "import _fake_internal_module\n"
+            "print(type(_fake_internal_module).__name__)\n"
+        )
+        result = exec_on_canister(code, canister, network)
+        assert "module" in result
+
 
 # ===========================================================================
 # Database persistence — StableBTreeMap-backed storage
