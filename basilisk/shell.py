@@ -4029,190 +4029,177 @@ def _print_output(text: str):
 
 
 def _welcome_banner(canister: str, network: str):
-    """Generate a comprehensive welcome banner by querying the canister."""
+    """Minimalistic welcome banner - just essential info."""
     net_label = network or "local"
-
-    # Client-side version info
     ver = _get_basilisk_version()
-    git = _get_git_info()
-    ver_str = f"v{ver}"
-    if git.get("commit"):
-        ver_str += f"  ({git['commit']})"
-    if git.get("commit_date"):
-        ver_str += f"  {git['commit_date']}"
+    print(f"basilisk shell {ver} | {canister} ({net_label})")
 
-    print("=" * 60)
-    print(f"  Basilisk Shell {ver_str}")
-    print("=" * 60)
-    print(f"  Canister : {canister}")
-    print(f"  Network  : {net_label}")
+    # Get principal with a quick canister call
+    try:
+        result = canister_exec("print(str(ic.caller()))", canister, network)
+        if result:
+            lines = [l for l in result.strip().split('\n') if l and not l.startswith('2026-')]
+            if lines:
+                principal = lines[-1].strip()
+                if len(principal) > 20:
+                    principal = principal[:12] + "..." + principal[-6:]
+                print(f"  principal: {principal}")
+    except:
+        pass
+    print("  :help for commands")
     print()
 
-    # Query canister for system info in one call
-    info_code = r"""
-import json, sys, time as _time
-_info = {}
 
-# Caller identity
-_info['principal'] = str(ic.caller())
+def _print_help():
+    """Print comprehensive help with Python equivalents."""
+    print("""
+BASILISK SHELL COMMANDS
+=======================
 
-# Cycle balance
-_info['cycles'] = f'{ic.canister_balance():,}'
+FILESYSTEM
+----------
+%ls [path]                List directory contents
+    Python: os.listdir(path) or Path(path).iterdir()
 
-# Timestamp
-_ts = ic.time()
-_info['ic_time'] = _ts
+%cat <file>              Print file contents
+    Python: print(open(file).read())
 
-# Entity types and counts
-try:
-    from basilisk.db import Database as _DB
-    _db = _DB.get_instance()
-    _types = {}
-    _enums = []
-    for _et in _db._entity_types.values():
-        _name = _et.__name__
-        if hasattr(_et, 'count'):
-            try:
-                _types[_name] = _et.count()
-            except Exception:
-                _types[_name] = 0
-        else:
-            _enums.append(_name)
-    _info['entity_types'] = _types
-    _info['enum_types'] = _enums
-    _info['total_entries'] = sum(1 for k in _db._db_storage.keys() if not k.startswith('_'))
-except Exception as _e:
-    _info['entity_types'] = {}
-    _info['db_error'] = str(_e)
+%mkdir <path>            Create directory
+    Python: os.makedirs(path, exist_ok=True)
 
-# Available libraries with versions
-_libs = []
-try:
-    import basilisk
-    _v = getattr(basilisk, '__version__', '')
-    _libs.append(f'basilisk {_v}' if _v else 'basilisk')
-except: pass
-try:
-    import basilisk.db as _bdb
-    _v = getattr(_bdb, '__version__', '')
-    _libs.append(f'basilisk.db {_v}' if _v else 'basilisk.db')
-except: pass
-try:
-    import basilisk.logging as _blog
-    _v = getattr(_blog, '__version__', '')
-    _libs.append(f'basilisk.logging {_v}' if _v else 'basilisk.logging')
-except: pass
-_info['libraries'] = _libs
+%wget <url> <dest>       Download URL to canister
+    Python: basilisk.io.wget(url, dest)
 
-# Installed extensions
-try:
-    _exts = []
-    from basilisk.db import Database as _DB2
-    _db2 = _DB2.get_instance()
-    for _k in _db2._db_storage.keys():
-        if _k.startswith('Extension:'):
-            _exts.append(_k.split(':',1)[1])
-    _info['extensions'] = _exts
-except:
-    _info['extensions'] = []
+%run <file>              Execute Python file in canister
+    Python: basilisk.run(file)
 
-print('__BASILISK_INFO__' + json.dumps(_info))
-"""
-    result = canister_exec(info_code, canister, network)
 
-    # Parse the info JSON from the output
-    info = {}
-    for line in (result or "").split("\n"):
-        if line.startswith("__BASILISK_INFO__"):
-            try:
-                import json
-                info = json.loads(line[len("__BASILISK_INFO__"):])
-            except Exception:
-                pass
-            break
+TASKS
+-----
+%task                    List all tasks (alias: %ps)
+    Python: Task.instances()
 
-    if info:
-        # Identity
-        principal = info.get("principal", "unknown")
-        short_principal = principal[:12] + "..." + principal[-6:] if len(principal) > 20 else principal
-        print(f"  Principal: {short_principal}")
-        print(f"  Cycles   : {info.get('cycles', 'unknown')}")
-        print()
+%task create <name> [every Ns] [--code "..."|--file <f>]
+                         Create a new task
+    Python: Task(name=..., code=..., schedule=...)
 
-        # Libraries
-        libs = info.get("libraries", [])
-        if libs:
-            print(f"  Libraries: {', '.join(libs)}")
+%task add-step <id|name> [--code "..."|--file <f>] [--async]
+                         Add step to existing task
+    Python: TaskStep(task_id=..., code=..., is_async=...)
 
-        # Extensions
-        exts = info.get("extensions", [])
-        if exts:
-            print(f"  Extensions: {', '.join(exts)}")
+%task info <id|name>     Show task details and steps
+%task log <id|name>      Show task execution logs
+%task start <id|name>    Start task (timer-based)
+%task stop <id|name>     Stop running task
+%task delete <id|name>   Delete task and all steps
 
-        if libs or exts:
-            print()
 
-        # Entity types
-        entity_types = info.get("entity_types", {})
-        if entity_types:
-            total = info.get("total_entries", "?")
-            print(f"  Database: {total} entries, {len(entity_types)} entity types")
+DATABASE
+--------
+%db types                List entity types with counts
+    Python: Database.get_instance()._entity_types
 
-            # Group by count: non-empty first
-            non_empty = {k: v for k, v in sorted(entity_types.items()) if v > 0}
-            empty = sorted(k for k, v in entity_types.items() if v == 0)
+%db list <Type> [N]      List entity instances (default 20)
+    Python: Type.instances() or Type.instances(limit=N)
 
-            if non_empty:
-                print()
-                print("  Entity            Count")
-                print("  " + "-" * 30)
-                for name, count in sorted(non_empty.items(), key=lambda x: -x[1]):
-                    print(f"  {name:<20}{count:>5}")
+%db show <Type> <id>     Show full entity as JSON
+    Python: Type.get(id).__dict__
 
-            if empty:
-                print()
-                print(f"  Empty types: {', '.join(empty)}")
-            print()
-    else:
-        # Fallback if introspection failed
-        if result and result.strip():
-            print(f"  (introspection returned: {result.strip()[:200]})")
-        print()
+%db search <Type> <field>=<value>
+                         Search entities by field value
+    Python: [e for e in Type.instances() if getattr(e, field) == value]
 
-    # Commands help
-    print("  Shell commands:")
-    print("    %ls [path]                List canister filesystem")
-    print("    %cat <file>               Show file contents")
-    print("    %mkdir <path>             Create directory")
-    print("    %wget <url> <dest>        Download URL into canister")
-    print("    %task                     List tasks (also %ps)")
-    print('    %task create <name> [every Ns] [--code "..."|--file <f>]')
-    print('    %task add-step <id|name> [--code "..."|--file <f>] [--async]')
-    print("    %task info|log|start|stop|delete <id|name>")
-    print("    %who                      List namespace variables")
-    print("    %info                     Show canister info")
-    print("    %db types|list|show|search Database exploration")
-    print("    %db export|import          Import/export entities as JSON")
-    print("    %db count|dump|clear       Database operations")
-    print("    %wallet <token> balance   Check token balance (ckbtc, cketh, icp)")
-    print("    %wallet <token> transfer <amt> <to>  Transfer tokens")
-    print("    %vetkey pubkey            Get vetKD public key")
-    print("    %vetkey derive <tpk_hex>  Derive encrypted vetKey")
-    print("    %vetkey encrypt <target>  Encrypt file or text")
-    print("    %vetkey decrypt <target>  Decrypt file or text")
-    print("    %group                    Manage encryption groups")
-    print("    %group create|delete|add|remove|members <name>")
-    print("    %crypto status|scopes    Encryption status & scopes")
-    print("    %crypto encrypt|decrypt  Encrypt/decrypt files & text")
-    print("    %crypto share|revoke     Share/revoke scope access")
-    print("    %crypto envelopes|init   View/create key envelopes")
-    print("    %run <file>               Execute file from canister")
-    print("    %get <remote> [local]     Download file from canister")
-    print("    %put <local> [remote]     Upload file to canister")
-    print("    !<cmd>                    Run a local OS command")
-    print("    :help                     Full help    :q  Quit")
-    print("=" * 60)
-    print()
+%db export <Type> [file.json]
+                         Export entities to JSON file
+%db import <file.json>   Import entities from JSON (upsert)
+%db count                Show total entity count
+%db dump                 Dump all entities as JSON
+%db clear                Clear all entities (danger!)
+
+
+WALLET
+------
+%wallet <token> balance  Check canister token balance
+    Python: Wallet.balance(token)  # token: "ckbtc", "cketh", "icp"
+
+%wallet <token> deposit  Show deposit address for token
+    Python: Wallet.deposit_address(token)
+
+%wallet <token> transfer <amount> <to>
+                         Transfer tokens from canister
+    Python: Wallet.transfer(token, to, amount)  # returns transfer_id
+
+%wallet result           Check last transfer result
+    Python: Wallet.last_result()
+
+
+VETKEY (Encryption)
+-------------------
+%vetkey pubkey [--scope <s>]     Get vetKD public key
+    Python: vetkey.pubkey(scope)
+
+%vetkey derive <tpk_hex> [--scope <s>] [--input <s>]
+                         Derive encrypted key from TPK
+    Python: vetkey.derive(tpk_hex, scope, input)
+
+%vetkey encrypt <file|text>      Encrypt file or text
+    Python: vetkey.encrypt(target)
+
+%vetkey decrypt <file|text>      Decrypt file or text
+    Python: vetkey.decrypt(target)
+
+
+GROUPS (Encryption Groups)
+--------------------------
+%group                           List groups
+%group create <name>             Create encryption group
+%group delete <name>             Delete group
+%group add <name> <principal>    Add member to group
+%group remove <name> <principal> Remove member
+%group members <name>            List group members
+
+
+CRYPTO (File Encryption)
+------------------------
+%crypto status              Show encryption status
+%crypto scopes              List encryption scopes
+%crypto encrypt <target>    Encrypt file or text
+%crypto decrypt <target>    Decrypt file or text
+%crypto share <target>      Share encrypted file
+%crypto revoke <target>     Revoke shared access
+%crypto envelopes           List key envelopes
+%crypto init                Initialize encryption
+
+
+REPL COMMANDS
+-------------
+%who                 List variables in namespace
+    Python: dir() or [k for k in globals() if not k.startswith('_')]
+
+%info                Show canister info (principal, cycles)
+    Python: ic.id(), ic.caller(), ic.canister_balance()
+
+%get <remote> [local]    Download file from canister to local
+%put <local> [remote]    Upload file from local to canister
+
+!<cmd>             Run local OS command (e.g. !ls, !cat file.py)
+
+:q / exit          Quit the shell
+:help              Show this help
+
+
+EXAMPLES
+--------
+  %ls /myapp
+  %cat /myapp/config.json
+  %task create daily_sync every 60 --code "print('sync')"
+  %db list User 10
+  %db search User name=alice
+  %wallet ckbtc balance
+  %wallet ckbtc transfer 100 <to_principal>
+  !ls -la
+""")
+    print("  :q to quit")
 
 
 def run_interactive(canister: str, network: str):
@@ -4243,7 +4230,7 @@ def run_interactive(canister: str, network: str):
             os.system("clear")
             continue
         if stripped == ":help":
-            print(__doc__)
+            _print_help()
             continue
 
         # Local OS commands
