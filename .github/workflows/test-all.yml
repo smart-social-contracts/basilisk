@@ -1,4 +1,6 @@
-# Orchestrator workflow that runs all test suites in parallel on push to main
+# Orchestrator workflow that runs all test suites on push to main.
+# First builds the CPython WASM template (if template paths changed),
+# then runs all test suites in parallel.
 
 name: All Tests
 on:
@@ -6,15 +8,29 @@ on:
         branches:
             - main
 
+permissions:
+    contents: write # Required by build-cpython-wasm for GitHub releases
+    actions: write  # Required by build-cpython-wasm for workflow dispatch
+
 jobs:
+    wasm-build:
+        uses: ./.github/workflows/build-cpython-wasm.yml
+        secrets: inherit
+
     tests:
+        needs: wasm-build
+        if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         uses: ./.github/workflows/test-examples.yml
         secrets: inherit
 
     upgrade-test:
+        needs: wasm-build
+        if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         uses: ./.github/workflows/test-upgrade.yml
         secrets: inherit
 
     shell-tests:
+        needs: wasm-build
+        if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         uses: ./.github/workflows/test-shell.yml
         secrets: inherit
