@@ -1,8 +1,6 @@
 
+- [x] Create bsk as a convenience alias for basilisk (like np for numpy)
 
-- Create bsk as a convenience alias for basilisk (like np for numpy)
+- [x] inside a basilisk canister, `ic_python_db` should be accesible via `import basilisk.db` instead of `import ic_python_db`
 
-- inside a basilisk canister, `ic_python_db` should be accesible via `import basilisk.db` instead of `import ic_python_db`
-
-- `import thisdoesntexistforsure` → `ModuleNotFoundError`
-
+- [x] `import thisdoesntexistforsure` → `ModuleNotFoundError`
