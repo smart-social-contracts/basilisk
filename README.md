@@ -149,7 +149,7 @@ Basilisk includes [ic-python-db](https://github.com/smart-social-contracts/ic-py
 
 ```python
 from basilisk import query, update, text
-from ic_python_db import Entity, String, Integer, TimestampedMixin
+from basilisk.db import Entity, String, Integer, TimestampedMixin
 
 class User(Entity, TimestampedMixin):
     __alias__ = "name"

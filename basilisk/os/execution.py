@@ -154,7 +154,7 @@ def create_task_entity_class(task_name):
     Returns:
         A class that can be used as base for entities with automatic namespacing
     """
-    from ic_python_db import Entity, TimestampedMixin
+    from basilisk.db import Entity, TimestampedMixin
 
     class TaskEntity(Entity, TimestampedMixin):
         """Base class for task-scoped entities with automatic namespacing.

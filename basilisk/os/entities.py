@@ -13,7 +13,7 @@ Entities:
     TaskExecution — Record of a single task execution attempt.
 """
 
-from ic_python_db import (
+from basilisk.db import (
     Boolean,
     Entity,
     Integer,

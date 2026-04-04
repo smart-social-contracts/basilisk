@@ -179,13 +179,13 @@ def canister_exec(code: str, canister: str, network: str = None) -> str:
 # ---------------------------------------------------------------------------
 # Code preamble that resolves the Task entity class at runtime.
 # Priority: 1) already in namespace (injected by downstream app),
-#           2) define from ic_python_db on the fly, 3) unavailable.
+#           2) define from basilisk.db on the fly, 3) unavailable.
 # ---------------------------------------------------------------------------
 _TASK_RESOLVE = (
     "if 'Codex' not in dir() or 'Task' not in dir():\n"
     "    _Task = None\n"
     "    try:\n"
-    "        from ic_python_db import Entity, String, Integer, Boolean, OneToMany, ManyToOne, OneToOne, TimestampedMixin\n"
+    "        from basilisk.db import Entity, String, Integer, Boolean, OneToMany, ManyToOne, OneToOne, TimestampedMixin\n"
     "        class Codex(Entity, TimestampedMixin):\n"
     "            __alias__ = 'name'\n"
     "            name = String()\n"
@@ -263,7 +263,7 @@ _TASK_RESOLVE = (
 
 _TASK_UNAVAILABLE = (
     "if 'Task' not in dir():\n"
-    "    print('No task system available (ic_python_db not found).')\n"
+    "    print('No task system available (basilisk.db not found).')\n"
 )
 
 _MAGIC_MAP = {
@@ -294,7 +294,7 @@ def _db_types_code() -> str:
     """Generate on-canister code for %db types."""
     return (
         "import json as _json\n"
-        "from ic_python_db import Database as _DB\n"
+        "from basilisk.db import Database as _DB\n"
         "_db = _DB.get_instance()\n"
         "_types = {}\n"
         "_seen = set()\n"
@@ -326,7 +326,7 @@ def _db_list_code(entity_type: str, limit: int = 20) -> str:
     esc_type = entity_type.replace("'", "\\'")
     return (
         "import json as _json\n"
-        "from ic_python_db import Database as _DB\n"
+        "from basilisk.db import Database as _DB\n"
         "_db = _DB.get_instance()\n"
         f"_type_name = '{esc_type}'\n"
         "_cls = None\n"
@@ -376,7 +376,7 @@ def _db_show_code(entity_type: str, entity_id: str) -> str:
     esc_id = entity_id.replace("'", "\\'")
     return (
         "import json as _json\n"
-        "from ic_python_db import Database as _DB\n"
+        "from basilisk.db import Database as _DB\n"
         "_db = _DB.get_instance()\n"
         f"_type_name = '{esc_type}'\n"
         f"_eid = '{esc_id}'\n"
@@ -404,7 +404,7 @@ def _db_search_code(entity_type: str, field: str, value: str) -> str:
     esc_value = value.replace("'", "\\'")
     return (
         "import json as _json\n"
-        "from ic_python_db import Database as _DB\n"
+        "from basilisk.db import Database as _DB\n"
         "_db = _DB.get_instance()\n"
         f"_type_name = '{esc_type}'\n"
         f"_field = '{esc_field}'\n"
@@ -439,7 +439,7 @@ def _db_export_code(entity_type: str) -> str:
     esc_type = entity_type.replace("'", "\\'")
     return (
         "import json as _json\n"
-        "from ic_python_db import Database as _DB, Entity as _Entity\n"
+        "from basilisk.db import Database as _DB, Entity as _Entity\n"
         "_db = _DB.get_instance()\n"
         f"_type_name = '{esc_type}'\n"
         "_cls = None\n"
@@ -461,7 +461,7 @@ def _db_import_code(b64_data: str) -> str:
     """Generate on-canister code for %db import. Data is base64-encoded JSON."""
     return (
         "import json as _json, base64 as _b64\n"
-        "from ic_python_db import Entity as _Entity\n"
+        "from basilisk.db import Entity as _Entity\n"
         f"_raw = _b64.b64decode('{b64_data}').decode()\n"
         "_records = _json.loads(_raw)\n"
         "if not isinstance(_records, list):\n"
@@ -489,7 +489,7 @@ def _db_delete_code(entity_type: str, entity_id: str) -> str:
     esc_type = entity_type.replace("'", "\\'")
     esc_id = entity_id.replace("'", "\\'")
     return (
-        "from ic_python_db import Database as _DB\n"
+        "from basilisk.db import Database as _DB\n"
         "_db = _DB.get_instance()\n"
         f"_type_name = '{esc_type}'\n"
         f"_eid = '{esc_id}'\n"
@@ -525,17 +525,17 @@ def _handle_db(args: str, canister: str, network: str) -> str:
 
     if subcmd == "count":
         code = (
-            "from ic_python_db import Database; db = Database.get_instance(); "
+            "from basilisk.db import Database; db = Database.get_instance(); "
             "print(f'{sum(1 for k in db._db_storage.keys() if not k.startswith(\"_\"))} entries')"
         )
         return canister_exec(code, canister, network)
 
     if subcmd == "dump":
-        code = "from ic_python_db import Database; print(Database.get_instance().dump_json(pretty=True))"
+        code = "from basilisk.db import Database; print(Database.get_instance().dump_json(pretty=True))"
         return canister_exec(code, canister, network)
 
     if subcmd == "clear":
-        code = "from ic_python_db import Database; Database.get_instance().clear(); print('Database cleared.')"
+        code = "from basilisk.db import Database; Database.get_instance().clear(); print('Database cleared.')"
         return canister_exec(code, canister, network)
 
     if subcmd == "list":
@@ -1152,7 +1152,7 @@ def _task_run_code(tid: str) -> str:
     Executes the task's code synchronously inline during this canister call.
     No timers needed — the code runs immediately and the result is recorded
     in a TaskExecution entity. Handles multi-step tasks sequentially.
-    Works reliably on any canister with ic_python_db.
+    Works reliably on any canister with basilisk.db.
     """
     esc_tid = tid.replace("'", "\\'")
     return (
@@ -2865,7 +2865,7 @@ def _handle_task(args: str, canister: str, network: str) -> str:
 # Entity resolve preamble injected into every %fx exec call
 _FX_RESOLVE = (
     "if 'FXPair' not in dir():\n"
-    "    from ic_python_db import Entity, String, Integer, TimestampedMixin\n"
+    "    from basilisk.db import Entity, String, Integer, TimestampedMixin\n"
     "    class FXPair(Entity, TimestampedMixin):\n"
     "        __alias__ = 'name'\n"
     "        name = String(max_length=16)\n"
@@ -2996,7 +2996,7 @@ def _fx_refresh(canister: str, network: str) -> str:
     # Step 1: write the refresh code to canister memfs
     refresh_code = (
         "from basilisk import Record, Service, service_update, Principal, Opt, Variant, nat32, nat64, null, text, Async\n"
-        "from ic_python_db import Entity, String, Integer, TimestampedMixin\n"
+        "from basilisk.db import Entity, String, Integer, TimestampedMixin\n"
         "\n"
         "if 'FXPair' not in dir():\n"
         "    class FXPair(Entity, TimestampedMixin):\n"
@@ -4065,7 +4065,7 @@ _info['ic_time'] = _ts
 
 # Entity types and counts
 try:
-    from ic_python_db import Database as _DB
+    from basilisk.db import Database as _DB
     _db = _DB.get_instance()
     _types = {}
     _enums = []
@@ -4093,9 +4093,9 @@ try:
     _libs.append(f'basilisk {_v}' if _v else 'basilisk')
 except: pass
 try:
-    import ic_python_db
-    _v = getattr(ic_python_db, '__version__', '')
-    _libs.append(f'ic_python_db {_v}' if _v else 'ic_python_db')
+    import basilisk.db as _bdb
+    _v = getattr(_bdb, '__version__', '')
+    _libs.append(f'basilisk.db {_v}' if _v else 'basilisk.db')
 except: pass
 try:
     import ic_python_logging
@@ -4107,7 +4107,7 @@ _info['libraries'] = _libs
 # Installed extensions
 try:
     _exts = []
-    from ic_python_db import Database as _DB2
+    from basilisk.db import Database as _DB2
     _db2 = _DB2.get_instance()
     for _k in _db2._db_storage.keys():
         if _k.startswith('Extension:'):

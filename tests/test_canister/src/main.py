@@ -11,8 +11,8 @@ ic-python-db provides the entity ORM for task/entity tests.
 
 from basilisk import query, update, text, ic, Async, Tuple, match, CallResult, Principal, StableBTreeMap, GuardResult
 from basilisk.canisters.management import management_canister, HttpResponse, HttpTransformArgs
-import ic_python_db
-from ic_python_db import Database
+import ic_python_db  # noqa: kept for module bundler dependency tracing
+from basilisk.db import Database
 
 # ---------------------------------------------------------------------------
 # Persistent database storage (survives canister upgrades)
@@ -52,7 +52,7 @@ def execute_code_shell(code: str) -> str:
         _shell_ns_by_principal[caller].update({
             "ic": ic,
         })
-        _shell_ns_by_principal[caller]["ic_python_db"] = ic_python_db
+        _shell_ns_by_principal[caller]["basilisk"] = __import__("basilisk")
     ns = _shell_ns_by_principal[caller]
 
     stdout = io.StringIO()

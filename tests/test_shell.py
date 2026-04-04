@@ -655,7 +655,7 @@ class TestEdgeCases:
 # ===========================================================================
 
 class TestDatabasePersistence:
-    """Test that ic_python_db entities use persistent StableBTreeMap storage."""
+    """Test that basilisk.db entities use persistent StableBTreeMap storage."""
 
     def test_entity_persists_across_calls(self, canister_reachable, canister, network):
         """Create an entity in one call, verify it exists in a subsequent call."""
@@ -664,7 +664,7 @@ class TestDatabasePersistence:
 
         # Create entity
         create_code = (
-            "from ic_python_db import Entity, String, TimestampedMixin\n"
+            "from basilisk.db import Entity, String, TimestampedMixin\n"
             "class PersistTest(Entity, TimestampedMixin):\n"
             "    __alias__ = 'name'\n"
             "    name = String()\n"
@@ -678,7 +678,7 @@ class TestDatabasePersistence:
 
         # Retrieve entity in a separate call
         read_code = (
-            "from ic_python_db import Entity, String, TimestampedMixin\n"
+            "from basilisk.db import Entity, String, TimestampedMixin\n"
             "class PersistTest(Entity, TimestampedMixin):\n"
             "    __alias__ = 'name'\n"
             "    name = String()\n"
@@ -690,7 +690,7 @@ class TestDatabasePersistence:
 
         # Cleanup
         cleanup_code = (
-            "from ic_python_db import Entity, String, TimestampedMixin\n"
+            "from basilisk.db import Entity, String, TimestampedMixin\n"
             "class PersistTest(Entity, TimestampedMixin):\n"
             "    __alias__ = 'name'\n"
             "    name = String()\n"
@@ -703,7 +703,7 @@ class TestDatabasePersistence:
     def test_db_uses_stable_storage(self, canister_reachable, canister, network):
         """Verify the database is backed by StableBTreeMap, not a plain dict."""
         code = (
-            "from ic_python_db import Database\n"
+            "from basilisk.db import Database\n"
             "db = Database.get_instance()\n"
             "stype = type(db._db_storage).__name__\n"
             "print(f'storage:{stype}')"
