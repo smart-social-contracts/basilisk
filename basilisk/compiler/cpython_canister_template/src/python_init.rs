@@ -1089,6 +1089,7 @@ class ic:
     set_timer = staticmethod(_basilisk_ic.set_timer)
     set_timer_interval = staticmethod(_basilisk_ic.set_timer_interval)
     clear_timer = staticmethod(_basilisk_ic.clear_timer)
+    is_controller = staticmethod(_basilisk_ic.is_controller)
     call_raw = staticmethod(_basilisk_ic.call_raw)
     call_raw128 = staticmethod(_basilisk_ic.call_raw128)
 # Override call_raw/call_raw128 to return _ServiceCall objects (for generator yield)

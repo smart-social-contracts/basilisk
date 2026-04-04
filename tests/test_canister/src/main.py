@@ -9,7 +9,7 @@ The frozen_stdlib_preamble automatically provides the in-memory filesystem (memf
 ic-python-db provides the entity ORM for task/entity tests.
 """
 
-from basilisk import query, update, text, ic, Async, Tuple, match, CallResult, Principal, StableBTreeMap
+from basilisk import query, update, text, ic, Async, Tuple, match, CallResult, Principal, StableBTreeMap, GuardResult
 from basilisk.canisters.management import management_canister, HttpResponse, HttpTransformArgs
 import ic_python_db
 from ic_python_db import Database
@@ -28,7 +28,13 @@ Database.init(db_storage=storage, audit_enabled=True)
 _shell_ns_by_principal = {}
 
 
-@update
+def guard_against_non_controllers() -> GuardResult:
+    if ic.is_controller(ic.caller()):
+        return {"Ok": None}
+    return {"Err": "Not Authorized: only controllers of this canister may call this method"}
+
+
+@update(guard=guard_against_non_controllers)
 def execute_code_shell(code: str) -> str:
     """Execute Python code in a persistent namespace and return the output.
 
@@ -88,7 +94,7 @@ def http_transform(args: HttpTransformArgs) -> HttpResponse:
     return response
 
 
-@update
+@update(guard=guard_against_non_controllers)
 def download_to_file(url: str, dest: str) -> Async[str]:
     """Download a file from a URL and save it to the canister filesystem.
 

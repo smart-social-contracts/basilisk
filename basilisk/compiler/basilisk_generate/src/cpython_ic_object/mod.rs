@@ -164,6 +164,7 @@ fn generate_method_def_entries(
         ("stable64_read", "ic_stable64_read", "METH_VARARGS"),
         ("stable64_write", "ic_stable64_write", "METH_VARARGS"),
         ("trap", "ic_trap", "METH_O"),
+        ("is_controller", "ic_is_controller", "METH_O"),
     ];
 
     let all_entries: Vec<TokenStream> = simple_entries

@@ -201,5 +201,29 @@ pub fn generate() -> TokenStream {
                 Err(e) => { ic_cdk::trap(&e.0); }
             }
         }
+
+        unsafe extern "C" fn ic_is_controller(
+            _self_obj: *mut basilisk_cpython::ffi::PyObject,
+            arg: *mut basilisk_cpython::ffi::PyObject,
+        ) -> *mut basilisk_cpython::ffi::PyObject {
+            let obj = match basilisk_cpython::PyObjectRef::from_borrowed(arg) {
+                Some(o) => o,
+                None => return core::ptr::null_mut(),
+            };
+            let principal_text = obj
+                .extract_str()
+                .or_else(|_| {
+                    obj.get_attr("_text")
+                        .and_then(|t| t.extract_str())
+                })
+                .unwrap_or_else(|_| {
+                    ic_cdk::trap("is_controller: expected a Principal or string argument");
+                });
+            let principal = candid::Principal::from_text(&principal_text).unwrap_or_else(|e| {
+                ic_cdk::trap(&format!("is_controller: invalid principal '{}': {}", principal_text, e));
+            });
+            let result = ic_cdk::api::is_controller(&principal);
+            basilisk_cpython::PyObjectRef::from_bool(result).into_ptr()
+        }
     }
 }

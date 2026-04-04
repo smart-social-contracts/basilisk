@@ -10,7 +10,7 @@ use slotmap::Key as _SlotMapKey;
 /// Create the _basilisk_ic Python module with all IC API bindings.
 pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyError> {
     // Method table for the _basilisk_ic module
-    static mut METHODS: [ffi::PyMethodDef; 44] = unsafe { core::mem::zeroed() };
+    static mut METHODS: [ffi::PyMethodDef; 45] = unsafe { core::mem::zeroed() };
 
     unsafe {
         let methods = &mut METHODS;
@@ -71,6 +71,7 @@ pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyEr
         add_method!("call_raw128", ic_call_raw128, ffi::METH_VARARGS);
         add_method!("notify_raw", ic_notify_raw, ffi::METH_VARARGS);
         add_method!("notify_service_call", ic_notify_service_call, ffi::METH_O);
+        add_method!("is_controller", ic_is_controller, ffi::METH_O);
 
         // Sentinel (null terminator)
         methods[i] = core::mem::zeroed();
@@ -834,6 +835,34 @@ unsafe extern "C" fn ic_stable64_write(
     };
     ic_cdk::api::stable::stable64_write(offset, &data);
     PyObjectRef::none().into_ptr()
+}
+
+/// ic.is_controller(principal) -> bool
+/// Check if the given principal is a controller of this canister.
+/// Accepts a Principal object (with ._text or .to_str()) or a plain string.
+unsafe extern "C" fn ic_is_controller(
+    _self: *mut ffi::PyObject,
+    arg: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let obj = match PyObjectRef::from_borrowed(arg) {
+        Some(o) => o,
+        None => return core::ptr::null_mut(),
+    };
+    // Extract principal text: try direct string first, then ._text attribute
+    let principal_text = obj
+        .extract_str()
+        .or_else(|_| {
+            obj.get_attr("_text")
+                .and_then(|t| t.extract_str())
+        })
+        .unwrap_or_else(|_| {
+            ic_cdk::trap("is_controller: expected a Principal or string argument");
+        });
+    let principal = candid::Principal::from_text(&principal_text).unwrap_or_else(|e| {
+        ic_cdk::trap(&format!("is_controller: invalid principal '{}': {}", principal_text, e));
+    });
+    let result = ic_cdk::api::is_controller(&principal);
+    PyObjectRef::from_bool(result).into_ptr()
 }
 
 // ─── Timers ──────────────────────────────────────────────────────────────────

@@ -210,7 +210,14 @@ pub fn execute_canister_method(method_index: i32, _is_update: bool) {
 
     // Execute guard function if present
     if let Some(guard_name) = &method_info.guard {
-        execute_guard(guard_name);
+        if guard_name == "guard_against_non_controllers" {
+            // Built-in guard: use efficient Rust-level is_controller check
+            if !ic_cdk::api::is_controller(&ic_cdk::api::caller()) {
+                ic_cdk::trap("Not Authorized: only controllers of this canister may call this method");
+            }
+        } else {
+            execute_guard(guard_name);
+        }
     }
 
     // Get raw Candid argument bytes from the IC message

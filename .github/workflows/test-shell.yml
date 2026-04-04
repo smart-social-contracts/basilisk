@@ -66,6 +66,8 @@ jobs:
                           tests/test_wallet_shell.py tests/test_wallet_hook.py
                     - shard: crypto
                       pytest_args: tests/test_crypto.py
+                    - shard: guards
+                      pytest_args: tests/test_guards.py
         env:
             DFX_WARNING: -mainnet_plaintext_identity
             BASILISK_TEST_CANISTER: ${{ inputs.canister || 'ru4ga-siaaa-aaaai-q7f3a-cai' }}

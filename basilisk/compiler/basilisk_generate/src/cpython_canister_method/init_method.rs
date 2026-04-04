@@ -319,6 +319,9 @@ class ic:
     @staticmethod
     def trap(message):
         _basilisk_ic.trap(message)
+    @staticmethod
+    def is_controller(principal):
+        return _basilisk_ic.is_controller(principal)
 _mod.ic = ic
 
 # === Service base class ===
