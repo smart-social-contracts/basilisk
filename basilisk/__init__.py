@@ -22,7 +22,6 @@ from typing import (
 from .compiler.custom_modules.principal import Principal as PrincipalRenamed
 
 __version__ = "0.11.2"
-__date__ = "2026-04-04T21:27:00+02:00"
 __rust_version__ = "1.88.0"
 
 Principal = PrincipalRenamed
