@@ -278,8 +278,12 @@ def main():
         print(__doc__.strip())
 
     elif command == "--version":
-        from basilisk import __version__
-        print(f"basilisk {__version__}")
+        from basilisk import __version__, __date__
+        import subprocess
+        commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True
+        ).stdout[:7]
+        print(f"{__version__},{__date__},{commit}")
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
