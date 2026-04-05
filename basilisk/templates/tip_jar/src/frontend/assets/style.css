@@ -348,6 +348,38 @@ tbody tr:hover { background: var(--bg-tertiary); }
   user-select: none;
 }
 
+/* Locked (completed) steps */
+.step-locked {
+  opacity: .45;
+  pointer-events: none;
+  user-select: none;
+}
+.step-locked .btn-back {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+/* Back button */
+.btn-back {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: .72rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  padding: .1rem .4rem;
+  margin-left: .5rem;
+  cursor: pointer;
+  box-shadow: none;
+}
+.btn-back:hover {
+  color: var(--accent);
+  background: none;
+  transform: none;
+  box-shadow: none;
+}
+
 /* Encrypted badge */
 .badge-secret {
   background: #fef3c7;

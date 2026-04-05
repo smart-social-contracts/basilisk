@@ -125,7 +125,7 @@
 
         <!-- Step 2: Name + message + amount -->
         <div id="donate-step-2" class="step-disabled">
-          <p class="step-label">Step 2</p>
+          <p class="step-label">Step 2 <button type="button" class="btn-back" onclick="showDonateStep(1)">&larr; Back</button></p>
           <p class="form-note" style="margin-bottom:.75rem">
             Enter your details. You'll then send ckBTC via
             <a href="https://oisy.com" target="_blank">Oisy Wallet</a>.
@@ -146,7 +146,7 @@
 
         <!-- Step 3: Send ckBTC + verify -->
         <div id="donate-step-3" class="step-disabled">
-          <p class="step-label">Step 3</p>
+          <p class="step-label">Step 3 <button type="button" class="btn-back" onclick="showDonateStep(2)">&larr; Back</button></p>
           <p>Send exactly <strong><span id="send-amount">—</span> satoshis</strong> of ckBTC to:</p>
           <code id="canister-address" class="block-code">loading…</code>
           <div class="instructions" style="margin-top:.75rem">

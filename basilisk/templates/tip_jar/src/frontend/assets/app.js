@@ -256,9 +256,10 @@ function showDonateStep(n) {
   for (let i = 1; i <= 4; i++) {
     const el = $("donate-step-" + i);
     if (!el) continue;
-    if (i <= n) {
-      el.classList.remove("step-disabled");
-    } else {
+    el.classList.remove("step-disabled", "step-locked");
+    if (i < n) {
+      el.classList.add("step-locked");
+    } else if (i > n) {
       el.classList.add("step-disabled");
     }
   }
