@@ -132,6 +132,8 @@ def _start_fx_timer():
             ic.print(f"[timer] FX refresh done: {result}")
         except Exception as e:
             ic.print(f"[timer] FX refresh error: {e}")
+    # Immediate first fetch so the rate is available right away
+    ic.set_timer(Duration(0), _fx_tick)
     ic.set_timer_interval(Duration(_FX_REFRESH_INTERVAL), _fx_tick)
     ic.print(f"FX auto-refresh timer started (every {_FX_REFRESH_INTERVAL}s)")
 
