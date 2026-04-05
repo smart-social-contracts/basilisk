@@ -84,35 +84,42 @@ function idlFactory({ IDL }) {
 }
 
 // ---------------------------------------------------------------------------
-// Agent & Actor setup
+// Agent & Actor setup (with optional Internet Identity auth)
 // ---------------------------------------------------------------------------
 
 let actor = null;
+let authClient = null;
+let _agentModule = null;  // cached @dfinity/agent module
 
-async function getActor() {
-  if (actor) return actor;
+async function loadAgentModule() {
+  if (_agentModule) return _agentModule;
+  _agentModule = await import("https://esm.sh/@dfinity/agent@2.2.0");
+  return _agentModule;
+}
 
+async function loadAuthClient() {
+  if (authClient) return authClient;
+  const { AuthClient } = await import("https://esm.sh/@dfinity/auth-client@2.2.0");
+  authClient = await AuthClient.create();
+  return authClient;
+}
+
+async function buildActor(identity) {
   const canisterId = await detectBackendCanisterId();
   if (canisterId.startsWith("__")) {
     throw new Error("Backend canister ID not configured. See app.js.");
   }
+  const { HttpAgent, Actor } = await loadAgentModule();
+  const opts = { host: IC_HOST };
+  if (identity) opts.identity = identity;
+  const agent = await HttpAgent.create(opts);
+  if (IS_LOCAL) await agent.fetchRootKey();
+  return Actor.createActor(idlFactory, { agent, canisterId });
+}
 
-  // Dynamically import @dfinity/agent from CDN (keeps template dependency-free)
-  const { HttpAgent, Actor } = await import(
-    "https://esm.sh/@dfinity/agent@2.2.0"
-  );
-
-  const agent = await HttpAgent.create({ host: IC_HOST });
-
-  // When running locally, fetch the root key (not needed on mainnet)
-  if (IS_LOCAL) {
-    await agent.fetchRootKey();
-  }
-
-  actor = Actor.createActor(idlFactory, {
-    agent,
-    canisterId,
-  });
+async function getActor() {
+  if (actor) return actor;
+  actor = await buildActor();
   return actor;
 }
 
@@ -321,6 +328,63 @@ function esc(s) {
 }
 
 // ---------------------------------------------------------------------------
+// Internet Identity login / logout
+// ---------------------------------------------------------------------------
+
+const II_URL = IS_LOCAL
+  ? `http://localhost:4943?canisterId=rdmx6-jaaaa-aaaaa-aaadq-cai`
+  : "https://identity.ic0.app";
+
+function updateAuthUI(isLoggedIn, principal) {
+  const btn = $("btn-login");
+  const info = $("auth-principal");
+  if (btn) btn.textContent = isLoggedIn ? "Logout" : "Login with Internet Identity";
+  if (info) info.textContent = isLoggedIn ? `Logged in as ${principal}` : "";
+}
+
+async function checkAuth() {
+  try {
+    const client = await loadAuthClient();
+    const isAuth = await client.isAuthenticated();
+    if (isAuth) {
+      const identity = client.getIdentity();
+      const principal = identity.getPrincipal().toText();
+      actor = await buildActor(identity);
+      updateAuthUI(true, principal);
+    } else {
+      updateAuthUI(false);
+    }
+  } catch (e) {
+    console.error("checkAuth:", e);
+  }
+}
+
+window.toggleLogin = async function () {
+  const client = await loadAuthClient();
+  const isAuth = await client.isAuthenticated();
+  if (isAuth) {
+    await client.logout();
+    actor = null;
+    actor = await buildActor();
+    updateAuthUI(false);
+  } else {
+    await new Promise((resolve, reject) => {
+      client.login({
+        identityProvider: II_URL,
+        maxTimeToLive: BigInt(8) * BigInt(3_600_000_000_000),
+        onSuccess: resolve,
+        onError: reject,
+      });
+    });
+    const identity = client.getIdentity();
+    const principal = identity.getPrincipal().toText();
+    actor = await buildActor(identity);
+    updateAuthUI(true, principal);
+    await refreshAll();
+  }
+};
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
@@ -332,6 +396,8 @@ function esc(s) {
     // Show the canister address in the Oisy instructions
     const addrEl = $("canister-address");
     if (addrEl) addrEl.textContent = cid;
+    // Check for existing II session
+    await checkAuth();
     // Load initial data
     await refreshAll();
   }

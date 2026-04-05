@@ -15,6 +15,10 @@
       <h1>Welcome to Basilisk</h1>
       <p class="subtitle">This is a <strong>template demo</strong> — a full-stack dApp running entirely on-chain, built with <a href="https://github.com/smart-social-contracts/basilisk" target="_blank">basilisk</a>, a Python framework for the <a href="https://internetcomputer.org" target="_blank">Internet Computer</a>. Fork it to build your own on-chain app!</p>
       <p class="canister-id" id="canister-id"></p>
+      <div class="auth-bar">
+        <button id="btn-login" onclick="toggleLogin()">Login with Internet Identity</button>
+        <span id="auth-principal" class="auth-principal"></span>
+      </div>
     </header>
 
     <!-- How it works (collapsible) -->
