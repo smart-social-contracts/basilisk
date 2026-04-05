@@ -247,6 +247,29 @@ button:hover {
   cursor: pointer;
 }
 
+/* Copy row */
+.copy-row {
+  display: flex;
+  align-items: stretch;
+  gap: .5rem;
+}
+.btn-copy {
+  padding: .4rem .7rem;
+  font-size: 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow: none;
+  line-height: 1;
+}
+.btn-copy:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+  transform: none;
+  box-shadow: none;
+}
+
 .form-note {
   margin-top: .5rem;
   font-size: .82rem;

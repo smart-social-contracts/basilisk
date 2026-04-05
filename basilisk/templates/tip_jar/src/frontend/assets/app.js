@@ -101,6 +101,16 @@ function setStatus(msg) { const el = $("tip-status"); if (el) el.textContent = m
 function setInfo(msg) { const el = $("info-output"); if (el) el.textContent = msg; }
 function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
+window.copyAddress = async function () {
+  const addr = $("canister-address")?.textContent;
+  if (!addr) return;
+  try {
+    await navigator.clipboard.writeText(addr);
+    const btn = document.querySelector(".btn-copy");
+    if (btn) { btn.textContent = "✓"; setTimeout(() => btn.textContent = "📋", 1500); }
+  } catch (e) { console.error("Copy failed:", e); }
+};
+
 function truncPrincipal(p) {
   if (!p || p.length < 20) return p || "";
   return p.slice(0, 5) + "…" + p.slice(-3);

@@ -148,7 +148,10 @@
         <div id="donate-step-3" class="step-disabled">
           <p class="step-label">Step 3 <button type="button" class="btn-back" onclick="showDonateStep(2)">&larr; Back</button></p>
           <p>Send exactly <strong><span id="send-amount">—</span> satoshis</strong> of ckBTC to:</p>
-          <code id="canister-address" class="block-code">loading…</code>
+          <div class="copy-row">
+            <code id="canister-address" class="block-code" style="flex:1">loading…</code>
+            <button type="button" class="btn-copy" onclick="copyAddress()" title="Copy address">&#128203;</button>
+          </div>
           <div class="instructions" style="margin-top:.75rem">
             <ol>
               <li>Open <a href="https://oisy.com" target="_blank">oisy.com</a> and sign in</li>
