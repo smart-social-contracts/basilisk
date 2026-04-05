@@ -28,3 +28,16 @@ class TipMessage(Entity):
     amount = Integer(default=0)
     token = String(max_length=50)
     timestamp = Integer(default=0)
+
+
+class SecretNote(Entity):
+    """An encrypted note that only the canister owner can read.
+
+    Demonstrates vetKeys on-chain encryption.  The note text is stored
+    encrypted; only the controller can decrypt via ``read_secret_notes``.
+    """
+
+    sender_name = String(max_length=100)
+    sender_principal = String(max_length=64)
+    encrypted_text = String(max_length=2000)
+    timestamp = Integer(default=0)

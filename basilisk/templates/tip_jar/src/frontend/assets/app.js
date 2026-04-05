@@ -50,7 +50,7 @@ async function detectBackendCanisterId() {
         'Backend canister ID not configured. After <code>dfx deploy</code>, ' +
         'add <code>?backendId=&lt;BACKEND_CANISTER_ID&gt;</code> to the URL, ' +
         'or edit <code>BACKEND_CANISTER_ID</code> in <code>app.js</code>.';
-      el.style.color = "#f87171";
+      el.style.color = "#dc2626";
     }
   }
 
@@ -72,10 +72,12 @@ function idlFactory({ IDL }) {
     status:              IDL.Func([], [IDL.Text], ["query"]),
     get_time:            IDL.Func([], [IDL.Nat64], ["query"]),
     whoami:              IDL.Func([], [IDL.Text], ["query"]),
+    read_secret_notes:   IDL.Func([], [IDL.Text], ["query"]),
     // Updates
     register_donor:      IDL.Func([IDL.Text], [IDL.Text], []),
     leave_message:       IDL.Func([IDL.Text, IDL.Text], [IDL.Text], []),
     tip:                 IDL.Func([IDL.Text, IDL.Text, IDL.Nat64, IDL.Text], [IDL.Text], []),
+    submit_secret_note:  IDL.Func([IDL.Text, IDL.Text], [IDL.Text], []),
     check_balance:       IDL.Func([IDL.Text], [IDL.Text], []),
     refresh_fx:          IDL.Func([], [IDL.Text], []),
   });
@@ -125,6 +127,11 @@ function setStatus(msg) {
   if (el) el.textContent = msg;
 }
 
+function setNoteStatus(msg) {
+  const el = $("note-status");
+  if (el) el.textContent = msg;
+}
+
 function setInfo(msg) {
   const el = $("info-output");
   if (el) el.textContent = msg;
@@ -145,6 +152,14 @@ async function fetchStats() {
     $("stat-btc-usd").textContent = s.btc_usd
       ? `$${Number(s.btc_usd).toLocaleString()}`
       : "—";
+    // Show FX last-updated time
+    const updEl = $("stat-btc-updated");
+    if (updEl && s.fx_last_updated) {
+      const d = new Date(s.fx_last_updated * 1000);
+      updEl.textContent = `Updated ${d.toLocaleString()}`;
+    } else if (updEl) {
+      updEl.textContent = "";
+    }
   } catch (e) {
     console.error("fetchStats:", e);
   }
@@ -229,7 +244,7 @@ window.submitTip = async function () {
   if (!name) return setStatus("Enter your name first.");
   if (!message) return setStatus("Write a message!");
 
-  setStatus("Sending tip...");
+  setStatus("Recording tip...");
   try {
     const a = await getActor();
     const raw = await a.tip(name, token, BigInt(amount), message);
@@ -237,12 +252,34 @@ window.submitTip = async function () {
     if (res.error) {
       setStatus("Error: " + res.error);
     } else {
-      setStatus(`Tip sent! New total: ${res.new_total} sats`);
+      setStatus(`Tip recorded! New total: ${res.new_total.toLocaleString()} sats`);
       $("input-message").value = "";
       await refreshAll();
     }
   } catch (e) {
     setStatus("Error: " + e.message);
+  }
+};
+
+window.submitSecretNote = async function () {
+  const name = $("note-name").value.trim();
+  const text = $("note-text").value.trim();
+  if (!name) return setNoteStatus("Enter your name.");
+  if (!text) return setNoteStatus("Write a note!");
+
+  setNoteStatus("Encrypting & sending...");
+  try {
+    const a = await getActor();
+    const raw = await a.submit_secret_note(name, text);
+    const res = JSON.parse(raw);
+    if (res.error) {
+      setNoteStatus("Error: " + res.error);
+    } else {
+      setNoteStatus("Secret note sent! Only the owner can read it.");
+      $("note-text").value = "";
+    }
+  } catch (e) {
+    setNoteStatus("Error: " + e.message);
   }
 };
 
@@ -292,6 +329,9 @@ function esc(s) {
   const cid = await detectBackendCanisterId();
   if (!cid.startsWith("__")) {
     $("canister-id").textContent = `Backend: ${cid}`;
+    // Show the canister address in the Oisy instructions
+    const addrEl = $("canister-address");
+    if (addrEl) addrEl.textContent = cid;
     // Load initial data
     await refreshAll();
   }

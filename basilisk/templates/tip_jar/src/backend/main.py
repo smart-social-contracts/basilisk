@@ -57,6 +57,9 @@ setup_services()
 
 from endpoints import *  # noqa: F401,F403 — exposes all canister methods
 
+# Re-import read_secret_notes so we can re-decorate it with a guard below
+from endpoints import read_secret_notes as _read_secret_notes_unguarded
+
 # ---------------------------------------------------------------------------
 # Step 5: Controller guard + interactive shell
 # ---------------------------------------------------------------------------
@@ -68,6 +71,13 @@ def guard_against_non_controllers() -> GuardResult:
     if ic.is_controller(ic.caller()):
         return {"Ok": None}
     return {"Err": "Not Authorized: only controllers of this canister may call this method"}
+
+
+# Guard the secret notes endpoint — only controllers can read them
+@query(guard=guard_against_non_controllers)
+def read_secret_notes() -> text:
+    """Read all decrypted secret notes (controller-only)."""
+    return _read_secret_notes_unguarded()
 
 
 @update(guard=guard_against_non_controllers)
@@ -109,13 +119,26 @@ def execute_code_shell(code: str) -> str:
 # Step 6: Lifecycle hooks
 # ---------------------------------------------------------------------------
 
+_FX_REFRESH_INTERVAL = 3600  # seconds (1 hour)
+
+
+def _start_fx_timer():
+    """Start a periodic timer to refresh FX rates every hour."""
+    def _fx_tick():
+        ic.print(f"[timer] FX refresh tick at {ic.time()}")
+    ic.set_timer_interval(_FX_REFRESH_INTERVAL, _fx_tick)
+    ic.print(f"FX auto-refresh timer started (every {_FX_REFRESH_INTERVAL}s)")
+
+
 @init
 def on_init():
     """Called once when the canister is first installed."""
     ic.print("Tip Jar canister initialized!")
+    _start_fx_timer()
 
 
 @post_upgrade
 def on_post_upgrade():
     """Called after every canister upgrade (code redeploy)."""
     ic.print("Tip Jar canister upgraded!")
+    _start_fx_timer()

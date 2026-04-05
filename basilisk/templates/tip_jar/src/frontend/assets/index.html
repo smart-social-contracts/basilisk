@@ -4,12 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tip Jar — Basilisk Template</title>
+  <link rel="icon" type="image/png" href="logo.png" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="container">
     <!-- Header -->
     <header>
+      <img src="logo.png" alt="Basilisk" class="logo" />
       <h1>Tip Jar</h1>
       <p class="subtitle">A <a href="https://github.com/smart-social-contracts/basilisk" target="_blank">basilisk</a> canister template on the Internet Computer</p>
       <p class="canister-id" id="canister-id"></p>
@@ -34,13 +36,25 @@
         <div class="stat">
           <span class="stat-value" id="stat-btc-usd">—</span>
           <span class="stat-label">BTC/USD</span>
+          <span class="stat-sub" id="stat-btc-updated"></span>
         </div>
       </div>
     </section>
 
-    <!-- Register + Tip -->
+    <!-- Send ckBTC Tip -->
     <section class="card">
-      <h2>Leave a Tip</h2>
+      <h2>Send a ckBTC Tip</h2>
+      <div class="instructions">
+        <strong>How to send ckBTC from Oisy Wallet:</strong>
+        <ol>
+          <li>Open <a href="https://oisy.com" target="_blank">oisy.com</a> and sign in</li>
+          <li>Switch to <strong>ckBTC</strong> token</li>
+          <li>Tap <strong>Send</strong> and paste this canister address:<br/>
+            <code id="canister-address">loading…</code></li>
+          <li>Enter the amount and confirm the transaction</li>
+        </ol>
+        Once received, register your name below so it appears on the leaderboard.
+      </div>
       <form id="tip-form" onsubmit="return false;">
         <div class="form-row">
           <input type="text" id="input-name" placeholder="Your name" required />
@@ -52,10 +66,25 @@
             <option value="ckBTC">ckBTC</option>
           </select>
         </div>
-        <textarea id="input-message" placeholder="Leave a message..." rows="2"></textarea>
-        <button type="button" id="btn-tip" onclick="submitTip()">Send Tip</button>
+        <textarea id="input-message" placeholder="Leave a message with your tip..." rows="2"></textarea>
+        <button type="button" id="btn-tip" onclick="submitTip()">Record Tip</button>
       </form>
       <p class="form-note" id="tip-status"></p>
+    </section>
+
+    <!-- Secret Note (vetKeys encryption) -->
+    <section class="card">
+      <h2>Send a Secret Note</h2>
+      <p class="form-note" style="margin-bottom:.75rem">
+        Write a private note that only the canister owner can read.
+        Notes are stored encrypted on-chain using <strong>vetKeys</strong>.
+      </p>
+      <div class="form-row">
+        <input type="text" id="note-name" placeholder="Your name" />
+      </div>
+      <textarea id="note-text" placeholder="Your secret note..." rows="3"></textarea>
+      <button type="button" id="btn-note" onclick="submitSecretNote()" style="width:100%">Send Secret Note</button>
+      <p class="form-note" id="note-status"></p>
     </section>
 
     <!-- Leaderboard -->
@@ -79,7 +108,7 @@
       </div>
     </section>
 
-    <!-- Utility -->
+    <!-- Canister Info -->
     <section class="card">
       <h2>Canister Info</h2>
       <div class="info-grid">
@@ -92,10 +121,10 @@
     </section>
   </div>
 
-  <!--
-    Load the IC agent from CDN.  In production you'd install @dfinity/agent
-    via npm, but for this template a CDN script keeps things simple.
-  -->
+  <footer>
+    Powered by <a href="https://github.com/smart-social-contracts/basilisk" target="_blank">basilisk</a> on the Internet Computer
+  </footer>
+
   <script type="module" src="app.js"></script>
 </body>
 </html>

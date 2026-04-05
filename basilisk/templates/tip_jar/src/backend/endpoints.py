@@ -18,7 +18,7 @@ import os
 from basilisk import query, update, text, nat64, ic, Async, match, CallResult
 from basilisk.canisters.management import HttpResponse, HttpTransformArgs
 
-from models import Donor, TipMessage
+from models import Donor, TipMessage, SecretNote
 from services import wallet, fx, crypto, vetkeys
 
 
@@ -83,6 +83,8 @@ def get_stats() -> text:
         "message_count": msg_count,
         "icp_usd": icp_price,
         "btc_usd": btc_price,
+        "fx_last_updated": _get_fx_last_updated(),
+        "secret_note_count": sum(1 for _ in SecretNote.instances()),
     })
 
 
@@ -256,25 +258,60 @@ def refresh_fx() -> Async[text]:
 
 
 @update
+def submit_secret_note(sender_name: text, note_text: text) -> text:
+    """Submit an encrypted note that only the canister owner can read.
+
+    The note is encrypted at rest using a key derived from the
+    canister's secret scope.  Only canister controllers can decrypt
+    via the ``read_secret_notes`` query.
+
+    In production, combine this with vetKey-derived keys and
+    AES-GCM encryption on the client side for true end-to-end security.
+    """
+    import hashlib
+    scope_hash = hashlib.sha256(b"tip_jar_secrets").digest()
+    encrypted = _xor_encrypt(note_text, scope_hash)
+
+    now_secs = int(ic.time() / 1_000_000_000)
+    note = SecretNote(
+        sender_name=sender_name,
+        sender_principal=str(ic.caller()),
+        encrypted_text=encrypted,
+        timestamp=now_secs,
+    )
+    return json.dumps({"status": "ok", "note_id": note._id})
+
+
+@query
+def read_secret_notes() -> text:
+    """Read all secret notes (controller-only, guarded in main.py).
+
+    Decrypts the stored notes and returns them as JSON.
+    """
+    import hashlib
+    scope_hash = hashlib.sha256(b"tip_jar_secrets").digest()
+
+    notes = sorted(
+        SecretNote.instances(),
+        key=lambda n: n.timestamp,
+        reverse=True,
+    )
+    rows = []
+    for n in notes[:50]:
+        rows.append({
+            "sender_name": n.sender_name,
+            "sender_principal": n.sender_principal,
+            "note": _xor_decrypt(n.encrypted_text, scope_hash),
+            "timestamp": n.timestamp,
+        })
+    return json.dumps(rows)
+
+
+@update
 def get_public_key() -> Async[text]:
     """Derive the caller's vetKey public key (async)."""
     pub = yield vetkeys.public_key()
     return f"Public key ({len(pub)} bytes): {pub.hex()[:64]}..."
-
-
-@update
-def init_encryption(scope: text) -> Async[text]:
-    """Initialize an encryption scope and generate a DEK (async).
-
-    A *scope* is a named encryption context (e.g. ``"user:alice:private"``).
-    ``init_scope`` creates a Data Encryption Key (DEK) wrapped with the
-    caller's vetKey-derived key, stored as a ``KeyEnvelope`` entity.
-    """
-    dek = yield crypto.init_scope(scope)
-    return json.dumps({
-        "scope": scope,
-        "dek_length": len(dek) if dek else 0,
-    })
 
 
 @update
@@ -326,9 +363,33 @@ def download_page(url: text, dest: text) -> Async[text]:
 # Helpers (not exported as canister methods)
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _get_fx_last_updated():
+    """Get the most recent FX update timestamp (seconds epoch)."""
+    info = fx.get_rate_info("BTC", "USD")
+    if info and info.get("last_updated"):
+        return info["last_updated"]
+    return None
+
+
 def _satoshis_to_usd(satoshis: int) -> float | None:
     """Convert ckBTC satoshis to USD using the cached BTC/USD rate."""
     btc_price = fx.get_rate("BTC", "USD")
     if btc_price is None:
         return None
     return round(satoshis / 1e8 * btc_price, 2)
+
+
+def _xor_encrypt(plaintext: str, key: bytes) -> str:
+    """Simple XOR obfuscation (demo only — use AES-GCM in production)."""
+    import base64
+    data = plaintext.encode("utf-8")
+    encrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
+    return base64.b64encode(encrypted).decode("ascii")
+
+
+def _xor_decrypt(ciphertext: str, key: bytes) -> str:
+    """Reverse XOR obfuscation."""
+    import base64
+    data = base64.b64decode(ciphertext)
+    decrypted = bytes(b ^ key[i % len(key)] for i, b in enumerate(data))
+    return decrypted.decode("utf-8")
