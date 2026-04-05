@@ -16,7 +16,9 @@ class Donor(Entity):
 
     name = String(max_length=100)
     principal = String(max_length=64)
-    total_donated = Integer(default=0)
+    total_donated = Integer(default=0)        # ckBTC in satoshis (kept for backward compat)
+    total_donated_cketh = Integer(default=0)   # ckETH in wei
+    total_donated_icp = Integer(default=0)     # ICP in e8s
     message_count = Integer(default=0)
 
 

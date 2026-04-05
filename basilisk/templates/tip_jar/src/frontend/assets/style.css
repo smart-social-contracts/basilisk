@@ -270,6 +270,32 @@ button:hover {
   box-shadow: none;
 }
 
+/* FX rates table */
+.fx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .85rem;
+}
+.fx-table th {
+  text-align: left;
+  padding: .5rem .75rem;
+  border-bottom: 2px solid var(--border);
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: .75rem;
+  text-transform: uppercase;
+}
+.fx-table td {
+  padding: .5rem .75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Token breakdown in leaderboard */
+.token-breakdown {
+  font-size: .78rem;
+  color: var(--text-secondary);
+}
+
 .form-note {
   margin-top: .5rem;
   font-size: .82rem;

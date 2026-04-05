@@ -34,8 +34,8 @@
           </p>
           <p style="margin-top:.5rem">
             The backend is written in <strong>Python</strong> and compiled to WebAssembly.
-            It handles ICRC-1 token balances (<strong>ckBTC</strong>), fetches live
-            <strong>BTC/USD</strong> exchange rates via the on-chain
+            It handles ICRC-1 token balances (<strong>ckBTC</strong>, <strong>ckETH</strong>, <strong>ICP</strong>), fetches live
+            exchange rates via the on-chain
             <a href="https://wiki.internetcomputer.org/wiki/Exchange_Rate_Canister" target="_blank">XRC canister</a>,
             stores encrypted notes using
             <a href="https://internetcomputer.org/docs/building-apps/network-features/encryption/vetkeys" target="_blank">vetKeys</a>,
@@ -73,13 +73,8 @@
             <span class="stat-label">Messages</span>
           </div>
           <div class="stat">
-            <span class="stat-value" id="stat-total">—</span>
-            <span class="stat-label">Total (sats)</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value" id="stat-btc-usd">—</span>
-            <span class="stat-label">BTC/USD</span>
-            <span class="stat-sub" id="stat-btc-updated"></span>
+            <span class="stat-value" id="stat-total-usd">—</span>
+            <span class="stat-label">Total Donated (USD)</span>
           </div>
         </div>
       </section>
@@ -93,10 +88,10 @@
         <h2>Leaderboard</h2>
         <table id="leaderboard">
           <thead>
-            <tr><th>#</th><th>Name</th><th>Principal</th><th>Total (sats)</th><th>Messages</th></tr>
+            <tr><th>#</th><th>Name</th><th>Principal</th><th>Donated (USD)</th><th>Tokens</th><th>Msgs</th></tr>
           </thead>
           <tbody id="leaderboard-body">
-            <tr><td colspan="5" class="empty">Loading…</td></tr>
+            <tr><td colspan="6" class="empty">Loading…</td></tr>
           </tbody>
         </table>
         <div id="leaderboard-pager" class="pager"></div>
@@ -108,7 +103,7 @@
     <!-- ============================================================ -->
     <div id="tab-donate" class="tab-panel">
       <section class="card">
-        <h2>Send a ckBTC Tip</h2>
+        <h2>Send a Tip</h2>
 
         <!-- Step 1 (optional): Login to II -->
         <div id="donate-step-1">
@@ -127,12 +122,17 @@
         <div id="donate-step-2" class="step-disabled">
           <p class="step-label">Step 2 <button type="button" class="btn-back" onclick="showDonateStep(1)">&larr; Back</button></p>
           <p class="form-note" style="margin-bottom:.75rem">
-            Enter your details. You'll then send ckBTC via
+            Enter your details. You'll then send tokens via
             <a href="https://oisy.com" target="_blank">Oisy Wallet</a>.
           </p>
           <div class="form-row">
             <input type="text" id="input-name" placeholder="Your nickname" required />
-            <input type="number" id="input-amount" placeholder="Amount (sats)" min="1" value="1000" />
+            <input type="number" id="input-amount" placeholder="Amount" min="1" value="1000" />
+            <select id="input-token">
+              <option value="ckBTC" selected>ckBTC (sats)</option>
+              <option value="ckETH">ckETH (wei)</option>
+              <option value="ICP">ICP (e8s)</option>
+            </select>
           </div>
           <textarea id="input-message" placeholder="Leave an optional message..." rows="2"></textarea>
           <div class="form-row" style="align-items:center">
@@ -147,7 +147,7 @@
         <!-- Step 3: Send ckBTC + verify -->
         <div id="donate-step-3" class="step-disabled">
           <p class="step-label">Step 3 <button type="button" class="btn-back" onclick="showDonateStep(2)">&larr; Back</button></p>
-          <p>Send exactly <strong><span id="send-amount">—</span> satoshis</strong> of ckBTC to:</p>
+          <p>Send exactly <strong><span id="send-amount">—</span> <span id="send-unit">satoshis</span></strong> of <strong><span id="send-token">ckBTC</span></strong> to:</p>
           <div class="copy-row">
             <code id="canister-address" class="block-code" style="flex:1">loading…</code>
             <button type="button" class="btn-copy" onclick="copyAddress()" title="Copy address">&#128203;</button>
@@ -155,7 +155,7 @@
           <div class="instructions" style="margin-top:.75rem">
             <ol>
               <li>Open <a href="https://oisy.com" target="_blank">oisy.com</a> and sign in</li>
-              <li>Switch to <strong>ckBTC</strong> token</li>
+              <li>Switch to the <strong><span class="send-token-hint">ckBTC</span></strong> token</li>
               <li>Tap <strong>Send</strong>, paste the address above, enter exactly the amount shown</li>
               <li>Confirm the transaction, then click <strong>Verify</strong> below</li>
             </ol>
@@ -168,7 +168,7 @@
           <div class="success-box">
             <strong>Tip verified!</strong><br/>
             <span id="verified-donor"></span> donated
-            <strong><span id="verified-amount"></span> sats</strong>
+            <strong><span id="verified-amount"></span> <span id="verified-token"></span></strong>
             <br/><span class="mono" style="font-size:.7rem">tx: <span id="verified-tx"></span></span>
           </div>
           <button type="button" onclick="resetTipFlow()" style="width:100%;margin-top:.75rem">Send Another Tip</button>
@@ -182,6 +182,12 @@
     <!-- TAB 3: More                                                  -->
     <!-- ============================================================ -->
     <div id="tab-more" class="tab-panel">
+      <!-- FX Rates -->
+      <section class="card">
+        <h2>Exchange Rates</h2>
+        <div id="fx-rates"><p class="empty">Loading…</p></div>
+      </section>
+
       <!-- Canister Info -->
       <section class="card">
         <h2>Canister Info</h2>

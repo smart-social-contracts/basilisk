@@ -31,7 +31,22 @@ def setup_services():
         decimals=8,
         fee=10,
     )
+    wallet.register_token(
+        "ckETH",
+        ledger="ss2fx-dyaaa-aaaar-qacoq-cai",
+        indexer="s3zol-vqaaa-aaaar-qacpa-cai",
+        decimals=18,
+        fee=2_000_000_000_000,
+    )
+    wallet.register_token(
+        "ICP",
+        ledger="ryjl3-tyaaa-aaaaa-aaaba-cai",
+        indexer="qhbym-qaaaa-aaaaa-aaafq-cai",
+        decimals=8,
+        fee=10_000,
+    )
 
     # --- FX rates: exchange rate queries via IC XRC canister ---
     fx.register_pair("ICP", "USD")
     fx.register_pair("BTC", "USD")
+    fx.register_pair("ETH", "USD")

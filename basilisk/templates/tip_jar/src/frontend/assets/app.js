@@ -47,10 +47,11 @@ function idlFactory({ IDL }) {
     get_time:            IDL.Func([], [IDL.Nat64], ["query"]),
     whoami:              IDL.Func([], [IDL.Text], ["query"]),
     read_secret_notes:   IDL.Func([], [IDL.Text], ["query"]),
-    register_tip:        IDL.Func([IDL.Text, IDL.Nat64, IDL.Text, IDL.Text], [IDL.Text], []),
+    register_tip:        IDL.Func([IDL.Text, IDL.Nat64, IDL.Text, IDL.Text, IDL.Text], [IDL.Text], []),
     verify_tip:          IDL.Func([IDL.Nat64], [IDL.Text], []),
     check_balance:       IDL.Func([IDL.Text], [IDL.Text], []),
     refresh_fx:          IDL.Func([], [IDL.Text], []),
+    get_fx_rates:        IDL.Func([], [IDL.Text], ["query"]),
   });
 }
 
@@ -116,6 +117,14 @@ function truncPrincipal(p) {
   return p.slice(0, 5) + "…" + p.slice(-3);
 }
 
+const TOKEN_UNITS = { ckBTC: "sats", ckETH: "wei", ICP: "e8s" };
+const TOKEN_DECIMALS = { ckBTC: 8, ckETH: 18, ICP: 8 };
+function fmtTokenAmount(amount, token) {
+  const dec = TOKEN_DECIMALS[token] || 8;
+  const human = amount / (10 ** dec);
+  return human < 0.0001 ? human.toExponential(2) : human.toLocaleString(undefined, { maximumFractionDigits: 8 });
+}
+
 // ---------------------------------------------------------------------------
 // Tab switching
 // ---------------------------------------------------------------------------
@@ -151,7 +160,7 @@ async function fetchLeaderboard() {
 function renderLeaderboardPage() {
   const tbody = $("leaderboard-body");
   if (!leaderboardData.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty">No donors yet</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No donors yet</td></tr>';
     $("leaderboard-pager").innerHTML = "";
     return;
   }
@@ -163,15 +172,22 @@ function renderLeaderboardPage() {
   tbody.innerHTML = page.map((r, i) => {
     const rank = start + i + 1;
     const rowId = `donor-row-${rank}`;
+    // Build token breakdown string
+    const parts = [];
+    if (r.ckbtc_sats) parts.push(`${fmtTokenAmount(r.ckbtc_sats, "ckBTC")} BTC`);
+    if (r.cketh_wei) parts.push(`${fmtTokenAmount(r.cketh_wei, "ckETH")} ETH`);
+    if (r.icp_e8s) parts.push(`${fmtTokenAmount(r.icp_e8s, "ICP")} ICP`);
+    const tokenStr = parts.join(", ") || "—";
     return `<tr class="donor-row" data-donor="${esc(r.name)}" onclick="toggleDonorMessages(this, '${esc(r.name).replace(/'/g, "\\'")}')">
       <td>${rank}</td>
       <td>${esc(r.name)}</td>
       <td class="mono" title="${esc(r.principal)}">${truncPrincipal(r.principal)}</td>
-      <td>${r.total_donated.toLocaleString()}</td>
+      <td>$${r.total_usd.toLocaleString()}</td>
+      <td class="token-breakdown">${tokenStr}</td>
       <td>${r.message_count}</td>
     </tr>
     <tr id="${rowId}" class="donor-messages-row" style="display:none">
-      <td colspan="5"><div class="donor-messages-container">Loading…</div></td>
+      <td colspan="6"><div class="donor-messages-container">Loading…</div></td>
     </tr>`;
   }).join("");
 
@@ -240,19 +256,31 @@ async function fetchStats() {
     const s = JSON.parse(raw);
     $("stat-donors").textContent = s.donor_count ?? "—";
     $("stat-messages").textContent = s.message_count ?? "—";
-    $("stat-total").textContent = (s.total_donated_satoshis ?? 0).toLocaleString();
-    $("stat-btc-usd").textContent = s.btc_usd
-      ? `$${Number(s.btc_usd).toLocaleString()}`
+    $("stat-total-usd").textContent = s.total_donated_usd != null
+      ? `$${Number(s.total_donated_usd).toLocaleString()}`
       : "—";
-    const updEl = $("stat-btc-updated");
-    if (updEl && s.fx_last_updated) {
-      const d = new Date(s.fx_last_updated * 1000);
-      updEl.textContent = `Updated ${d.toLocaleString()}`;
-    } else if (updEl) {
-      updEl.textContent = "";
-    }
   } catch (e) {
     console.error("fetchStats:", e);
+  }
+}
+
+async function fetchFxRates() {
+  try {
+    const a = await getActor();
+    const raw = await a.get_fx_rates();
+    const rates = JSON.parse(raw);
+    const el = $("fx-rates");
+    if (!rates.length) { el.innerHTML = '<p class="empty">No rates available</p>'; return; }
+    el.innerHTML = '<table class="fx-table"><thead><tr><th>Pair</th><th>Rate</th><th>Last Updated</th></tr></thead><tbody>' +
+      rates.map(r => {
+        const updated = r.last_updated
+          ? new Date(r.last_updated * 1000).toISOString().replace("T", " ").slice(0, 19) + "Z"
+          : "—";
+        const rate = r.rate ? `$${Number(r.rate).toLocaleString(undefined, {maximumFractionDigits: 6})}` : "—";
+        return `<tr><td><strong>${esc(r.pair)}</strong></td><td>${rate}</td><td class="mono">${updated}</td></tr>`;
+      }).join("") + '</tbody></table>';
+  } catch (e) {
+    console.error("fetchFxRates:", e);
   }
 }
 
@@ -277,27 +305,31 @@ function showDonateStep(n) {
 window.showDonateStep = showDonateStep;
 
 window.registerTip = async function () {
-  const name = $("input-name").value.trim();
-  const amount = parseInt($("input-amount").value || "0", 10);
-  const message = $("input-message").value.trim();
-  const msgType = $("input-msg-private")?.checked ? "secret" : "public";
+  const name = $('input-name').value.trim();
+  const amount = parseInt($('input-amount').value || '0', 10);
+  const message = $('input-message').value.trim();
+  const msgType = $('input-msg-private')?.checked ? 'secret' : 'public';
+  const token = $('input-token')?.value || 'ckBTC';
 
-  if (!name) return setStatus("Enter your nickname.");
-  if (amount <= 0) return setStatus("Enter an amount.");
+  if (!name) return setStatus('Enter your nickname.');
+  if (amount <= 0) return setStatus('Enter an amount.');
 
-  setStatus("Registering tip...");
+  setStatus('Registering tip...');
   try {
     const a = await getActor();
-    const raw = await a.register_tip(name, BigInt(amount), message, msgType);
+    const raw = await a.register_tip(name, BigInt(amount), message, msgType, token);
     const res = JSON.parse(raw);
-    if (res.error) return setStatus("Error: " + res.error);
+    if (res.error) return setStatus('Error: ' + res.error);
 
     currentPendingId = res.pending_id;
-    $("send-amount").textContent = amount.toLocaleString();
+    $('send-amount').textContent = amount.toLocaleString();
+    $('send-unit').textContent = TOKEN_UNITS[token] || 'units';
+    $('send-token').textContent = token;
+    document.querySelectorAll('.send-token-hint').forEach(el => el.textContent = token);
     showDonateStep(3);
-    setStatus("");
+    setStatus('');
   } catch (e) {
-    setStatus("Error: " + e.message);
+    setStatus('Error: ' + e.message);
   }
 };
 
@@ -329,9 +361,10 @@ window.verifyTip = async function () {
 
     currentPendingId = null;
     showDonateStep(4);
-    $("verified-donor").textContent = res.donor;
-    $("verified-amount").textContent = Number(res.amount).toLocaleString();
-    $("verified-tx").textContent = res.tx_id;
+    $('verified-donor').textContent = res.donor;
+    $('verified-amount').textContent = Number(res.amount).toLocaleString();
+    $('verified-token').textContent = `${TOKEN_UNITS[res.token] || 'units'} ${res.token}`;
+    $('verified-tx').textContent = res.tx_id;
     setStatus("");
     await refreshAll();
   } catch (e) {
@@ -374,9 +407,9 @@ window.callTime = async function () {
 };
 
 window.refreshAll = async function () {
-  await Promise.all([fetchStats(), fetchLeaderboard()]);
-  // Fire-and-forget: refresh FX rate in the background, then update stats
-  getActor().then(a => a.refresh_fx()).then(() => fetchStats()).catch(() => {});
+  await Promise.all([fetchStats(), fetchLeaderboard(), fetchFxRates()]);
+  // Fire-and-forget: refresh FX rate in the background, then update stats + rates
+  getActor().then(a => a.refresh_fx()).then(() => Promise.all([fetchStats(), fetchFxRates()])).catch(() => {});
 };
 
 // ---------------------------------------------------------------------------

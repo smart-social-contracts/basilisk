@@ -28,22 +28,24 @@ from services import wallet, fx, crypto, vetkeys
 
 @query
 def get_leaderboard() -> text:
-    """Return all donors sorted by total donated, as JSON."""
-    donors = sorted(
-        Donor.instances(),
-        key=lambda d: d.total_donated,
-        reverse=True,
-    )
+    """Return all donors sorted by total USD donated, as JSON."""
+    donors = list(Donor.instances())
     rows = []
     for d in donors:
-        usd = _satoshis_to_usd(d.total_donated)
+        usd_ckbtc = _amount_to_usd(d.total_donated, "ckBTC")
+        usd_cketh = _amount_to_usd(d.total_donated_cketh, "ckETH")
+        usd_icp = _amount_to_usd(d.total_donated_icp, "ICP")
+        total_usd = sum(v for v in (usd_ckbtc, usd_cketh, usd_icp) if v is not None)
         rows.append({
             "name": d.name,
             "principal": d.principal,
-            "total_donated": d.total_donated,
-            "usd_value": usd,
+            "ckbtc_sats": d.total_donated,
+            "cketh_wei": d.total_donated_cketh,
+            "icp_e8s": d.total_donated_icp,
+            "total_usd": round(total_usd, 2) if total_usd else 0,
             "message_count": d.message_count,
         })
+    rows.sort(key=lambda r: r["total_usd"], reverse=True)
     return json.dumps(rows)
 
 
@@ -106,23 +108,41 @@ def get_donor_messages(donor_name: text) -> text:
 @query
 def get_stats() -> text:
     """Return aggregate tip jar statistics, as JSON."""
-    total = sum(d.total_donated for d in Donor.instances())
-    donor_count = sum(1 for _ in Donor.instances())
+    donors = list(Donor.instances())
+    donor_count = len(donors)
     msg_count = sum(1 for _ in TipMessage.instances())
 
-    icp_price = fx.get_rate("ICP", "USD")
-    btc_price = fx.get_rate("BTC", "USD")
+    total_usd = 0.0
+    for d in donors:
+        for val, tok in (
+            (d.total_donated, "ckBTC"),
+            (d.total_donated_cketh, "ckETH"),
+            (d.total_donated_icp, "ICP"),
+        ):
+            v = _amount_to_usd(val, tok)
+            if v:
+                total_usd += v
 
     return json.dumps({
-        "total_donated_satoshis": total,
-        "total_donated_usd": _satoshis_to_usd(total),
+        "total_donated_usd": round(total_usd, 2) if total_usd else None,
         "donor_count": donor_count,
         "message_count": msg_count,
-        "icp_usd": icp_price,
-        "btc_usd": btc_price,
-        "fx_last_updated": _get_fx_last_updated(),
         "secret_note_count": sum(1 for _ in SecretNote.instances()),
     })
+
+
+@query
+def get_fx_rates() -> text:
+    """Return all registered FX rates with last-updated timestamps."""
+    pairs = fx.list_pairs()
+    rows = []
+    for p in pairs:
+        rows.append({
+            "pair": p["name"],
+            "rate": p["human_rate"],
+            "last_updated": p["last_updated"],
+        })
+    return json.dumps(rows)
 
 
 @query
@@ -175,13 +195,16 @@ def http_transform(args: HttpTransformArgs) -> HttpResponse:
 # 2. UPDATE ENDPOINTS  (sync — mutate state, no inter-canister calls)
 # ═══════════════════════════════════════════════════════════════════════════
 
+_SUPPORTED_TOKENS = ("ckBTC", "ckETH", "ICP")
+
+
 @update
-def register_tip(donor_name: text, amount: nat64, message: text, message_type: text) -> text:
-    """Step 1: Register a pending tip before sending ckBTC.
+def register_tip(donor_name: text, amount: nat64, message: text, message_type: text, token_name: text) -> text:
+    """Step 1: Register a pending tip before sending tokens.
 
     The user provides their name, the amount they plan to send,
-    and an optional message (public or secret).  Returns a pending_id
-    that is used later to verify the on-chain transfer.
+    the token (ckBTC, ckETH, ICP), and an optional message (public or secret).
+    Returns a pending_id used later to verify the on-chain transfer.
     """
     if not donor_name.strip():
         return json.dumps({"error": "Name is required."})
@@ -189,6 +212,8 @@ def register_tip(donor_name: text, amount: nat64, message: text, message_type: t
         return json.dumps({"error": "Amount must be positive."})
     if message_type not in ("public", "secret"):
         message_type = "public"
+    if token_name not in _SUPPORTED_TOKENS:
+        return json.dumps({"error": f"Unsupported token. Choose from: {', '.join(_SUPPORTED_TOKENS)}"})
 
     now_secs = int(ic.time() / 1_000_000_000)
     pending = PendingTip(
@@ -196,7 +221,7 @@ def register_tip(donor_name: text, amount: nat64, message: text, message_type: t
         message=message,
         message_type=message_type,
         amount=amount,
-        token="ckBTC",
+        token=token_name,
         principal=str(ic.caller()),
         timestamp=now_secs,
     )
@@ -204,6 +229,7 @@ def register_tip(donor_name: text, amount: nat64, message: text, message_type: t
         "status": "pending",
         "pending_id": pending._id,
         "amount": amount,
+        "token": token_name,
     })
 
 
@@ -242,9 +268,9 @@ def schedule_once(delay_secs: nat64) -> text:
 
 @update
 def verify_tip(pending_id: nat64) -> Async[text]:
-    """Step 2: Verify a pending tip against on-chain ckBTC transfers.
+    """Step 2: Verify a pending tip against on-chain token transfers.
 
-    Refreshes the wallet from the ckBTC indexer, then scans for an
+    Refreshes the wallet from the token's indexer, then scans for an
     incoming transfer whose amount matches the pending tip.  If found,
     the tip is confirmed: a Donor and TipMessage (or SecretNote) are
     created, and the pending record is removed.
@@ -253,8 +279,10 @@ def verify_tip(pending_id: nat64) -> Async[text]:
     if pending is None:
         return json.dumps({"error": "Pending tip not found."})
 
+    token = pending.token or "ckBTC"
+
     # Refresh transactions from the indexer
-    yield wallet.refresh("ckBTC")
+    yield wallet.refresh(token)
 
     # Collect tx_ids already claimed by previous tips
     claimed_ids = set()
@@ -265,7 +293,7 @@ def verify_tip(pending_id: nat64) -> Async[text]:
     # Scan transfers for an unclaimed incoming tx matching the amount
     canister_id = str(ic.id())
     matched_tx = None
-    transfers = wallet.list_transfers("ckBTC", limit=200)
+    transfers = wallet.list_transfers(token, limit=200)
     for tx in transfers:
         if tx["to"] != canister_id:
             continue
@@ -278,7 +306,7 @@ def verify_tip(pending_id: nat64) -> Async[text]:
     if matched_tx is None:
         return json.dumps({
             "status": "not_found",
-            "message": f"No matching {pending.amount}-sat transfer found yet. "
+            "message": f"No matching {pending.amount} {token} transfer found yet. "
                        "Make sure you sent exactly that amount, then try again.",
         })
 
@@ -286,7 +314,13 @@ def verify_tip(pending_id: nat64) -> Async[text]:
     donor = Donor[pending.donor_name]
     if donor is None:
         donor = Donor(name=pending.donor_name, principal=pending.principal)
-    donor.total_donated = donor.total_donated + pending.amount
+    # Update the right per-token total
+    if token == "ckBTC":
+        donor.total_donated = donor.total_donated + pending.amount
+    elif token == "ckETH":
+        donor.total_donated_cketh = donor.total_donated_cketh + pending.amount
+    elif token == "ICP":
+        donor.total_donated_icp = donor.total_donated_icp + pending.amount
     donor.message_count = donor.message_count + (1 if pending.message else 0)
 
     now_secs = int(ic.time() / 1_000_000_000)
@@ -308,7 +342,7 @@ def verify_tip(pending_id: nat64) -> Async[text]:
                 donor_name=pending.donor_name,
                 message=pending.message,
                 amount=pending.amount,
-                token="ckBTC",
+                token=token,
                 timestamp=now_secs,
                 claimed_tx_id=matched_tx["tx_id"],
             )
@@ -319,7 +353,7 @@ def verify_tip(pending_id: nat64) -> Async[text]:
             donor_name=pending.donor_name,
             message="",
             amount=pending.amount,
-            token="ckBTC",
+            token=token,
             timestamp=now_secs,
             claimed_tx_id=matched_tx["tx_id"],
         )
@@ -327,12 +361,13 @@ def verify_tip(pending_id: nat64) -> Async[text]:
     # Clean up pending record
     pending.delete()
 
-    balance = yield wallet.balance_of("ckBTC")
+    balance = yield wallet.balance_of(token)
 
     return json.dumps({
         "status": "verified",
         "donor": pending.donor_name,
         "amount": pending.amount,
+        "token": token,
         "tx_id": matched_tx["tx_id"],
         "canister_balance": balance,
     })
@@ -465,20 +500,26 @@ def download_page(url: text, dest: text) -> Async[text]:
 # Helpers (not exported as canister methods)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _get_fx_last_updated():
-    """Get the most recent FX update timestamp (seconds epoch)."""
-    info = fx.get_rate_info("BTC", "USD")
-    if info and info.get("last_updated"):
-        return info["last_updated"]
-    return None
+# Token → (FX base symbol, decimals)
+_TOKEN_FX_MAP = {
+    "ckBTC": ("BTC", 8),
+    "ckETH": ("ETH", 18),
+    "ICP":   ("ICP", 8),
+}
 
 
-def _satoshis_to_usd(satoshis: int) -> float | None:
-    """Convert ckBTC satoshis to USD using the cached BTC/USD rate."""
-    btc_price = fx.get_rate("BTC", "USD")
-    if btc_price is None:
+def _amount_to_usd(amount: int, token_name: str) -> float | None:
+    """Convert a token amount (smallest units) to USD using cached FX rate."""
+    if not amount:
         return None
-    return round(satoshis / 1e8 * btc_price, 2)
+    info = _TOKEN_FX_MAP.get(token_name)
+    if info is None:
+        return None
+    symbol, decimals = info
+    rate = fx.get_rate(symbol, "USD")
+    if rate is None:
+        return None
+    return round(amount / (10 ** decimals) * rate, 2)
 
 
 def _xor_encrypt(plaintext: str, key: bytes) -> str:
