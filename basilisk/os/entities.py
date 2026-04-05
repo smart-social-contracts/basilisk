@@ -303,8 +303,8 @@ class Token(Entity, TimestampedMixin):
 
     Usage::
 
-        Token(name="ckBTC", ledger="mxzaz-hqaaa-aaaar-qaada-cai",
-              indexer="n5wcd-faaaa-aaaar-qaaea-cai", decimals=8, fee=10)
+        from basilisk.os.wallet import WELL_KNOWN_TOKENS
+        wallet.register_well_known_tokens("ckBTC")  # auto-registers from registry
     """
 
     __alias__ = "name"

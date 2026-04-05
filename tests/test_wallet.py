@@ -338,22 +338,25 @@ class TestTokenRegistry:
 
     def test_register_token(self, wallet_reachable, wallet_canister, wallet_network):
         """Register a new token and verify it's persisted."""
+        from basilisk.os.wallet import WELL_KNOWN_TOKENS
+        ckbtc = WELL_KNOWN_TOKENS["ckBTC"]
         result = _exec(
-            "t = Token(name='test_ckBTC', ledger='mxzaz-hqaaa-aaaar-qaada-cai', "
-            "indexer='n5wcd-faaaa-aaaar-qaaea-cai', decimals=8, fee=10)\n"
+            f"t = Token(name='test_ckBTC', ledger='{ckbtc['ledger']}', "
+            f"indexer='{ckbtc['indexer']}', decimals={ckbtc['decimals']}, fee={ckbtc['fee']})\n"
             "print(f'{t.name}|{t.ledger}|{t.decimals}|{t.fee}')",
             wallet_canister, wallet_network,
         )
-        assert "test_ckBTC|mxzaz-hqaaa-aaaar-qaada-cai|8|10" in result
+        assert f"test_ckBTC|{ckbtc['ledger']}|{ckbtc['decimals']}|{ckbtc['fee']}" in result
 
     def test_get_token_by_alias(self, wallet_reachable, wallet_canister, wallet_network):
         """Retrieve token by name alias."""
+        from basilisk.os.wallet import WELL_KNOWN_TOKENS
         result = _exec(
             "t = Token['test_ckBTC']\n"
             "print(t.ledger if t else 'NOT_FOUND')",
             wallet_canister, wallet_network,
         )
-        assert "mxzaz-hqaaa-aaaar-qaada-cai" in result
+        assert WELL_KNOWN_TOKENS["ckBTC"]["ledger"] in result
 
     def test_update_token(self, wallet_reachable, wallet_canister, wallet_network):
         """Update an existing token's properties."""
@@ -368,13 +371,15 @@ class TestTokenRegistry:
 
     def test_register_second_token(self, wallet_reachable, wallet_canister, wallet_network):
         """Register a second token."""
+        from basilisk.os.wallet import WELL_KNOWN_TOKENS
+        cketh = WELL_KNOWN_TOKENS["ckETH"]
         result = _exec(
-            "t = Token(name='test_ckETH', ledger='ss2fx-dyaaa-aaaar-qacoq-cai', "
-            "indexer='', decimals=18, fee=2000000000000)\n"
+            f"t = Token(name='test_ckETH', ledger='{cketh['ledger']}', "
+            f"indexer='', decimals={cketh['decimals']}, fee={cketh['fee']})\n"
             "print(f'{t.name}|{t.decimals}')",
             wallet_canister, wallet_network,
         )
-        assert "test_ckETH|18" in result
+        assert f"test_ckETH|{cketh['decimals']}" in result
 
     def test_list_tokens(self, wallet_reachable, wallet_canister, wallet_network):
         """List all registered tokens."""
