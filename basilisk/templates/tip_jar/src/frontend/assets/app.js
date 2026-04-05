@@ -255,7 +255,12 @@ let currentPendingId = null;
 function showDonateStep(n) {
   for (let i = 1; i <= 4; i++) {
     const el = $("donate-step-" + i);
-    if (el) el.style.display = i === n ? "block" : "none";
+    if (!el) continue;
+    if (i <= n) {
+      el.classList.remove("step-disabled");
+    } else {
+      el.classList.add("step-disabled");
+    }
   }
 }
 window.showDonateStep = showDonateStep;

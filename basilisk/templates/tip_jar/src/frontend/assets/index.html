@@ -98,7 +98,7 @@
         </div>
 
         <!-- Step 2: Name + message + amount -->
-        <div id="donate-step-2" style="display:none">
+        <div id="donate-step-2" class="step-disabled">
           <p class="step-label">Step 2</p>
           <p class="form-note" style="margin-bottom:.75rem">
             Enter your details. You'll then send ckBTC via
@@ -119,7 +119,7 @@
         </div>
 
         <!-- Step 3: Send ckBTC + verify -->
-        <div id="donate-step-3" style="display:none">
+        <div id="donate-step-3" class="step-disabled">
           <p class="step-label">Step 3</p>
           <p>Send exactly <strong><span id="send-amount">—</span> satoshis</strong> of ckBTC to:</p>
           <code id="canister-address" class="block-code">loading…</code>
@@ -135,7 +135,7 @@
         </div>
 
         <!-- Step 4: Success -->
-        <div id="donate-step-4" style="display:none">
+        <div id="donate-step-4" class="step-disabled">
           <div class="success-box">
             <strong>Tip verified!</strong><br/>
             <span id="verified-donor"></span> donated

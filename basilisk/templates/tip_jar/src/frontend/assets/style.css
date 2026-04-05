@@ -323,6 +323,13 @@ tbody tr:hover { background: var(--bg-tertiary); }
 }
 .step-optional { font-weight: 400; color: var(--text-muted); text-transform: none; }
 
+/* Disabled (future) steps */
+.step-disabled {
+  opacity: .35;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Encrypted badge */
 .badge-secret {
   background: #fef3c7;
