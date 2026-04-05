@@ -1555,45 +1555,16 @@ _TASK_USAGE = (
 # %wallet subcommand handlers — ICRC-1 token operations
 # ---------------------------------------------------------------------------
 
-# Well-known ICRC-1 ledger canister IDs on IC mainnet
-_LEDGER_IDS = {
-    "ckbtc":  "mxzaz-hqaaa-aaaar-qaada-cai",
-    "cketh":  "ss2fx-dyaaa-aaaar-qacoq-cai",
-    "ckusdc": "xevnm-gaaaa-aaaar-qafnq-cai",
-    "icp":    "ryjl3-tyaaa-aaaaa-aaaba-cai",
-}
+# Well-known ICRC-1 token metadata — derived from the canonical registry
+from basilisk.os.wallet import WELL_KNOWN_TOKENS as _WKT
 
-# ICRC-1 transfer fees (in smallest unit)
-_LEDGER_FEES = {
-    "ckbtc":  10,              # 10 satoshis
-    "cketh":  2_000_000_000,   # 2 gwei
-    "ckusdc": 10_000,          # 0.01 USDC
-    "icp":    10_000,          # 0.0001 ICP
-}
-
-_LEDGER_DECIMALS = {
-    "ckbtc":  8,
-    "cketh":  18,
-    "ckusdc": 6,
-    "icp":    8,
-}
-
-_LEDGER_SYMBOLS = {
-    "ckbtc":  "ckBTC",
-    "cketh":  "ckETH",
-    "ckusdc": "ckUSDC",
-    "icp":    "ICP",
-}
+_LEDGER_IDS     = {k.lower(): v["ledger"]   for k, v in _WKT.items()}
+_LEDGER_FEES    = {k.lower(): v["fee"]      for k, v in _WKT.items()}
+_LEDGER_DECIMALS = {k.lower(): v["decimals"] for k, v in _WKT.items()}
+_LEDGER_SYMBOLS = {k.lower(): k             for k in _WKT}
+_INDEX_IDS      = {k.lower(): v["indexer"]  for k, v in _WKT.items()}
 
 _WALLET_HISTORY_PATH = "/wallet_history.jsonl"
-
-# ICRC-1 Index canister IDs (for transaction history)
-_INDEX_IDS = {
-    "ckbtc":  "n5wcd-faaaa-aaaar-qaaea-cai",
-    "cketh":  "s3zol-vqaaa-aaaar-qacpa-cai",
-    "ckusdc": "xrs4b-hiaaa-aaaar-qafoa-cai",
-    "icp":    "qhbym-qaaaa-aaaaa-aaafq-cai",
-}
 
 
 def _parse_subaccount(args: str):

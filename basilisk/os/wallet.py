@@ -38,6 +38,37 @@ from .entities import Token, WalletBalance, WalletSubaccount, WalletTransfer
 
 logger = get_logger("basilisk.os.wallet")
 
+# ---------------------------------------------------------------------------
+# Well-known ICRC-1 tokens on IC mainnet
+# ---------------------------------------------------------------------------
+
+WELL_KNOWN_TOKENS = {
+    "ckBTC": {
+        "ledger":   "mxzaz-hqaaa-aaaar-qaada-cai",
+        "indexer":  "n5wcd-faaaa-aaaar-qaaea-cai",
+        "decimals": 8,
+        "fee":      10,
+    },
+    "ckETH": {
+        "ledger":   "ss2fx-dyaaa-aaaar-qacoq-cai",
+        "indexer":  "s3zol-vqaaa-aaaar-qacpa-cai",
+        "decimals": 18,
+        "fee":      2_000_000_000_000,
+    },
+    "ckUSDC": {
+        "ledger":   "xevnm-gaaaa-aaaar-qafnq-cai",
+        "indexer":  "xrs4b-hiaaa-aaaar-qafoa-cai",
+        "decimals": 6,
+        "fee":      10_000,
+    },
+    "ICP": {
+        "ledger":   "ryjl3-tyaaa-aaaaa-aaaba-cai",
+        "indexer":  "qhbym-qaaaa-aaaaa-aaafq-cai",
+        "decimals": 8,
+        "fee":      10_000,
+    },
+}
+
 
 class Wallet:
     """
@@ -100,6 +131,36 @@ class Wallet:
             token.fee = fee
             logger.info(f"Updated token: {name} (ledger={ledger})")
         return token
+
+    def register_well_known_tokens(self, *names):
+        """
+        Register well-known IC mainnet tokens by name.
+
+        If no names are given, all well-known tokens are registered.
+
+        Args:
+            *names: Token symbols to register (e.g. "ckBTC", "ICP").
+                    If empty, registers all tokens in WELL_KNOWN_TOKENS.
+
+        Returns:
+            List of registered Token entities.
+        """
+        targets = names or WELL_KNOWN_TOKENS.keys()
+        tokens = []
+        for name in targets:
+            info = WELL_KNOWN_TOKENS.get(name)
+            if info is None:
+                # Try case-insensitive lookup
+                for k, v in WELL_KNOWN_TOKENS.items():
+                    if k.lower() == name.lower():
+                        info = v
+                        name = k
+                        break
+            if info is None:
+                logger.warning(f"Unknown well-known token: {name}")
+                continue
+            tokens.append(self.register_token(name, **info))
+        return tokens
 
     def get_token(self, name):
         """
