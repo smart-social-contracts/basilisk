@@ -1,18 +1,24 @@
 """
-Basilisk CLI — scaffold, build, and interact with IC canister projects in Python.
+Basilisk — An Internet Computer's Python Canister Development Kit.
 
-Usage:
-    basilisk new [--backend cpython|rustpython] <project_name>
-    basilisk build                 Build the canister in the current directory
-    basilisk exec [options] <code> Execute Python code on a deployed canister
-    basilisk shell [options]       Interactive shell for a deployed canister
-    basilisk sshd [options]        SSH server proxy to a deployed canister
-    basilisk --version             Print version
+Usage: basilisk <command> [options]
 
-Exec options:
-    --canister <name_or_id>   Canister name or ID (default: auto-detect from dfx.json)
-    --network <network>       Network: local, ic, or URL (default: local)
-    -f <file>                 Execute a local Python file on the canister
+Commands:
+  new <name>       Scaffold a new canister project
+  build            Build the canister(s) in the current directory
+  exec <code>      Execute Python code on a deployed canister
+  shell            Interactive Python shell on a deployed canister
+  sshd             Start an SSH/SFTP server proxy to a canister
+
+Options (exec, shell, sshd):
+  --canister <id>  Canister name or principal ID  [auto-detect from dfx.json]
+  --network <net>  Network: local, ic, or URL     [default: local]
+
+Other:
+  --version        Print version info
+  help, -h         Show this help
+
+Run basilisk <command> --help for command-specific options and examples.
 """
 
 import ast
@@ -22,6 +28,53 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+_HELP_NEW = """\
+basilisk new — Scaffold a new canister project.
+
+Usage: basilisk new [--backend cpython|rustpython] <project_name>
+
+Options:
+  --backend <be>   Python backend: cpython or rustpython  [default: cpython]
+                   (rustpython is deprecated and will be removed in a future release)
+
+Examples:
+  basilisk new my_app
+  cd my_app && dfx start --background && dfx deploy
+"""
+
+_HELP_BUILD = """\
+basilisk build — Build the canister(s) in the current directory.
+
+Usage: basilisk build
+
+Reads dfx.json in the current directory and builds every canister whose
+build command references basilisk.
+
+Examples:
+  basilisk build
+  basilisk build && dfx deploy
+"""
+
+_HELP_EXEC = """\
+basilisk exec — Execute Python code on a deployed canister.
+
+Usage: basilisk exec [options] <code>
+       basilisk exec [options] -f <file>
+       echo "code" | basilisk exec [options]
+
+Options:
+  --canister <id>  Canister name or principal ID  [auto-detect from dfx.json]
+  --network <net>  Network: local, ic, or URL     [default: local]
+  -f <file>        Execute a local Python file instead of inline code
+
+Examples:
+  basilisk exec 'print("hello")'                         Inline code
+  basilisk exec --canister my_app 'print(1+1)'           Explicit canister
+  basilisk exec --network ic 'print(ic.time())'          On mainnet
+  basilisk exec -f script.py                             Run a local file
+  echo "import sys; print(sys.version)" | basilisk exec  Pipe from stdin
+"""
 
 
 def cmd_new(project_name: str, backend: str = "cpython"):
@@ -40,6 +93,9 @@ def cmd_new(project_name: str, backend: str = "cpython"):
     if backend not in ("cpython", "rustpython"):
         print(f"Error: unknown backend '{backend}'. Use 'cpython' or 'rustpython'.", file=sys.stderr)
         sys.exit(1)
+
+    if backend == "rustpython":
+        print("Warning: rustpython is deprecated and will be removed in a future release. Use cpython instead.", file=sys.stderr)
 
     print(f"Creating new basilisk project: {project_name} (backend: {backend})")
 
@@ -244,6 +300,9 @@ def main():
     if command == "new":
         # Parse --backend flag
         args = sys.argv[2:]
+        if "--help" in args or "-h" in args:
+            print(_HELP_NEW, end="")
+            return
         backend = "cpython"  # default
         if "--backend" in args:
             idx = args.index("--backend")
@@ -254,14 +313,20 @@ def main():
             args = args[:idx] + args[idx + 2:]
 
         if len(args) < 1:
-            print("Usage: basilisk new [--backend cpython|rustpython] <project_name>", file=sys.stderr)
+            print(_HELP_NEW, end="")
             sys.exit(1)
         cmd_new(args[0], backend)
 
     elif command == "build":
+        if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
+            print(_HELP_BUILD, end="")
+            return
         cmd_build()
 
     elif command == "exec":
+        if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
+            print(_HELP_EXEC, end="")
+            return
         cmd_exec(sys.argv[2:])
 
     elif command == "shell":
