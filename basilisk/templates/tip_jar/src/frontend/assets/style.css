@@ -62,27 +62,37 @@ header .canister-id {
   margin-top: .5rem;
 }
 
-/* Auth bar */
-.auth-bar { margin-top: .75rem; }
+/* Auth bar (top-right) */
+.auth-bar {
+  position: fixed;
+  top: .75rem;
+  right: 1rem;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
 .auth-bar button {
   background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 6px;
-  padding: .45rem 1.1rem;
-  font-size: .85rem;
+  padding: .35rem .9rem;
+  font-size: .78rem;
   font-weight: 500;
   cursor: pointer;
   transition: background .2s;
+  white-space: nowrap;
 }
 .auth-bar button:hover { background: var(--accent-hover); }
 .auth-principal {
-  display: block;
   font-family: ui-monospace, SFMono-Regular, monospace;
-  font-size: .7rem;
+  font-size: .65rem;
   color: var(--text-muted);
-  margin-top: .35rem;
-  word-break: break-all;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Card */
@@ -309,10 +319,17 @@ footer {
   text-align: center;
   padding: 1.5rem 0;
   color: var(--text-muted);
-  font-size: .78rem;
+  font-size: .75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
 }
-footer a { color: var(--accent); text-decoration: none; }
-footer a:hover { text-decoration: underline; }
+footer a { color: var(--text-muted); text-decoration: none; }
+footer a:hover { color: var(--text); }
+.footer-gh { display: flex; align-items: center; }
+.footer-meta { font-family: ui-monospace, SFMono-Regular, monospace; font-size: .7rem; }
+.mono { font-family: ui-monospace, SFMono-Regular, monospace; }
 
 /* Responsive */
 @media (max-width: 480px) {

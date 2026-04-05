@@ -367,6 +367,7 @@ window.toggleLogin = async function () {
     actor = null;
     actor = await buildActor();
     updateAuthUI(false);
+    return;
   } else {
     await new Promise((resolve, reject) => {
       client.login({
@@ -389,6 +390,10 @@ window.toggleLogin = async function () {
 // ---------------------------------------------------------------------------
 
 (async function boot() {
+  // Footer timestamp
+  const ft = $("footer-time");
+  if (ft) ft.textContent = new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
+
   // Detect backend canister ID
   const cid = await detectBackendCanisterId();
   if (!cid.startsWith("__")) {
