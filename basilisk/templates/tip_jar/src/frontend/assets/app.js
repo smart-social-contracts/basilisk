@@ -387,29 +387,49 @@ window.resetTipFlow = function () {
 // More tab actions
 // ---------------------------------------------------------------------------
 
+async function withLoading(btn, fn) {
+  const orig = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Loading…";
+  try { await fn(); } finally { btn.disabled = false; btn.textContent = orig; }
+}
+
 window.callWhoami = async function () {
-  try { const a = await getActor(); setInfo(await a.whoami()); }
-  catch (e) { setInfo("Error: " + e.message); }
+  const btn = event.currentTarget;
+  await withLoading(btn, async () => {
+    try { const a = await getActor(); setInfo(await a.whoami()); }
+    catch (e) { setInfo("Error: " + e.message); }
+  });
 };
 
 window.callStatus = async function () {
-  try { const a = await getActor(); setInfo(await a.status()); }
-  catch (e) { setInfo("Error: " + e.message); }
+  const btn = event.currentTarget;
+  await withLoading(btn, async () => {
+    try { const a = await getActor(); setInfo(await a.status()); }
+    catch (e) { setInfo("Error: " + e.message); }
+  });
 };
 
 window.callTime = async function () {
-  try {
-    const a = await getActor();
-    const ns = await a.get_time();
-    const date = new Date(Number(ns / BigInt(1_000_000)));
-    setInfo(`${ns} ns\n${date.toISOString()}`);
-  } catch (e) { setInfo("Error: " + e.message); }
+  const btn = event.currentTarget;
+  await withLoading(btn, async () => {
+    try {
+      const a = await getActor();
+      const ns = await a.get_time();
+      const date = new Date(Number(ns / BigInt(1_000_000)));
+      setInfo(`${ns} ns\n${date.toISOString()}`);
+    } catch (e) { setInfo("Error: " + e.message); }
+  });
 };
 
 window.refreshAll = async function () {
-  await Promise.all([fetchStats(), fetchLeaderboard(), fetchFxRates()]);
-  // Fire-and-forget: refresh FX rate in the background, then update stats + rates
-  getActor().then(a => a.refresh_fx()).then(() => Promise.all([fetchStats(), fetchFxRates()])).catch(() => {});
+  const btn = event?.currentTarget;
+  const run = async () => {
+    await Promise.all([fetchStats(), fetchLeaderboard(), fetchFxRates()]);
+    // Fire-and-forget: refresh FX rate in the background, then update stats + rates
+    getActor().then(a => a.refresh_fx()).then(() => Promise.all([fetchStats(), fetchFxRates()])).catch(() => {});
+  };
+  if (btn) { await withLoading(btn, run); } else { await run(); }
 };
 
 // ---------------------------------------------------------------------------
