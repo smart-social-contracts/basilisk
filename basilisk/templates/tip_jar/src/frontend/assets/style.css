@@ -95,6 +95,42 @@ header .canister-id {
   white-space: nowrap;
 }
 
+/* Tab bar */
+.tab-bar {
+  display: flex;
+  gap: 0;
+  margin-bottom: 1.25rem;
+  border-bottom: 2px solid var(--border);
+}
+.tab {
+  padding: .6rem 1.2rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-size: .875rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: -2px;
+  border-radius: 0;
+  box-shadow: none;
+  letter-spacing: 0;
+  transition: color .15s, border-color .15s;
+}
+.tab:hover {
+  color: var(--text);
+  background: none;
+  transform: none;
+  box-shadow: none;
+}
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
 /* Card */
 .card {
   background: var(--surface);
@@ -193,8 +229,6 @@ button:hover {
   color: var(--accent-hover);
 }
 
-#btn-tip { width: 100%; }
-
 .form-note {
   margin-top: .5rem;
   font-size: .82rem;
@@ -244,6 +278,64 @@ tbody td {
 }
 tbody tr:hover { background: var(--bg-tertiary); }
 .empty { color: var(--text-muted); text-align: center; padding: 1rem; }
+
+/* Expandable donor rows */
+.donor-row { cursor: pointer; }
+.donor-row:hover { background: var(--bg-tertiary); }
+.donor-messages-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+.donor-messages-container {
+  padding: .5rem .75rem;
+  background: var(--bg-secondary);
+}
+
+/* Pagination */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  margin-top: .75rem;
+}
+.pager button {
+  padding: .3rem .8rem;
+  font-size: .78rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.pager button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-tertiary);
+  transform: none;
+  box-shadow: none;
+}
+.pager-info { font-size: .78rem; color: var(--text-muted); }
+
+/* Step labels */
+.step-label {
+  font-size: .78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--accent);
+  margin-bottom: .5rem;
+}
+.step-optional { font-weight: 400; color: var(--text-muted); text-transform: none; }
+
+/* Encrypted badge */
+.badge-secret {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fde68a;
+}
+.encrypted-text {
+  font-size: .75rem;
+  color: var(--text-muted);
+  word-break: break-all;
+  display: block;
+  margin: .25rem 0;
+}
 
 /* Messages list */
 .messages-list { display: flex; flex-direction: column; gap: .75rem; }

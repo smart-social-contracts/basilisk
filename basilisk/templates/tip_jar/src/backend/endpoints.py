@@ -28,17 +28,18 @@ from services import wallet, fx, crypto, vetkeys
 
 @query
 def get_leaderboard() -> text:
-    """Return top donors sorted by total donated, as JSON."""
+    """Return all donors sorted by total donated, as JSON."""
     donors = sorted(
         Donor.instances(),
         key=lambda d: d.total_donated,
         reverse=True,
     )
     rows = []
-    for d in donors[:20]:
+    for d in donors:
         usd = _satoshis_to_usd(d.total_donated)
         rows.append({
             "name": d.name,
+            "principal": d.principal,
             "total_donated": d.total_donated,
             "usd_value": usd,
             "message_count": d.message_count,
@@ -63,6 +64,42 @@ def get_messages(limit: nat64) -> text:
             "token": m.token,
             "timestamp": m.timestamp,
         })
+    return json.dumps(rows)
+
+
+@query
+def get_donor_messages(donor_name: text) -> text:
+    """Return all messages and secret notes for a specific donor."""
+    # Public messages
+    msgs = sorted(
+        (m for m in TipMessage.instances() if m.donor_name == donor_name),
+        key=lambda m: m.timestamp,
+        reverse=True,
+    )
+    rows = []
+    for m in msgs:
+        rows.append({
+            "type": "public",
+            "message": m.message,
+            "amount": m.amount,
+            "token": m.token,
+            "timestamp": m.timestamp,
+        })
+    # Secret notes (show encrypted payload)
+    notes = sorted(
+        (n for n in SecretNote.instances() if n.sender_name == donor_name),
+        key=lambda n: n.timestamp,
+        reverse=True,
+    )
+    for n in notes:
+        rows.append({
+            "type": "secret",
+            "message": n.encrypted_text,
+            "amount": 0,
+            "token": "",
+            "timestamp": n.timestamp,
+        })
+    rows.sort(key=lambda r: r["timestamp"], reverse=True)
     return json.dumps(rows)
 
 
