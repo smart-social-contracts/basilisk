@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/key_value_store/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/key_value_store';
 
 const keyValueStoreCanister = createActor(getCanisterId('key_value_store'), {
@@ -8,4 +8,4 @@ const keyValueStoreCanister = createActor(getCanisterId('key_value_store'), {
     }
 });
 
-runTests(getTests(createSnakeCaseProxy(keyValueStoreCanister)));
+runTests(getTests(keyValueStoreCanister));

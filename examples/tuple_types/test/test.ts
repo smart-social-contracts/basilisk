@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/tuple_types/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/tuple_types';
 
 const tuple_types_canister = createActor(getCanisterId('tuple_types'), {
@@ -8,8 +8,4 @@ const tuple_types_canister = createActor(getCanisterId('tuple_types'), {
     }
 });
 
-runTests(
-    getTests(createSnakeCaseProxy(tuple_types_canister)).filter(
-        (test) => test.name !== 'twoTupleWithInlineRecords' // Kybra does not have the concept of inline records
-    )
-);
+runTests(getTests(tuple_types_canister));

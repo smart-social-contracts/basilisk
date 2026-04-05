@@ -1,4 +1,4 @@
-import { Test } from 'azle/test';
+import { Test } from '../../_test_lib';
 import { _SERVICE } from './dfx_generated/date/date.did.d';
 import { ActorSubclass } from '@dfinity/agent';
 

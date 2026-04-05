@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/principal/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/principal';
 
 const principalCanister = createActor(getCanisterId('principal'), {
@@ -8,4 +8,4 @@ const principalCanister = createActor(getCanisterId('principal'), {
     }
 });
 
-runTests(getTests(createSnakeCaseProxy(principalCanister)));
+runTests(getTests(principalCanister));

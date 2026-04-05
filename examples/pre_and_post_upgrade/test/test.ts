@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/pre_and_post_upgrade/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/pre_and_post_upgrade';
 
 const preAndPostCanister = createActor(getCanisterId('pre_and_post_upgrade'), {
@@ -8,4 +8,4 @@ const preAndPostCanister = createActor(getCanisterId('pre_and_post_upgrade'), {
     }
 });
 
-runTests(getTests(createSnakeCaseProxy(preAndPostCanister)));
+runTests(getTests(preAndPostCanister));

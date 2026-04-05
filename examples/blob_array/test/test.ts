@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { get_tests as getTests } from 'azle/examples/blob_array/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/blob_array';
 
 const blobArrayCanister = createActor(getCanisterId('blob_array'), {
@@ -8,4 +8,4 @@ const blobArrayCanister = createActor(getCanisterId('blob_array'), {
     }
 });
 
-runTests(getTests(createSnakeCaseProxy(blobArrayCanister)));
+runTests(getTests(blobArrayCanister));

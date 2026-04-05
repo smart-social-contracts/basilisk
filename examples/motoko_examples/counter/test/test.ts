@@ -1,5 +1,5 @@
-import { getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/motoko_examples/counter/test/tests';
+import { getCanisterId, runTests } from '../../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/counter';
 import { HttpAgent } from '@dfinity/agent';
 

@@ -1,4 +1,4 @@
-import { getCanisterId } from 'azle/test';
+import { getCanisterId } from '../../_test_lib';
 import { execSync } from 'child_process';
 
 async function pretest(icp_ledger_path: string) {

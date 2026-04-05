@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { get_tests as getTests } from 'azle/examples/complex_types/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/complex_types';
 
 const complexTypesCanister = createActor(getCanisterId('complex_types'), {
@@ -8,4 +8,4 @@ const complexTypesCanister = createActor(getCanisterId('complex_types'), {
     }
 });
 
-runTests(getTests(createSnakeCaseProxy(complexTypesCanister)));
+runTests(getTests(complexTypesCanister));

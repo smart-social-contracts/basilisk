@@ -1,7 +1,7 @@
 // TODO Two of these tests are skipped because of this: https://forum.dfinity.org/t/embedding-wasm-dfx-0-17-0-crashing-where-previous-version-works/27916/6
 
 import { ActorSubclass } from '@dfinity/agent';
-import { Test } from 'azle/test';
+import { Test } from '../../_test_lib';
 import { execSync } from 'child_process';
 import { _SERVICE } from './dfx_generated/init_and_post_upgrade_recovery/init_and_post_upgrade_recovery.did';
 

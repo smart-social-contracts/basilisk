@@ -8,7 +8,6 @@
         "typescript": "4.6.3"
     },
     "dependencies": {
-        "@dfinity/agent": "^0.15.4",
-        "azle": "github:demergent-labs/azle"
+        "@dfinity/agent": "^0.15.4"
     }
 }

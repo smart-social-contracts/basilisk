@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/ethereum_json_rpc/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/ethereum_json_rpc';
 
 if (process.env.ETHEREUM_URL === undefined) {
@@ -17,4 +17,4 @@ const ethereumJsonRpcCanister = createActor(
     }
 );
 
-runTests(getTests(createSnakeCaseProxy(ethereumJsonRpcCanister)));
+runTests(getTests(ethereumJsonRpcCanister));

@@ -1,4 +1,4 @@
-import { getCanisterId, runTests, Test } from 'azle/test';
+import { getCanisterId, runTests, Test } from '../../_test_lib';
 import { createActor } from './dfx_generated/date';
 import { getTests } from './tests';
 

@@ -1,4 +1,4 @@
-import { getCanisterId, runTests } from 'azle/test';
+import { getCanisterId, runTests } from '../../_test_lib';
 import { getTests } from './tests';
 import { createActor } from './dfx_generated/init_and_post_upgrade_recovery';
 

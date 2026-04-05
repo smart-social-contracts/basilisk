@@ -1,5 +1,5 @@
 import { ActorSubclass } from '@dfinity/agent';
-import { Test } from 'azle/test';
+import { Test } from '../../_test_lib';
 import { _SERVICE } from './dfx_generated/optional_types/optional_types.did';
 
 export function getTests(

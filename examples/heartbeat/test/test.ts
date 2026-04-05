@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/heartbeat/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor as createActorHeartbeatAsync } from './dfx_generated/heartbeat_async';
 import { createActor as createActorHeartbeatSync } from './dfx_generated/heartbeat_sync';
 
@@ -21,9 +21,4 @@ const heartbeatSyncCanister = createActorHeartbeatSync(
     }
 );
 
-runTests(
-    getTests(
-        createSnakeCaseProxy(heartbeatAsyncCanister),
-        createSnakeCaseProxy(heartbeatSyncCanister)
-    )
-);
+runTests(getTests(heartbeatAsyncCanister, heartbeatSyncCanister));

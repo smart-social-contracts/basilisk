@@ -1,5 +1,4 @@
-import { getCanisterId, getPrincipal, whoami } from 'azle/dfx';
-import { Test } from 'azle/test';
+import { getCanisterId, getPrincipal, whoami, Test } from '../../../_test_lib';
 import { execSync } from 'child_process';
 import { _SERVICE } from './dfx_generated/whoami/whoami.did';
 import { ActorSubclass } from '@dfinity/agent';

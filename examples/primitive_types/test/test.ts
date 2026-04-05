@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/primitive_types/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/primitive_types';
 
 const primitiveTypesCanister = createActor(getCanisterId('primitive_types'), {
@@ -8,8 +8,4 @@ const primitiveTypesCanister = createActor(getCanisterId('primitive_types'), {
     }
 });
 
-runTests(
-    getTests(createSnakeCaseProxy(primitiveTypesCanister)).filter(
-        (value) => value.name != 'getNumber' && value.name != 'printNumber'
-    )
-);
+runTests(getTests(primitiveTypesCanister));

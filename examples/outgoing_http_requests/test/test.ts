@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/outgoing_http_requests/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/outgoing_http_requests';
 
 const outgoingHttpRequestsCanister = createActor(
@@ -11,4 +11,4 @@ const outgoingHttpRequestsCanister = createActor(
     }
 );
 
-runTests(getTests(createSnakeCaseProxy(outgoingHttpRequestsCanister)));
+runTests(getTests(outgoingHttpRequestsCanister));

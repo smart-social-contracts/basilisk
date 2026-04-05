@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/motoko_examples/threshold_ecdsa/test/tests';
+import { getCanisterId, runTests } from '../../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/threshold_ecdsa';
 
 const tecdsaCanister = createActor(getCanisterId('threshold_ecdsa'), {
@@ -8,4 +8,4 @@ const tecdsaCanister = createActor(getCanisterId('threshold_ecdsa'), {
     }
 });
 
-runTests(getTests(createSnakeCaseProxy(tecdsaCanister)));
+runTests(getTests(tecdsaCanister));

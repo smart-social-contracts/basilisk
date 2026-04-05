@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests, Test } from 'azle/test';
-import { getTests } from 'azle/examples/motoko_examples/superheroes/test/tests';
+import { getCanisterId, runTests, Test } from '../../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/superheroes';
 import { Superhero } from './dfx_generated/superheroes/superheroes.did';
 

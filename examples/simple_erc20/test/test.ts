@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/simple_erc20/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/simple_erc20';
 
 const simpleErc20Canister = createActor(getCanisterId('simple_erc20'), {
@@ -8,4 +8,4 @@ const simpleErc20Canister = createActor(getCanisterId('simple_erc20'), {
     }
 });
 
-runTests(getTests(createSnakeCaseProxy(simpleErc20Canister)));
+runTests(getTests(simpleErc20Canister));

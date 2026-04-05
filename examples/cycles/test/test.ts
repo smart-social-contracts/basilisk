@@ -1,7 +1,7 @@
 // TODO If we want these tests to be more exact, we can check balances and make sure they are within some margin of error
 
-import { getTests } from 'azle/examples/cycles/test/tests';
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor as createCyclesActor } from './dfx_generated/cycles';
 import { createActor as createIntermediaryActor } from './dfx_generated/intermediary';
 
@@ -21,9 +21,4 @@ const intermediaryCanister = createIntermediaryActor(
 );
 
 // TODO for now these tests need to be run on a fresh dfx start --clean, since cycles are not discarded on uninstall-code
-runTests(
-    getTests(
-        createSnakeCaseProxy(cyclesCanister),
-        createSnakeCaseProxy(intermediaryCanister)
-    )
-);
+runTests(getTests(cyclesCanister, intermediaryCanister));

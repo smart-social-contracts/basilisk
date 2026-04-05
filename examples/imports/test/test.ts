@@ -1,5 +1,5 @@
-import { createSnakeCaseProxy, getCanisterId, runTests } from 'azle/test';
-import { getTests } from 'azle/examples/imports/test/tests';
+import { getCanisterId, runTests } from '../../_test_lib';
+import { getTests } from './tests';
 import { createActor } from './dfx_generated/imports';
 
 const importsCanister = createActor(getCanisterId('imports'), {
@@ -8,16 +8,4 @@ const importsCanister = createActor(getCanisterId('imports'), {
     }
 });
 
-runTests([
-    ...getTests(createSnakeCaseProxy(importsCanister)),
-    {
-        name: 'boltons_floor',
-        test: async () => {
-            const result = await importsCanister.boltons_floor(456.76);
-
-            return {
-                Ok: result === 456n
-            };
-        }
-    }
-]);
+runTests(getTests(importsCanister));
