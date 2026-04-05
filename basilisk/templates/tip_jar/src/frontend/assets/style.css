@@ -44,7 +44,7 @@ body {
 
 /* Header */
 header { text-align: center; margin-bottom: 2rem; }
-header .logo { width: 56px; height: 56px; margin-bottom: .75rem; }
+header .logo { width: 80px; height: 80px; margin-bottom: .75rem; }
 header h1 {
   font-size: 2rem;
   font-weight: 700;
