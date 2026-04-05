@@ -24,7 +24,7 @@ const IC_HOST = IS_LOCAL ? "http://localhost:4943" : "https://ic0.app";
 // Local dev:  fetches /.well-known/canister-ids from the asset canister
 //             (dfx v0.24+ serves this), or falls back to the placeholder.
 // Mainnet:    replace the placeholder below after `dfx deploy --network ic`.
-let BACKEND_CANISTER_ID = "__BACKEND_CANISTER_ID__";
+let BACKEND_CANISTER_ID = "k5ony-gyaaa-aaaam-aityq-cai";
 
 async function detectBackendCanisterId() {
   // 1. Already set to a real principal (not placeholder)
