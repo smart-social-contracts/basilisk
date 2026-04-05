@@ -25,17 +25,46 @@
 
     <!-- Tab bar -->
     <nav class="tab-bar">
-      <button class="tab active" data-tab="tab-leaderboard" onclick="switchTab(this)">Donors Leaderboard</button>
+      <button class="tab active" data-tab="tab-stats" onclick="switchTab(this)">Stats</button>
+      <button class="tab" data-tab="tab-leaderboard" onclick="switchTab(this)">Leaderboard</button>
       <button class="tab" data-tab="tab-donate" onclick="switchTab(this)">Donate</button>
       <button class="tab" data-tab="tab-more" onclick="switchTab(this)">More</button>
     </nav>
 
     <!-- ============================================================ -->
+    <!-- TAB: Stats                                                   -->
+    <!-- ============================================================ -->
+    <div id="tab-stats" class="tab-panel active">
+      <section class="card" id="stats-section">
+        <h2>Stats</h2>
+        <div class="stats-grid">
+          <div class="stat">
+            <span class="stat-value" id="stat-donors">—</span>
+            <span class="stat-label">Donors</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="stat-messages">—</span>
+            <span class="stat-label">Messages</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="stat-total">—</span>
+            <span class="stat-label">Total (sats)</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value" id="stat-btc-usd">—</span>
+            <span class="stat-label">BTC/USD</span>
+            <span class="stat-sub" id="stat-btc-updated"></span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============================================================ -->
     <!-- TAB 1: Donors Leaderboard                                    -->
     <!-- ============================================================ -->
-    <div id="tab-leaderboard" class="tab-panel active">
+    <div id="tab-leaderboard" class="tab-panel">
       <section class="card">
-        <h2>Donors Leaderboard</h2>
+        <h2>Leaderboard</h2>
         <table id="leaderboard">
           <thead>
             <tr><th>#</th><th>Name</th><th>Principal</th><th>Total (sats)</th><th>Messages</th></tr>
@@ -124,30 +153,6 @@
     <!-- TAB 3: More                                                  -->
     <!-- ============================================================ -->
     <div id="tab-more" class="tab-panel">
-      <!-- Stats -->
-      <section class="card" id="stats-section">
-        <h2>Stats</h2>
-        <div class="stats-grid">
-          <div class="stat">
-            <span class="stat-value" id="stat-donors">—</span>
-            <span class="stat-label">Donors</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value" id="stat-messages">—</span>
-            <span class="stat-label">Messages</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value" id="stat-total">—</span>
-            <span class="stat-label">Total (sats)</span>
-          </div>
-          <div class="stat">
-            <span class="stat-value" id="stat-btc-usd">—</span>
-            <span class="stat-label">BTC/USD</span>
-            <span class="stat-sub" id="stat-btc-updated"></span>
-          </div>
-        </div>
-      </section>
-
       <!-- How it works -->
       <section class="card">
         <details>
