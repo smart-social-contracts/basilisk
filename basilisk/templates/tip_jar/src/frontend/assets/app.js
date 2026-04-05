@@ -294,8 +294,11 @@ window.registerTip = async function () {
 window.verifyTip = async function () {
   if (!currentPendingId) return setStatus("No pending tip. Start from step 1.");
 
+  const btn = $("btn-verify");
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Verifying…";
   setStatus("Scanning blockchain for your transfer…");
-  $("btn-verify").disabled = true;
   try {
     const a = await getActor();
     const raw = await a.verify_tip(BigInt(currentPendingId));
@@ -303,12 +306,14 @@ window.verifyTip = async function () {
 
     if (res.status === "not_found") {
       setStatus(res.message);
-      $("btn-verify").disabled = false;
+      btn.disabled = false;
+      btn.textContent = origLabel;
       return;
     }
     if (res.error) {
       setStatus("Error: " + res.error);
-      $("btn-verify").disabled = false;
+      btn.disabled = false;
+      btn.textContent = origLabel;
       return;
     }
 
@@ -321,7 +326,8 @@ window.verifyTip = async function () {
     await refreshAll();
   } catch (e) {
     setStatus("Error: " + e.message);
-    $("btn-verify").disabled = false;
+    btn.disabled = false;
+    btn.textContent = origLabel;
   }
 };
 
