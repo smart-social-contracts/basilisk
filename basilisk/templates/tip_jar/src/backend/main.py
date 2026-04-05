@@ -44,7 +44,7 @@ import models  # noqa: F401 — registers Donor, TipMessage entities
 # Step 3: Initialize services (wallet, FX, encryption)
 # ---------------------------------------------------------------------------
 
-from services import setup_services  # noqa: E402
+from services import setup_services, fx  # noqa: E402
 setup_services()
 
 # ---------------------------------------------------------------------------
@@ -124,9 +124,15 @@ _FX_REFRESH_INTERVAL = 3600  # seconds (1 hour)
 
 def _start_fx_timer():
     """Start a periodic timer to refresh FX rates every hour."""
+    from basilisk import Duration
     def _fx_tick():
-        ic.print(f"[timer] FX refresh tick at {ic.time()}")
-    ic.set_timer_interval(_FX_REFRESH_INTERVAL, _fx_tick)
+        try:
+            ic.print(f"[timer] FX refresh starting at {ic.time()}")
+            result = yield from fx.refresh()
+            ic.print(f"[timer] FX refresh done: {result}")
+        except Exception as e:
+            ic.print(f"[timer] FX refresh error: {e}")
+    ic.set_timer_interval(Duration(_FX_REFRESH_INTERVAL), _fx_tick)
     ic.print(f"FX auto-refresh timer started (every {_FX_REFRESH_INTERVAL}s)")
 
 
