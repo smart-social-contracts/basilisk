@@ -135,11 +135,11 @@
             <input type="number" id="input-amount" placeholder="Amount (sats)" min="1" value="1000" />
           </div>
           <textarea id="input-message" placeholder="Leave an optional message..." rows="2"></textarea>
-          <div class="form-row">
-            <select id="input-msg-type">
-              <option value="public">Public message</option>
-              <option value="secret">Secret note (owner only)</option>
-            </select>
+          <div class="form-row" style="align-items:center">
+            <label class="checkbox-label">
+              <input type="checkbox" id="input-msg-private" />
+              Private (only owner can read it)
+            </label>
             <button type="button" onclick="registerTip()">Next &rarr;</button>
           </div>
         </div>

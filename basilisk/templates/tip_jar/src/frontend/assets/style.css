@@ -229,6 +229,24 @@ button:hover {
   color: var(--accent-hover);
 }
 
+/* Checkbox label */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  font-size: .85rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex: 1;
+}
+.checkbox-label input[type="checkbox"] {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .form-note {
   margin-top: .5rem;
   font-size: .82rem;

@@ -269,7 +269,7 @@ window.registerTip = async function () {
   const name = $("input-name").value.trim();
   const amount = parseInt($("input-amount").value || "0", 10);
   const message = $("input-message").value.trim();
-  const msgType = $("input-msg-type").value || "public";
+  const msgType = $("input-msg-private")?.checked ? "secret" : "public";
 
   if (!name) return setStatus("Enter your nickname.");
   if (amount <= 0) return setStatus("Enter an amount.");
