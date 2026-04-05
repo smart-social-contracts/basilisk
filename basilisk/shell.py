@@ -1556,7 +1556,7 @@ _TASK_USAGE = (
 # ---------------------------------------------------------------------------
 
 # Well-known ICRC-1 token metadata — derived from the canonical registry
-from basilisk.os.wallet import WELL_KNOWN_TOKENS as _WKT
+from basilisk.os.tokens import WELL_KNOWN_TOKENS as _WKT
 
 _LEDGER_IDS     = {k.lower(): v["ledger"]   for k, v in _WKT.items()}
 _LEDGER_FEES    = {k.lower(): v["fee"]      for k, v in _WKT.items()}
