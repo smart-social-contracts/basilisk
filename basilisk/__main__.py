@@ -307,15 +307,18 @@ def bundle_python_code(paths: Paths):
 def ignore_specific_dir(dirname: str, filenames: list[str]) -> list[str]:
     if "basilisk_post_install/src/Lib" in dirname:
         return filenames
-    else:
-        return []
+    # Exclude build output, caches, and template scaffolding from copytree
+    ignored = []
+    for f in filenames:
+        if f in (".basilisk", "__pycache__", ".dfx"):
+            ignored.append(f)
+    return ignored
 
 
 def should_skip_package(node_identifier: str, node_packagepath: str) -> bool:
-    """Skip the top-level installed basilisk package (compiler, shell, etc.)
-    but allow canister-side subpackages like basilisk.os through."""
-    if "site-packages" not in node_packagepath:
-        return False
+    """Skip the top-level basilisk package (compiler, shell, templates, etc.)
+    but allow canister-side subpackages like basilisk.os through.
+    Works for both pip-installed and editable (pip install -e) installs."""
     # Skip the top-level basilisk package but not its subpackages
     if node_identifier == "basilisk":
         return True
