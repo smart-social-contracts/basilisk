@@ -26,24 +26,26 @@
     <section class="card">
       <details>
         <summary><h2 style="display:inline;cursor:pointer">How It Works</h2></summary>
-        <p style="margin-top:.75rem">
-          Everything you see here — frontend, backend, and data — lives inside
-          <strong>smart contracts</strong> (canisters) on the Internet Computer, a
-          blockchain that can serve web content directly. No servers, no cloud, no DNS&nbsp;hacks.
-        </p>
-        <p style="margin-top:.5rem">
-          The backend is written in <strong>Python</strong> and compiled to WebAssembly.
-          It handles ICRC-1 token balances (<strong>ckBTC</strong>), fetches live
-          <strong>BTC/USD</strong> exchange rates via the on-chain
-          <a href="https://wiki.internetcomputer.org/wiki/Exchange_Rate_Canister" target="_blank">XRC canister</a>,
-          stores encrypted notes using
-          <a href="https://internetcomputer.org/docs/building-apps/network-features/encryption/vetkeys" target="_blank">vetKeys</a>,
-          and persists all state across upgrades in a stable-memory database —
-          no external DB needed.
-        </p>
-        <p style="margin-top:.5rem; font-size:.85rem; color:var(--text-muted)">
-          Stack: Python &rarr; WebAssembly &middot; ICRC-1 wallet &middot; XRC oracle &middot; vetKey encryption &middot; Stable memory DB &middot; Served at <code>icp0.io</code>
-        </p>
+        <div class="details-content">
+          <p>
+            Everything you see here — frontend, backend, and data — lives inside
+            <strong>smart contracts</strong> (canisters) on the Internet Computer, a
+            blockchain that can serve web content directly. No servers, no cloud, no DNS&nbsp;hacks.
+          </p>
+          <p style="margin-top:.5rem">
+            The backend is written in <strong>Python</strong> and compiled to WebAssembly.
+            It handles ICRC-1 token balances (<strong>ckBTC</strong>), fetches live
+            <strong>BTC/USD</strong> exchange rates via the on-chain
+            <a href="https://wiki.internetcomputer.org/wiki/Exchange_Rate_Canister" target="_blank">XRC canister</a>,
+            stores encrypted notes using
+            <a href="https://internetcomputer.org/docs/building-apps/network-features/encryption/vetkeys" target="_blank">vetKeys</a>,
+            and persists all state across upgrades in a stable-memory database —
+            no external DB needed.
+          </p>
+          <p style="margin-top:.5rem; font-size:.85rem; color:var(--text-muted)">
+            Stack: Python &rarr; WebAssembly &middot; ICRC-1 wallet &middot; XRC oracle &middot; vetKey encryption &middot; Stable memory DB &middot; Served at <code>icp0.io</code>
+          </p>
+        </div>
       </details>
     </section>
 
