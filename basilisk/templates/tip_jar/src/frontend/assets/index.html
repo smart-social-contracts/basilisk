@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tip Jar — Basilisk Template</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <h1>Tip Jar</h1>
+      <p class="subtitle">A <a href="https://github.com/smart-social-contracts/basilisk" target="_blank">basilisk</a> canister template on the Internet Computer</p>
+      <p class="canister-id" id="canister-id"></p>
+    </header>
+
+    <!-- Stats -->
+    <section class="card" id="stats-section">
+      <h2>Stats</h2>
+      <div class="stats-grid">
+        <div class="stat">
+          <span class="stat-value" id="stat-donors">—</span>
+          <span class="stat-label">Donors</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="stat-messages">—</span>
+          <span class="stat-label">Messages</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="stat-total">—</span>
+          <span class="stat-label">Total (sats)</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="stat-btc-usd">—</span>
+          <span class="stat-label">BTC/USD</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Register + Tip -->
+    <section class="card">
+      <h2>Leave a Tip</h2>
+      <form id="tip-form" onsubmit="return false;">
+        <div class="form-row">
+          <input type="text" id="input-name" placeholder="Your name" required />
+          <button type="button" id="btn-register" onclick="registerDonor()">Register</button>
+        </div>
+        <div class="form-row">
+          <input type="number" id="input-amount" placeholder="Amount (satoshis)" min="0" value="1000" />
+          <select id="input-token">
+            <option value="ckBTC">ckBTC</option>
+          </select>
+        </div>
+        <textarea id="input-message" placeholder="Leave a message..." rows="2"></textarea>
+        <button type="button" id="btn-tip" onclick="submitTip()">Send Tip</button>
+      </form>
+      <p class="form-note" id="tip-status"></p>
+    </section>
+
+    <!-- Leaderboard -->
+    <section class="card">
+      <h2>Leaderboard</h2>
+      <table id="leaderboard">
+        <thead>
+          <tr><th>#</th><th>Name</th><th>Total (sats)</th><th>USD</th><th>Messages</th></tr>
+        </thead>
+        <tbody id="leaderboard-body">
+          <tr><td colspan="5" class="empty">No donors yet</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Recent Messages -->
+    <section class="card">
+      <h2>Recent Messages</h2>
+      <div id="messages-list" class="messages-list">
+        <p class="empty">No messages yet</p>
+      </div>
+    </section>
+
+    <!-- Utility -->
+    <section class="card">
+      <h2>Canister Info</h2>
+      <div class="info-grid">
+        <button onclick="callWhoami()">Who Am I?</button>
+        <button onclick="callStatus()">Health Check</button>
+        <button onclick="callTime()">IC Time</button>
+        <button onclick="refreshAll()">Refresh All</button>
+      </div>
+      <pre id="info-output" class="info-output"></pre>
+    </section>
+  </div>
+
+  <!--
+    Load the IC agent from CDN.  In production you'd install @dfinity/agent
+    via npm, but for this template a CDN script keeps things simple.
+  -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>

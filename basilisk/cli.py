@@ -32,14 +32,17 @@ from pathlib import Path
 _HELP_NEW = """\
 basilisk new — Scaffold a new canister project.
 
-Usage: basilisk new [--backend cpython|rustpython] <project_name>
+Usage: basilisk new [--template simple|tip_jar] [--backend cpython|rustpython] <project_name>
 
 Options:
+  --template <t>   Project template: tip_jar (full-stack) or simple (minimal)
+                   [default: tip_jar]
   --backend <be>   Python backend: cpython or rustpython  [default: cpython]
                    (rustpython is deprecated and will be removed in a future release)
 
 Examples:
-  basilisk new my_app
+  basilisk new my_app                          Full-stack tip jar template
+  basilisk new --template simple my_app        Minimal single-file template
   cd my_app && dfx start --background && dfx deploy
 """
 
@@ -77,7 +80,7 @@ Examples:
 """
 
 
-def cmd_new(project_name: str, backend: str = "cpython"):
+def cmd_new(project_name: str, backend: str = "cpython", template: str = "tip_jar"):
     """Scaffold a new basilisk canister project."""
     project_dir = Path(project_name)
 
@@ -94,12 +97,25 @@ def cmd_new(project_name: str, backend: str = "cpython"):
         print(f"Error: unknown backend '{backend}'. Use 'cpython' or 'rustpython'.", file=sys.stderr)
         sys.exit(1)
 
+    if template not in ("simple", "tip_jar"):
+        print(f"Error: unknown template '{template}'. Use 'simple' or 'tip_jar'.", file=sys.stderr)
+        sys.exit(1)
+
     if backend == "rustpython":
         print("Warning: rustpython is deprecated and will be removed in a future release. Use cpython instead.", file=sys.stderr)
 
-    print(f"Creating new basilisk project: {project_name} (backend: {backend})")
+    print(f"Creating new basilisk project: {project_name} (template: {template}, backend: {backend})")
 
-    # Create directory structure
+    template_dir = Path(__file__).parent / "templates"
+
+    if template == "tip_jar":
+        _scaffold_tip_jar(project_dir, project_name, backend, template_dir)
+    else:
+        _scaffold_simple(project_dir, project_name, backend, template_dir)
+
+
+def _scaffold_simple(project_dir: Path, project_name: str, backend: str, template_dir: Path):
+    """Scaffold the minimal single-file template."""
     src_dir = project_dir / "src"
     src_dir.mkdir(parents=True)
 
@@ -124,7 +140,6 @@ def cmd_new(project_name: str, backend: str = "cpython"):
     (project_dir / "dfx.json").write_text(dfx_json)
 
     # src/main.py — copy from bundled template
-    template_dir = Path(__file__).parent / "templates"
     shutil.copy(template_dir / "main.py", src_dir / "main.py")
 
     # .gitignore
@@ -151,6 +166,73 @@ Next steps:
   basilisk shell --canister {project_name}          # interactive shell
   basilisk exec --canister {project_name} 'print(1)'  # one-shot exec
 """)
+
+
+def _scaffold_tip_jar(project_dir: Path, project_name: str, backend: str, template_dir: Path):
+    """Scaffold the full-stack Tip Jar template with frontend."""
+    tip_jar_template = template_dir / "tip_jar"
+
+    # Copy the entire template tree
+    shutil.copytree(tip_jar_template, project_dir)
+
+    # Rename canister references from "tip_jar" to <project_name>
+    _replace_in_project(project_dir, project_name, backend)
+
+    backend_name = f"{project_name}_backend"
+    build_note = "⚡ fast template build" if backend == "cpython" else "🔨 full Rust build (~5-10 min first time)"
+    print(f"""
+Done! Created {project_name}/ ({build_note})
+  src/backend/     — canister code (models, services, endpoints)
+  src/frontend/    — web UI (HTML, JS, CSS)
+  dfx.json         — IC project config (backend + frontend canisters)
+  README.md        — quick-start guide
+
+Next steps:
+  cd {project_name}
+  dfx start --background
+  dfx deploy
+  dfx canister call {backend_name} status
+  dfx canister call {backend_name} register_donor '("Alice")'
+  dfx canister call {backend_name} get_leaderboard
+  basilisk shell --canister {backend_name}
+
+  # Open frontend:
+  echo "http://$(dfx canister id {project_name}_frontend).localhost:4943"
+""")
+
+
+def _replace_in_project(project_dir: Path, project_name: str, backend: str):
+    """Replace 'tip_jar' with the actual project name in scaffolded files."""
+    backend_prefix = "BASILISK_PYTHON_BACKEND=rustpython " if backend == "rustpython" else ""
+    replacements = {
+        "tip_jar_backend": f"{project_name}_backend",
+        "tip_jar_frontend": f"{project_name}_frontend",
+        "Tip Jar": project_name.replace("_", " ").title(),
+        "tip_jar": project_name,
+    }
+
+    # Also patch the build command for rustpython if needed
+    if backend == "rustpython":
+        replacements[
+            f"CANISTER_CANDID_PATH=./{project_name}_backend.did python -m basilisk"
+        ] = f"{backend_prefix}CANISTER_CANDID_PATH=./{project_name}_backend.did python -m basilisk"
+
+    text_extensions = {".py", ".json", ".html", ".js", ".css", ".md", ".gitignore"}
+
+    for filepath in project_dir.rglob("*"):
+        if not filepath.is_file():
+            continue
+        if filepath.suffix not in text_extensions and filepath.name != ".gitignore":
+            continue
+        try:
+            content = filepath.read_text()
+        except UnicodeDecodeError:
+            continue
+        original = content
+        for old, new in replacements.items():
+            content = content.replace(old, new)
+        if content != original:
+            filepath.write_text(content)
 
 
 def cmd_build():
@@ -298,12 +380,13 @@ def main():
     command = sys.argv[1]
 
     if command == "new":
-        # Parse --backend flag
+        # Parse --backend and --template flags
         args = sys.argv[2:]
         if "--help" in args or "-h" in args:
             print(_HELP_NEW, end="")
             return
         backend = "cpython"  # default
+        template = "tip_jar"  # default
         if "--backend" in args:
             idx = args.index("--backend")
             if idx + 1 >= len(args):
@@ -311,11 +394,18 @@ def main():
                 sys.exit(1)
             backend = args[idx + 1]
             args = args[:idx] + args[idx + 2:]
+        if "--template" in args:
+            idx = args.index("--template")
+            if idx + 1 >= len(args):
+                print("Error: --template requires a value (simple or tip_jar)", file=sys.stderr)
+                sys.exit(1)
+            template = args[idx + 1]
+            args = args[:idx] + args[idx + 2:]
 
         if len(args) < 1:
             print(_HELP_NEW, end="")
             sys.exit(1)
-        cmd_new(args[0], backend)
+        cmd_new(args[0], backend, template)
 
     elif command == "build":
         if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:

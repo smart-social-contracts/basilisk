@@ -1,0 +1,15 @@
+{
+    "canisters": {
+        "tip_jar_backend": {
+            "type": "custom",
+            "build": "CANISTER_CANDID_PATH=./tip_jar_backend.did python -m basilisk tip_jar_backend src/backend/main.py",
+            "candid": "tip_jar_backend.did",
+            "wasm": ".basilisk/tip_jar_backend/tip_jar_backend.wasm"
+        },
+        "tip_jar_frontend": {
+            "type": "assets",
+            "source": ["src/frontend/assets"],
+            "dependencies": ["tip_jar_backend"]
+        }
+    }
+}
