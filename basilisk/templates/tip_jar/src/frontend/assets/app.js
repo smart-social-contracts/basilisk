@@ -74,10 +74,8 @@ function idlFactory({ IDL }) {
     whoami:              IDL.Func([], [IDL.Text], ["query"]),
     read_secret_notes:   IDL.Func([], [IDL.Text], ["query"]),
     // Updates
-    register_donor:      IDL.Func([IDL.Text], [IDL.Text], []),
-    leave_message:       IDL.Func([IDL.Text, IDL.Text], [IDL.Text], []),
-    tip:                 IDL.Func([IDL.Text, IDL.Text, IDL.Nat64, IDL.Text], [IDL.Text], []),
-    submit_secret_note:  IDL.Func([IDL.Text, IDL.Text], [IDL.Text], []),
+    register_tip:        IDL.Func([IDL.Text, IDL.Nat64, IDL.Text, IDL.Text], [IDL.Text], []),
+    verify_tip:          IDL.Func([IDL.Nat64], [IDL.Text], []),
     check_balance:       IDL.Func([IDL.Text], [IDL.Text], []),
     refresh_fx:          IDL.Func([], [IDL.Text], []),
   });
@@ -228,66 +226,87 @@ async function fetchMessages() {
 // Actions
 // ---------------------------------------------------------------------------
 
-window.registerDonor = async function () {
+// ---------------------------------------------------------------------------
+// Tip flow state
+// ---------------------------------------------------------------------------
+
+let currentPendingId = null;
+
+function showStep(n) {
+  for (let i = 1; i <= 3; i++) {
+    const el = $("tip-step-" + i);
+    if (el) el.style.display = i === n ? "block" : "none";
+  }
+}
+
+window.registerTip = async function () {
   const name = $("input-name").value.trim();
-  if (!name) return setStatus("Enter a name first.");
-  setStatus("Registering...");
+  const amount = parseInt($("input-amount").value || "0", 10);
+  const message = $("input-message").value.trim();
+  const msgType = $("input-msg-type").value || "public";
+
+  if (!name) return setStatus("Enter your name.");
+  if (amount <= 0) return setStatus("Enter an amount.");
+
+  setStatus("Registering tip...");
   try {
     const a = await getActor();
-    const raw = await a.register_donor(name);
+    const raw = await a.register_tip(name, BigInt(amount), message, msgType);
     const res = JSON.parse(raw);
-    setStatus(res.status === "created" ? `Registered "${name}"!` : `"${name}" already exists.`);
+    if (res.error) return setStatus("Error: " + res.error);
+
+    currentPendingId = res.pending_id;
+    // Show step 2 with the amount they need to send
+    $("send-amount").textContent = amount.toLocaleString();
+    showStep(2);
+    setStatus("");
+  } catch (e) {
+    setStatus("Error: " + e.message);
+  }
+};
+
+window.verifyTip = async function () {
+  if (!currentPendingId) return setStatus("No pending tip. Start from step 1.");
+
+  setStatus("Scanning blockchain for your transfer...");
+  $("btn-verify").disabled = true;
+  try {
+    const a = await getActor();
+    const raw = await a.verify_tip(BigInt(currentPendingId));
+    const res = JSON.parse(raw);
+
+    if (res.status === "not_found") {
+      setStatus(res.message);
+      $("btn-verify").disabled = false;
+      return;
+    }
+    if (res.error) {
+      setStatus("Error: " + res.error);
+      $("btn-verify").disabled = false;
+      return;
+    }
+
+    // Success!
+    currentPendingId = null;
+    showStep(3);
+    $("verified-donor").textContent = res.donor;
+    $("verified-amount").textContent = Number(res.amount).toLocaleString();
+    $("verified-tx").textContent = res.tx_id;
+    setStatus("");
     await refreshAll();
   } catch (e) {
     setStatus("Error: " + e.message);
+    $("btn-verify").disabled = false;
   }
 };
 
-window.submitTip = async function () {
-  const name = $("input-name").value.trim();
-  const amount = parseInt($("input-amount").value || "0", 10);
-  const token = $("input-token").value;
-  const message = $("input-message").value.trim();
-  if (!name) return setStatus("Enter your name first.");
-  if (!message) return setStatus("Write a message!");
-
-  setStatus("Recording tip...");
-  try {
-    const a = await getActor();
-    const raw = await a.tip(name, token, BigInt(amount), message);
-    const res = JSON.parse(raw);
-    if (res.error) {
-      setStatus("Error: " + res.error);
-    } else {
-      setStatus(`Tip recorded! New total: ${res.new_total.toLocaleString()} sats`);
-      $("input-message").value = "";
-      await refreshAll();
-    }
-  } catch (e) {
-    setStatus("Error: " + e.message);
-  }
-};
-
-window.submitSecretNote = async function () {
-  const name = $("note-name").value.trim();
-  const text = $("note-text").value.trim();
-  if (!name) return setNoteStatus("Enter your name.");
-  if (!text) return setNoteStatus("Write a note!");
-
-  setNoteStatus("Encrypting & sending...");
-  try {
-    const a = await getActor();
-    const raw = await a.submit_secret_note(name, text);
-    const res = JSON.parse(raw);
-    if (res.error) {
-      setNoteStatus("Error: " + res.error);
-    } else {
-      setNoteStatus("Secret note sent! Only the owner can read it.");
-      $("note-text").value = "";
-    }
-  } catch (e) {
-    setNoteStatus("Error: " + e.message);
-  }
+window.resetTipFlow = function () {
+  currentPendingId = null;
+  $("input-name").value = "";
+  $("input-amount").value = "1000";
+  $("input-message").value = "";
+  showStep(1);
+  setStatus("");
 };
 
 window.callWhoami = async function () {

@@ -18,7 +18,7 @@ import os
 from basilisk import query, update, text, nat64, ic, Async, match, CallResult
 from basilisk.canisters.management import HttpResponse, HttpTransformArgs
 
-from models import Donor, TipMessage, SecretNote
+from models import Donor, PendingTip, TipMessage, SecretNote
 from services import wallet, fx, crypto, vetkeys
 
 
@@ -139,33 +139,35 @@ def http_transform(args: HttpTransformArgs) -> HttpResponse:
 # ═══════════════════════════════════════════════════════════════════════════
 
 @update
-def register_donor(name: text) -> text:
-    """Register a new donor (or return existing one)."""
-    existing = Donor[name]
-    if existing is not None:
-        return json.dumps({"status": "exists", "name": existing.name})
+def register_tip(donor_name: text, amount: nat64, message: text, message_type: text) -> text:
+    """Step 1: Register a pending tip before sending ckBTC.
 
-    donor = Donor(name=name, principal=str(ic.caller()))
-    return json.dumps({"status": "created", "name": donor.name, "id": donor._id})
-
-
-@update
-def leave_message(donor_name: text, message: text) -> text:
-    """Leave a message in the tip jar (without a transfer)."""
-    donor = Donor[donor_name]
-    if donor is None:
-        return json.dumps({"error": f"Donor '{donor_name}' not found. Call register_donor first."})
+    The user provides their name, the amount they plan to send,
+    and an optional message (public or secret).  Returns a pending_id
+    that is used later to verify the on-chain transfer.
+    """
+    if not donor_name.strip():
+        return json.dumps({"error": "Name is required."})
+    if amount <= 0:
+        return json.dumps({"error": "Amount must be positive."})
+    if message_type not in ("public", "secret"):
+        message_type = "public"
 
     now_secs = int(ic.time() / 1_000_000_000)
-    msg = TipMessage(
-        donor_name=donor_name,
+    pending = PendingTip(
+        donor_name=donor_name.strip(),
         message=message,
-        amount=0,
-        token="",
+        message_type=message_type,
+        amount=amount,
+        token="ckBTC",
+        principal=str(ic.caller()),
         timestamp=now_secs,
     )
-    donor.message_count = donor.message_count + 1
-    return json.dumps({"status": "ok", "message_id": msg._id})
+    return json.dumps({
+        "status": "pending",
+        "pending_id": pending._id,
+        "amount": amount,
+    })
 
 
 @update
@@ -202,36 +204,99 @@ def schedule_once(delay_secs: nat64) -> text:
 # ═══════════════════════════════════════════════════════════════════════════
 
 @update
-def tip(donor_name: text, token_name: text, amount: nat64, message: text) -> Async[text]:
-    """Record a tip and leave a message.
+def verify_tip(pending_id: nat64) -> Async[text]:
+    """Step 2: Verify a pending tip against on-chain ckBTC transfers.
 
-    In a real application you would first ``yield wallet.transfer(...)``
-    to move tokens.  Here we record the intent so the example stays
-    simple and doesn't require the caller to hold real tokens.
+    Refreshes the wallet from the ckBTC indexer, then scans for an
+    incoming transfer whose amount matches the pending tip.  If found,
+    the tip is confirmed: a Donor and TipMessage (or SecretNote) are
+    created, and the pending record is removed.
     """
-    donor = Donor[donor_name]
+    pending = PendingTip.load(pending_id)
+    if pending is None:
+        return json.dumps({"error": "Pending tip not found."})
+
+    # Refresh transactions from the indexer
+    yield wallet.refresh("ckBTC")
+
+    # Collect tx_ids already claimed by previous tips
+    claimed_ids = set()
+    for tm in TipMessage.instances():
+        if tm.claimed_tx_id:
+            claimed_ids.add(tm.claimed_tx_id)
+
+    # Scan transfers for an unclaimed incoming tx matching the amount
+    canister_id = str(ic.id())
+    matched_tx = None
+    transfers = wallet.list_transfers("ckBTC", limit=200)
+    for tx in transfers:
+        if tx["to"] != canister_id:
+            continue
+        if tx["tx_id"] in claimed_ids:
+            continue
+        if tx["amount"] == pending.amount:
+            matched_tx = tx
+            break
+
+    if matched_tx is None:
+        return json.dumps({
+            "status": "not_found",
+            "message": f"No matching {pending.amount}-sat transfer found yet. "
+                       "Make sure you sent exactly that amount, then try again.",
+        })
+
+    # -- Match found: create or update Donor --
+    donor = Donor[pending.donor_name]
     if donor is None:
-        return json.dumps({"error": f"Donor '{donor_name}' not found."})
+        donor = Donor(name=pending.donor_name, principal=pending.principal)
+    donor.total_donated = donor.total_donated + pending.amount
+    donor.message_count = donor.message_count + (1 if pending.message else 0)
 
-    # -- Record the tip in the DB --
     now_secs = int(ic.time() / 1_000_000_000)
-    msg = TipMessage(
-        donor_name=donor_name,
-        message=message,
-        amount=amount,
-        token=token_name,
-        timestamp=now_secs,
-    )
-    donor.total_donated = donor.total_donated + amount
-    donor.message_count = donor.message_count + 1
 
-    # -- Refresh balance from the ledger (async inter-canister call) --
-    balance = yield wallet.balance_of(token_name)
+    # -- Store the message (public or secret) --
+    if pending.message:
+        if pending.message_type == "secret":
+            import hashlib
+            scope_hash = hashlib.sha256(b"tip_jar_secrets").digest()
+            encrypted = _xor_encrypt(pending.message, scope_hash)
+            SecretNote(
+                sender_name=pending.donor_name,
+                sender_principal=pending.principal,
+                encrypted_text=encrypted,
+                timestamp=now_secs,
+            )
+        else:
+            TipMessage(
+                donor_name=pending.donor_name,
+                message=pending.message,
+                amount=pending.amount,
+                token="ckBTC",
+                timestamp=now_secs,
+                claimed_tx_id=matched_tx["tx_id"],
+            )
+
+    # If no message or secret message, still record a TipMessage for the amount
+    if not pending.message or pending.message_type == "secret":
+        TipMessage(
+            donor_name=pending.donor_name,
+            message="",
+            amount=pending.amount,
+            token="ckBTC",
+            timestamp=now_secs,
+            claimed_tx_id=matched_tx["tx_id"],
+        )
+
+    # Clean up pending record
+    pending.delete()
+
+    balance = yield wallet.balance_of("ckBTC")
 
     return json.dumps({
-        "status": "ok",
-        "message_id": msg._id,
-        "new_total": donor.total_donated,
+        "status": "verified",
+        "donor": pending.donor_name,
+        "amount": pending.amount,
+        "tx_id": matched_tx["tx_id"],
         "canister_balance": balance,
     })
 

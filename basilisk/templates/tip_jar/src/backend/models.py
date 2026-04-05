@@ -20,14 +20,31 @@ class Donor(Entity):
     message_count = Integer(default=0)
 
 
+class PendingTip(Entity):
+    """A tip registration waiting for on-chain ckBTC verification.
+
+    Created in step 1 (user submits name + message + planned amount).
+    Consumed in step 2 (verify_tip matches an on-chain transfer).
+    """
+
+    donor_name = String(max_length=100)
+    message = String(max_length=500)
+    message_type = String(max_length=10)   # "public" or "secret"
+    amount = Integer(default=0)            # claimed amount in satoshis
+    token = String(max_length=50)
+    principal = String(max_length=64)
+    timestamp = Integer(default=0)
+
+
 class TipMessage(Entity):
-    """A message left alongside a tip."""
+    """A message left alongside a verified tip."""
 
     donor_name = String(max_length=100)
     message = String(max_length=500)
     amount = Integer(default=0)
     token = String(max_length=50)
     timestamp = Integer(default=0)
+    claimed_tx_id = String(max_length=64)  # indexer tx ID that was matched
 
 
 class SecretNote(Entity):

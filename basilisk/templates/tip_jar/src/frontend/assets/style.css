@@ -44,7 +44,7 @@ body {
 
 /* Header */
 header { text-align: center; margin-bottom: 2rem; }
-header .logo { width: 80px; height: 80px; margin-bottom: .75rem; }
+header .logo { width: 120px; height: 120px; margin-bottom: .75rem; }
 header h1 {
   font-size: 2rem;
   font-weight: 700;
@@ -312,6 +312,26 @@ tbody tr:hover { background: var(--bg-tertiary); }
   min-height: 2rem;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* Success box */
+.success-box {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  color: #166534;
+}
+.block-code {
+  display: block;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .5rem .75rem;
+  font-size: .82rem;
+  word-break: break-all;
+  margin-top: .5rem;
 }
 
 /* Footer */

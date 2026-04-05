@@ -72,50 +72,57 @@
       </div>
     </section>
 
-    <!-- Send ckBTC Tip -->
+    <!-- Send ckBTC Tip (multi-step) -->
     <section class="card">
       <h2>Send a ckBTC Tip</h2>
-      <div class="instructions">
-        <strong>How to send ckBTC from Oisy Wallet:</strong>
-        <ol>
-          <li>Open <a href="https://oisy.com" target="_blank">oisy.com</a> and sign in</li>
-          <li>Switch to <strong>ckBTC</strong> token</li>
-          <li>Tap <strong>Send</strong> and paste this canister address:<br/>
-            <code id="canister-address">loading…</code></li>
-          <li>Enter the amount and confirm the transaction</li>
-        </ol>
-        Once received, register your name below so it appears on the leaderboard.
-      </div>
-      <form id="tip-form" onsubmit="return false;">
+
+      <!-- Step 1: Register name + message + amount -->
+      <div id="tip-step-1">
+        <p class="form-note" style="margin-bottom:.75rem">
+          Fill in your details, then you'll be asked to send ckBTC via
+          <a href="https://oisy.com" target="_blank">Oisy Wallet</a>.
+        </p>
         <div class="form-row">
           <input type="text" id="input-name" placeholder="Your name" required />
-          <button type="button" id="btn-register" onclick="registerDonor()">Register</button>
+          <input type="number" id="input-amount" placeholder="Amount (sats)" min="1" value="1000" />
         </div>
+        <textarea id="input-message" placeholder="Leave an optional message..." rows="2"></textarea>
         <div class="form-row">
-          <input type="number" id="input-amount" placeholder="Amount (satoshis)" min="0" value="1000" />
-          <select id="input-token">
-            <option value="ckBTC">ckBTC</option>
+          <select id="input-msg-type">
+            <option value="public">Public message</option>
+            <option value="secret">Secret note (owner only)</option>
           </select>
+          <button type="button" onclick="registerTip()">Next &rarr;</button>
         </div>
-        <textarea id="input-message" placeholder="Leave a message with your tip..." rows="2"></textarea>
-        <button type="button" id="btn-tip" onclick="submitTip()">Record Tip</button>
-      </form>
-      <p class="form-note" id="tip-status"></p>
-    </section>
-
-    <!-- Secret Note (vetKeys encryption) -->
-    <section class="card">
-      <h2>Send a Secret Note</h2>
-      <p class="form-note" style="margin-bottom:.75rem">
-        Write a private note that only the canister owner can read.
-        Notes are stored encrypted on-chain using <strong>vetKeys</strong>.
-      </p>
-      <div class="form-row">
-        <input type="text" id="note-name" placeholder="Your name" />
       </div>
-      <textarea id="note-text" placeholder="Your secret note..." rows="3"></textarea>
-      <button type="button" id="btn-note" onclick="submitSecretNote()" style="width:100%">Send Secret Note</button>
-      <p class="form-note" id="note-status"></p>
+
+      <!-- Step 2: Send ckBTC + verify -->
+      <div id="tip-step-2" style="display:none">
+        <p>Now send exactly <strong><span id="send-amount">—</span> satoshis</strong> of ckBTC to:</p>
+        <code id="canister-address" class="block-code">loading…</code>
+        <div class="instructions" style="margin-top:.75rem">
+          <ol>
+            <li>Open <a href="https://oisy.com" target="_blank">oisy.com</a> and sign in</li>
+            <li>Switch to <strong>ckBTC</strong> token</li>
+            <li>Tap <strong>Send</strong>, paste the address above, and enter exactly the amount shown</li>
+            <li>Confirm the transaction, then click <strong>Verify</strong> below</li>
+          </ol>
+        </div>
+        <button type="button" id="btn-verify" onclick="verifyTip()" style="width:100%">Verify My Transfer</button>
+      </div>
+
+      <!-- Step 3: Success -->
+      <div id="tip-step-3" style="display:none">
+        <div class="success-box">
+          <strong>Tip verified!</strong><br/>
+          <span id="verified-donor"></span> donated
+          <strong><span id="verified-amount"></span> sats</strong>
+          <br/><span class="mono" style="font-size:.7rem">tx: <span id="verified-tx"></span></span>
+        </div>
+        <button type="button" onclick="resetTipFlow()" style="width:100%;margin-top:.75rem">Send Another Tip</button>
+      </div>
+
+      <p class="form-note" id="tip-status"></p>
     </section>
 
     <!-- Leaderboard -->
