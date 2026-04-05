@@ -359,6 +359,8 @@ window.callTime = async function () {
 
 window.refreshAll = async function () {
   await Promise.all([fetchStats(), fetchLeaderboard()]);
+  // Fire-and-forget: refresh FX rate in the background, then update stats
+  getActor().then(a => a.refresh_fx()).then(() => fetchStats()).catch(() => {});
 };
 
 // ---------------------------------------------------------------------------
