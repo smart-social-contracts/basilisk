@@ -99,7 +99,7 @@ async function loadAgentModule() {
 
 async function loadAuthClient() {
   if (authClient) return authClient;
-  const { AuthClient } = await import("https://esm.sh/@dfinity/auth-client@2.2.0");
+  const { AuthClient } = await import("https://esm.sh/@dfinity/auth-client@2.2.0?deps=@dfinity/agent@2.2.0,@dfinity/candid@2.2.0,@dfinity/identity@2.2.0");
   authClient = await AuthClient.create();
   return authClient;
 }
