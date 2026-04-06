@@ -117,8 +117,9 @@ function truncPrincipal(p) {
   return p.slice(0, 5) + "…" + p.slice(-3);
 }
 
-const TOKEN_UNITS = { ckBTC: "sats", ckETH: "wei", ICP: "e8s" };
-const TOKEN_DECIMALS = { ckBTC: 8, ckETH: 18, ICP: 8 };
+const TOKEN_UNITS = { ckBTC: "sats", ckETH: "wei", ICP: "e8s", ckUSDC: "units" };
+const TOKEN_DECIMALS = { ckBTC: 8, ckETH: 18, ICP: 8, ckUSDC: 6 };
+const TOKEN_DEFAULT_AMOUNT = { ckBTC: "0.0001", ckETH: "0.002", ckUSDC: "5", ICP: "1" };
 function fmtTokenAmount(amount, token) {
   const dec = TOKEN_DECIMALS[token] || 8;
   const human = amount / (10 ** dec);
@@ -177,6 +178,7 @@ function renderLeaderboardPage() {
     if (r.ckbtc_sats) parts.push(`${fmtTokenAmount(r.ckbtc_sats, "ckBTC")} BTC`);
     if (r.cketh_wei) parts.push(`${fmtTokenAmount(r.cketh_wei, "ckETH")} ETH`);
     if (r.icp_e8s) parts.push(`${fmtTokenAmount(r.icp_e8s, "ICP")} ICP`);
+    if (r.ckusdc_units) parts.push(`${fmtTokenAmount(r.ckusdc_units, "ckUSDC")} USDC`);
     const tokenStr = parts.join(", ") || "—";
     return `<tr class="donor-row" data-donor="${esc(r.name)}" onclick="toggleDonorMessages(this, '${esc(r.name).replace(/'/g, "\\'")}')">
       <td>${rank}</td>
@@ -306,13 +308,17 @@ window.showDonateStep = showDonateStep;
 
 window.registerTip = async function () {
   const name = $('input-name').value.trim();
-  const amount = parseInt($('input-amount').value || '0', 10);
+  const rawAmount = parseFloat($('input-amount').value || '0');
   const message = $('input-message').value.trim();
   const msgType = $('input-msg-private')?.checked ? 'secret' : 'public';
   const token = $('input-token')?.value || 'ckBTC';
 
   if (!name) return setStatus('Enter your nickname.');
-  if (amount <= 0) return setStatus('Enter an amount.');
+  if (!rawAmount || rawAmount <= 0) return setStatus('Enter an amount.');
+
+  const dec = TOKEN_DECIMALS[token] || 8;
+  const amount = Math.round(rawAmount * (10 ** dec));
+  if (amount <= 0) return setStatus('Amount is too small.');
 
   setStatus('Registering tip...');
   try {
@@ -360,11 +366,16 @@ window.verifyTip = async function () {
     }
 
     currentPendingId = null;
+    // Inject success content into step 4
+    const step4 = $("donate-step-4");
+    const fmtAmt = fmtTokenAmount(res.amount, res.token);
+    step4.innerHTML = `<div class="success-box">
+        <strong>Tip verified!</strong><br/>
+        ${esc(res.donor)} donated <strong>${fmtAmt} ${esc(res.token)}</strong>
+        <br/><span class="mono" style="font-size:.7rem">tx: ${esc(String(res.tx_id))}</span>
+      </div>
+      <button type="button" onclick="resetTipFlow()" style="width:100%;margin-top:.75rem">Send Another Tip</button>`;
     showDonateStep(4);
-    $('verified-donor').textContent = res.donor;
-    $('verified-amount').textContent = Number(res.amount).toLocaleString();
-    $('verified-token').textContent = `${TOKEN_UNITS[res.token] || 'units'} ${res.token}`;
-    $('verified-tx').textContent = res.tx_id;
     setStatus("");
     await refreshAll();
   } catch (e) {
@@ -377,8 +388,11 @@ window.verifyTip = async function () {
 window.resetTipFlow = function () {
   currentPendingId = null;
   $("input-name").value = "";
-  $("input-amount").value = "1000";
+  $("input-amount").value = TOKEN_DEFAULT_AMOUNT[$("input-token")?.value || "ckBTC"] || "0.0001";
   $("input-message").value = "";
+  // Reset step 4 to placeholder
+  const step4 = $("donate-step-4");
+  if (step4) step4.innerHTML = '<p class="step-label">Step 4</p><p class="form-note">Verification result will appear here.</p>';
   showDonateStep(1);
   setStatus("");
 };
@@ -510,9 +524,17 @@ window.toggleLogin = async function () {
   const ft = $("footer-time");
   if (ft) ft.textContent = new Date().toISOString().replace("T", " ").slice(0, 19) + "Z";
 
+  // Update default amount when token changes
+  const tokenSel = $("input-token");
+  if (tokenSel) {
+    tokenSel.addEventListener("change", () => {
+      $("input-amount").value = TOKEN_DEFAULT_AMOUNT[tokenSel.value] || "0.0001";
+    });
+  }
+
   const cid = await detectBackendCanisterId();
   if (!cid.startsWith("__")) {
-    $("canister-id").textContent = `Backend: ${cid}`;
+    $("canister-id").textContent = cid;
     const addrEl = $("canister-address");
     if (addrEl) addrEl.textContent = cid;
     await checkAuth();

@@ -390,11 +390,18 @@ tbody tr:hover { background: var(--bg-tertiary); }
 }
 .step-optional { font-weight: 400; color: var(--text-muted); text-transform: none; }
 
-/* Disabled (future) steps */
+/* Disabled (future) steps — dimmed */
 .step-disabled {
   opacity: .35;
   pointer-events: none;
   user-select: none;
+}
+
+/* Visual separator between steps */
+.step-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
 }
 
 /* Locked (completed) steps */
@@ -408,23 +415,26 @@ tbody tr:hover { background: var(--bg-tertiary); }
   opacity: 1;
 }
 
-/* Back button */
+/* Back button — top-right of step */
 .btn-back {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: .72rem;
-  font-weight: 400;
-  text-transform: none;
-  letter-spacing: 0;
-  padding: .1rem .4rem;
-  margin-left: .5rem;
+  display: inline-block;
+  float: right;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: .8rem;
+  font-weight: 500;
+  padding: .35rem .75rem;
+  margin-bottom: .5rem;
   cursor: pointer;
   box-shadow: none;
+  transition: color .15s, border-color .15s;
 }
 .btn-back:hover {
   color: var(--accent);
-  background: none;
+  border-color: var(--accent);
+  background: var(--surface);
   transform: none;
   box-shadow: none;
 }

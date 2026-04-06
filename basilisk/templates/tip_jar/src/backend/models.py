@@ -19,6 +19,7 @@ class Donor(Entity):
     total_donated = Integer(default=0)        # ckBTC in satoshis (kept for backward compat)
     total_donated_cketh = Integer(default=0)   # ckETH in wei
     total_donated_icp = Integer(default=0)     # ICP in e8s
+    total_donated_ckusdc = Integer(default=0)   # ckUSDC in 1e-6 units
     message_count = Integer(default=0)
 
 

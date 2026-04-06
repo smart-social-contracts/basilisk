@@ -35,13 +35,15 @@ def get_leaderboard() -> text:
         usd_ckbtc = _amount_to_usd(d.total_donated, "ckBTC")
         usd_cketh = _amount_to_usd(d.total_donated_cketh, "ckETH")
         usd_icp = _amount_to_usd(d.total_donated_icp, "ICP")
-        total_usd = sum(v for v in (usd_ckbtc, usd_cketh, usd_icp) if v is not None)
+        usd_ckusdc = _amount_to_usd(d.total_donated_ckusdc, "ckUSDC")
+        total_usd = sum(v for v in (usd_ckbtc, usd_cketh, usd_icp, usd_ckusdc) if v is not None)
         rows.append({
             "name": d.name,
             "principal": d.principal,
             "ckbtc_sats": d.total_donated,
             "cketh_wei": d.total_donated_cketh,
             "icp_e8s": d.total_donated_icp,
+            "ckusdc_units": d.total_donated_ckusdc,
             "total_usd": round(total_usd, 2) if total_usd else 0,
             "message_count": d.message_count,
         })
@@ -118,6 +120,7 @@ def get_stats() -> text:
             (d.total_donated, "ckBTC"),
             (d.total_donated_cketh, "ckETH"),
             (d.total_donated_icp, "ICP"),
+            (d.total_donated_ckusdc, "ckUSDC"),
         ):
             v = _amount_to_usd(val, tok)
             if v:
@@ -195,7 +198,7 @@ def http_transform(args: HttpTransformArgs) -> HttpResponse:
 # 2. UPDATE ENDPOINTS  (sync — mutate state, no inter-canister calls)
 # ═══════════════════════════════════════════════════════════════════════════
 
-_SUPPORTED_TOKENS = ("ckBTC", "ckETH", "ICP")
+_SUPPORTED_TOKENS = ("ckBTC", "ckETH", "ICP", "ckUSDC")
 
 
 @update
@@ -321,6 +324,8 @@ def verify_tip(pending_id: nat64) -> Async[text]:
         donor.total_donated_cketh = donor.total_donated_cketh + pending.amount
     elif token == "ICP":
         donor.total_donated_icp = donor.total_donated_icp + pending.amount
+    elif token == "ckUSDC":
+        donor.total_donated_ckusdc = donor.total_donated_ckusdc + pending.amount
     donor.message_count = donor.message_count + (1 if pending.message else 0)
 
     now_secs = int(ic.time() / 1_000_000_000)
@@ -502,9 +507,10 @@ def download_page(url: text, dest: text) -> Async[text]:
 
 # Token → (FX base symbol, decimals)
 _TOKEN_FX_MAP = {
-    "ckBTC": ("BTC", 8),
-    "ckETH": ("ETH", 18),
-    "ICP":   ("ICP", 8),
+    "ckBTC":  ("BTC", 8),
+    "ckETH":  ("ETH", 18),
+    "ICP":    ("ICP", 8),
+    "ckUSDC": ("USDC", 6),
 }
 
 

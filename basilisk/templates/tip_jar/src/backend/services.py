@@ -24,9 +24,10 @@ def setup_services():
     """Register tokens and FX pairs (requires DB to be initialized first)."""
 
     # --- Wallet: ICRC-1 token management ---
-    wallet.register_well_known_tokens("ckBTC", "ckETH", "ICP")
+    wallet.register_well_known_tokens("ckBTC", "ckETH", "ICP", "ckUSDC")
 
     # --- FX rates: exchange rate queries via IC XRC canister ---
     fx.register_pair("ICP", "USD")
     fx.register_pair("BTC", "USD")
     fx.register_pair("ETH", "USD")
+    fx.register_pair("USDC", "USD")

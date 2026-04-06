@@ -118,20 +118,24 @@
           <p id="donate-auth-status" class="form-note" style="margin-top:.5rem"></p>
         </div>
 
+        <hr class="step-divider"/>
+
         <!-- Step 2: Name + message + amount -->
         <div id="donate-step-2" class="step-disabled">
-          <p class="step-label">Step 2 <button type="button" class="btn-back" onclick="showDonateStep(1)">&larr; Back</button></p>
+          <button type="button" class="btn-back" onclick="showDonateStep(1)">&larr; Back to Step 1</button>
+          <p class="step-label">Step 2</p>
           <p class="form-note" style="margin-bottom:.75rem">
             Enter your details. You'll then send tokens via
             <a href="https://oisy.com" target="_blank">Oisy Wallet</a>.
           </p>
           <div class="form-row">
             <input type="text" id="input-name" placeholder="Your nickname" required />
-            <input type="number" id="input-amount" placeholder="Amount" min="1" value="1000" />
+            <input type="number" id="input-amount" placeholder="Amount" min="0" step="any" value="0.0001" />
             <select id="input-token">
-              <option value="ckBTC" selected>ckBTC (sats)</option>
-              <option value="ckETH">ckETH (wei)</option>
-              <option value="ICP">ICP (e8s)</option>
+              <option value="ckBTC" selected>ckBTC</option>
+              <option value="ckETH">ckETH</option>
+              <option value="ckUSDC">ckUSDC</option>
+              <option value="ICP">ICP</option>
             </select>
           </div>
           <textarea id="input-message" placeholder="Leave an optional message..." rows="2"></textarea>
@@ -144,9 +148,12 @@
           </div>
         </div>
 
+        <hr class="step-divider"/>
+
         <!-- Step 3: Send ckBTC + verify -->
         <div id="donate-step-3" class="step-disabled">
-          <p class="step-label">Step 3 <button type="button" class="btn-back" onclick="showDonateStep(2)">&larr; Back</button></p>
+          <button type="button" class="btn-back" onclick="showDonateStep(2)">&larr; Back to Step 2</button>
+          <p class="step-label">Step 3</p>
           <p>Send exactly <strong><span id="send-amount">—</span> <span id="send-unit">satoshis</span></strong> of <strong><span id="send-token">ckBTC</span></strong> to:</p>
           <div class="copy-row">
             <code id="canister-address" class="block-code" style="flex:1">loading…</code>
@@ -163,15 +170,12 @@
           <button type="button" id="btn-verify" onclick="verifyTip()" style="width:100%">Verify My Transfer</button>
         </div>
 
-        <!-- Step 4: Success -->
+        <hr class="step-divider"/>
+
+        <!-- Step 4: Success (content injected by JS after verification) -->
         <div id="donate-step-4" class="step-disabled">
-          <div class="success-box">
-            <strong>Tip verified!</strong><br/>
-            <span id="verified-donor"></span> donated
-            <strong><span id="verified-amount"></span> <span id="verified-token"></span></strong>
-            <br/><span class="mono" style="font-size:.7rem">tx: <span id="verified-tx"></span></span>
-          </div>
-          <button type="button" onclick="resetTipFlow()" style="width:100%;margin-top:.75rem">Send Another Tip</button>
+          <p class="step-label">Step 4</p>
+          <p class="form-note">Verification result will appear here.</p>
         </div>
 
         <p class="form-note" id="tip-status"></p>
@@ -191,7 +195,10 @@
       <!-- Canister Info -->
       <section class="card">
         <h2>Canister Info</h2>
-        <p class="canister-id" id="canister-id" style="margin-bottom:1rem"></p>
+        <div style="margin-bottom:1rem">
+          <span style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)">Backend Canister</span>
+          <code id="canister-id" style="display:block;margin-top:.25rem;padding:.4rem .6rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;font-size:.85rem;word-break:break-all"></code>
+        </div>
         <div class="info-grid">
           <button onclick="callWhoami()">Who Am I?</button>
           <button onclick="callStatus()">Health Check</button>
