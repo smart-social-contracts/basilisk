@@ -4,6 +4,7 @@
 name: Shell Integration Tests
 
 on:
+    pull_request: # Run on PRs to catch regressions early
     workflow_call: # Called by test-all.yml orchestrator
     workflow_dispatch:
         inputs:
