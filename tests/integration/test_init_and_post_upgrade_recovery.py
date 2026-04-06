@@ -3,7 +3,7 @@
 import subprocess
 import os
 import pytest
-from .conftest import call_canister, parse_candid_text, _get_canister_id, EXAMPLES_DIR, _USE_PREBUILT, _CANDID_MAP, _parse_query_methods
+from .conftest import call_canister, parse_candid_text, _get_canister_id, EXAMPLES_DIR, _USE_PREBUILT, _CANDID_MAP, _patch_dfx_json_candid
 
 EXAMPLE = "init_and_post_upgrade_recovery"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
@@ -17,6 +17,8 @@ def _wasm_path():
 @pytest.fixture(scope="module")
 def canister(replica):
     if _USE_PREBUILT:
+        # Patch dfx.json so dfx can find the candid interface
+        _patch_dfx_json_candid(EXAMPLE_DIR, [CANISTER_NAME])
         # Create canister + install pre-built WASM with init argument
         subprocess.run(
             ["dfx", "canister", "create", CANISTER_NAME],
@@ -34,11 +36,8 @@ def canister(replica):
         )
     cid = _get_canister_id(EXAMPLE_DIR, CANISTER_NAME)
     assert cid, f"Failed to deploy {CANISTER_NAME}"
-    # Register candid info so call_canister passes --candid/--query
-    did_path = os.path.join(EXAMPLE_DIR, ".basilisk", CANISTER_NAME, f"{CANISTER_NAME}.did")
-    if os.path.exists(did_path):
-        abs_did = os.path.abspath(did_path)
-        _CANDID_MAP[cid] = {"did": abs_did, "queries": _parse_query_methods(abs_did)}
+    # Register so call_canister uses canister name (enables candid auto-detection)
+    _CANDID_MAP[cid] = {"name": CANISTER_NAME, "example_dir": EXAMPLE_DIR}
     return cid
 
 
