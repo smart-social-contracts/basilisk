@@ -192,9 +192,11 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
 
 
 def _patch_dfx_json_candid(example_dir, canister_names):
-    """Add 'candid' field to dfx.json pointing to the pre-built .did files.
+    """Rewrite dfx.json canister entries as type 'custom' with candid/wasm paths.
 
-    This lets dfx auto-detect query vs update methods when calling by name.
+    dfx ignores the 'candid' field for unknown canister types like 'basilisk'.
+    Changing to 'custom' lets dfx read the .did file and auto-detect
+    query vs update methods when calling by name.
     """
     dfx_json_path = os.path.join(example_dir, "dfx.json")
     with open(dfx_json_path) as f:
@@ -203,12 +205,15 @@ def _patch_dfx_json_candid(example_dir, canister_names):
     modified = False
     for name in canister_names:
         did_path = f".basilisk/{name}/{name}.did"
+        wasm_path = f".basilisk/{name}/{name}.wasm"
         abs_did = os.path.join(example_dir, did_path)
-        if os.path.exists(abs_did):
-            canister_cfg = config.get("canisters", {}).get(name, {})
-            if canister_cfg.get("candid") != did_path:
-                canister_cfg["candid"] = did_path
-                modified = True
+        canister_cfg = config.get("canisters", {}).get(name, {})
+        if os.path.exists(abs_did) and canister_cfg.get("type") != "custom":
+            canister_cfg["type"] = "custom"
+            canister_cfg["candid"] = did_path
+            canister_cfg["wasm"] = wasm_path
+            canister_cfg["build"] = ""
+            modified = True
 
     if modified:
         with open(dfx_json_path, "w") as f:

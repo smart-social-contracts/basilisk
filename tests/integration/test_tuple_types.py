@@ -15,15 +15,15 @@ def canister(replica):
 
 
 def test_tuple_of_one(canister):
-    raw = call_canister(canister, "tuple_of_one", example_dir=EXAMPLE_DIR)
+    raw = call_canister(canister, "primitive_one_tuple_return_type", example_dir=EXAMPLE_DIR)
     assert len(raw) > 0
 
 
 def test_two_tuple(canister):
-    raw = call_canister(canister, "two_tuple", example_dir=EXAMPLE_DIR)
+    raw = call_canister(canister, "primitive_two_tuple_return_type", example_dir=EXAMPLE_DIR)
     assert "record" in raw
 
 
 def test_three_tuple(canister):
-    raw = call_canister(canister, "three_tuple", example_dir=EXAMPLE_DIR)
+    raw = call_canister(canister, "primitive_three_tuple_return_type", example_dir=EXAMPLE_DIR)
     assert "record" in raw

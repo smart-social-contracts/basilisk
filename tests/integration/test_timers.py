@@ -17,14 +17,16 @@ def canister(replica):
 
 
 def test_set_timers_and_verify(canister):
-    # Set up timers
-    call_canister(canister, "set_single_timer", example_dir=EXAMPLE_DIR)
-    call_canister(canister, "set_inline_timer", example_dir=EXAMPLE_DIR)
-    call_canister(canister, "set_capture_timer", example_dir=EXAMPLE_DIR)
-    call_canister(canister, "set_repeat_timer", example_dir=EXAMPLE_DIR)
+    # set_timers takes (delay: Duration, interval: Duration) in nanoseconds
+    raw = call_canister(
+        canister, "set_timers",
+        '(1_000_000_000 : nat64, 1_000_000_000 : nat64)',
+        example_dir=EXAMPLE_DIR, update=True,
+    )
+    assert "single" in raw
 
     # Wait for timers to fire (PocketIC may need explicit time advancement)
-    time.sleep(10)
+    time.sleep(5)
 
     # Check status
     raw = call_canister(canister, "status_report", example_dir=EXAMPLE_DIR)

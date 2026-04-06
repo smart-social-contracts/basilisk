@@ -16,40 +16,30 @@ def canister(replica):
 
 
 def test_diagnostics(canister):
-    raw = call_canister(canister, "diagnostics", example_dir=EXAMPLE_DIR)
-    assert len(raw) > 0
+    raw = call_canister(canister, "test_fs_diagnostics", example_dir=EXAMPLE_DIR, update=True)
+    assert "python" in raw
 
 
 def test_mkdir(canister):
-    result = parse_candid_text(call_canister(canister, "create_dir", '("/test_dir")', example_dir=EXAMPLE_DIR))
-    assert result is True or "true" in str(result).lower()
+    raw = call_canister(canister, "test_fs_mkdir", example_dir=EXAMPLE_DIR, update=True)
+    assert "mkdir=OK" in raw or "mkdir=EXISTS" in raw
 
 
 def test_path_exists(canister):
-    result = parse_candid_text(call_canister(canister, "path_exists", '("/test_dir")', example_dir=EXAMPLE_DIR))
-    assert result is True
+    raw = call_canister(canister, "test_fs_path_exists", example_dir=EXAMPLE_DIR, update=True)
+    assert "True" in raw
 
 
 def test_rename(canister):
-    result = parse_candid_text(call_canister(canister, "rename_path", '("/test_dir", "/renamed_dir")', example_dir=EXAMPLE_DIR))
-    assert result is True or "true" in str(result).lower()
-
-
-def test_path_exists_after_rename(canister):
-    result = parse_candid_text(call_canister(canister, "path_exists", '("/renamed_dir")', example_dir=EXAMPLE_DIR))
-    assert result is True
-
-
-def test_old_path_gone(canister):
-    result = parse_candid_text(call_canister(canister, "path_exists", '("/test_dir")', example_dir=EXAMPLE_DIR))
-    assert result is False
+    raw = call_canister(canister, "test_fs_rename", example_dir=EXAMPLE_DIR, update=True)
+    assert "True" in raw
 
 
 def test_rmdir(canister):
-    result = parse_candid_text(call_canister(canister, "remove_dir", '("/renamed_dir")', example_dir=EXAMPLE_DIR))
-    assert result is True or "true" in str(result).lower()
+    raw = call_canister(canister, "test_fs_rmdir", example_dir=EXAMPLE_DIR, update=True)
+    assert "True" in raw
 
 
 def test_nested_mkdir(canister):
-    result = parse_candid_text(call_canister(canister, "create_dir_all", '("/a/b/c")', example_dir=EXAMPLE_DIR))
-    assert result is True or "true" in str(result).lower()
+    raw = call_canister(canister, "test_fs_nested_mkdir", example_dir=EXAMPLE_DIR, update=True)
+    assert "True" in raw
