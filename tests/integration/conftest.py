@@ -126,6 +126,15 @@ def deploy_example(example_name, replica_host="127.0.0.1:8000"):
             did_path = os.path.join(example_dir, ".basilisk", name, f"{name}.did")
             if os.path.exists(did_path):
                 _CANDID_MAP[cid] = os.path.abspath(did_path)
+                print(f"[deploy] registered candid for {name} ({cid}): {did_path}")
+            else:
+                print(f"[deploy] WARNING: .did not found for {name}: {did_path}")
+                # List what IS in the .basilisk dir
+                bdir = os.path.join(example_dir, ".basilisk", name)
+                if os.path.isdir(bdir):
+                    print(f"[deploy]   .basilisk/{name}/ contents: {os.listdir(bdir)}")
+                else:
+                    print(f"[deploy]   .basilisk/{name}/ does not exist")
 
     if not canister_ids:
         raise RuntimeError(f"Failed to deploy {example_name}: no canister IDs found")
@@ -274,6 +283,7 @@ def call_canister(canister_id, method, args=None, *, example_dir=None, update=Fa
     # Provide candid interface so dfx knows query vs update and arg types
     if canister_id in _CANDID_MAP:
         cmd.extend(["--candid", _CANDID_MAP[canister_id]])
+    print(f"[call_canister] cmd={' '.join(cmd)}")
 
     cwd = example_dir or EXAMPLES_DIR
     result = subprocess.run(
