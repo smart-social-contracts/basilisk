@@ -3,7 +3,7 @@
 import subprocess
 import os
 import pytest
-from .conftest import call_canister, parse_candid_text, _get_canister_id, EXAMPLES_DIR, _USE_PREBUILT, _CANDID_MAP
+from .conftest import call_canister, parse_candid_text, _get_canister_id, EXAMPLES_DIR, _USE_PREBUILT, _CANDID_MAP, _parse_query_methods
 
 EXAMPLE = "init_and_post_upgrade_recovery"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
@@ -34,10 +34,11 @@ def canister(replica):
         )
     cid = _get_canister_id(EXAMPLE_DIR, CANISTER_NAME)
     assert cid, f"Failed to deploy {CANISTER_NAME}"
-    # Register candid path so call_canister passes --candid
+    # Register candid info so call_canister passes --candid/--query
     did_path = os.path.join(EXAMPLE_DIR, ".basilisk", CANISTER_NAME, f"{CANISTER_NAME}.did")
     if os.path.exists(did_path):
-        _CANDID_MAP[cid] = os.path.abspath(did_path)
+        abs_did = os.path.abspath(did_path)
+        _CANDID_MAP[cid] = {"did": abs_did, "queries": _parse_query_methods(abs_did)}
     return cid
 
 

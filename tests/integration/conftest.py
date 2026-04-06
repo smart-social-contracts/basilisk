@@ -12,7 +12,6 @@ Usage:
 import json
 import os
 import re
-import shutil
 import subprocess
 import time
 
@@ -85,9 +84,24 @@ def replica(tmp_path_factory):
 # When BASILISK_PREBUILT_WASMS=1, skip build and deploy pre-built WASMs directly.
 _USE_PREBUILT = os.environ.get("BASILISK_PREBUILT_WASMS", "") == "1"
 
-# Global mapping: canister_id -> absolute path to .did file.
-# Populated by deploy_example() so call_canister() can pass --candid.
+# Global mapping: canister_id -> {"did": abs_path, "queries": set_of_query_method_names}
+# Populated by deploy_example() so call_canister() can pass --query/--candid.
 _CANDID_MAP: dict = {}
+
+
+def _parse_query_methods(did_path):
+    """Parse a .did file and return the set of method names annotated as query."""
+    queries = set()
+    try:
+        with open(did_path) as f:
+            for line in f:
+                # Match lines like:  "method_name" : (...) -> (...) query;
+                m = re.search(r'"(\w+)"\s*:.*\)\s*(query|composite_query)\s*;', line)
+                if m:
+                    queries.add(m.group(1))
+    except OSError:
+        pass
+    return queries
 
 
 def deploy_example(example_name, replica_host="127.0.0.1:8000"):
@@ -116,25 +130,19 @@ def deploy_example(example_name, replica_host="127.0.0.1:8000"):
     else:
         _deploy_with_build(example_dir, example_name, canister_names)
 
-    # Read canister IDs and register candid paths
+    # Read canister IDs and register candid/query info
     canister_ids = {}
     for name in canister_names:
         cid = _get_canister_id(example_dir, name)
         if cid:
             canister_ids[name] = cid
-            # Register .did path for --candid flag in call_canister()
             did_path = os.path.join(example_dir, ".basilisk", name, f"{name}.did")
             if os.path.exists(did_path):
-                _CANDID_MAP[cid] = os.path.abspath(did_path)
-                print(f"[deploy] registered candid for {name} ({cid}): {did_path}")
-            else:
-                print(f"[deploy] WARNING: .did not found for {name}: {did_path}")
-                # List what IS in the .basilisk dir
-                bdir = os.path.join(example_dir, ".basilisk", name)
-                if os.path.isdir(bdir):
-                    print(f"[deploy]   .basilisk/{name}/ contents: {os.listdir(bdir)}")
-                else:
-                    print(f"[deploy]   .basilisk/{name}/ does not exist")
+                abs_did = os.path.abspath(did_path)
+                _CANDID_MAP[cid] = {
+                    "did": abs_did,
+                    "queries": _parse_query_methods(abs_did),
+                }
 
     if not canister_ids:
         raise RuntimeError(f"Failed to deploy {example_name}: no canister IDs found")
@@ -197,13 +205,6 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
                 f"dfx canister install {name} failed: {result.stderr[-300:]}"
             )
 
-        # Copy .did file to where dfx expects it for `dfx canister call`.
-        # Without this, dfx can't encode complex candid arguments.
-        did_src = os.path.join(example_dir, ".basilisk", name, f"{name}.did")
-        if os.path.exists(did_src):
-            did_dest_dir = os.path.join(example_dir, ".dfx", "local", "canisters", name)
-            os.makedirs(did_dest_dir, exist_ok=True)
-            shutil.copy2(did_src, os.path.join(did_dest_dir, f"{name}.did"))
 
 
 def _wait_for_canisters(example_dir, canister_names, timeout=3600):
@@ -280,10 +281,13 @@ def call_canister(canister_id, method, args=None, *, example_dir=None, update=Fa
         cmd.append(args)
     if update:
         cmd.append("--update")
-    # Provide candid interface so dfx knows query vs update and arg types
-    if canister_id in _CANDID_MAP:
-        cmd.extend(["--candid", _CANDID_MAP[canister_id]])
-    print(f"[call_canister] cmd={' '.join(cmd)}")
+    # With persistent network dfx can't auto-detect query vs update.
+    # Parse the .did file to determine the method type explicitly.
+    info = _CANDID_MAP.get(canister_id)
+    if info:
+        cmd.extend(["--candid", info["did"]])
+        if not update and method in info["queries"]:
+            cmd.append("--query")
 
     cwd = example_dir or EXAMPLES_DIR
     result = subprocess.run(
@@ -307,8 +311,11 @@ def call_canister_expect_trap(canister_id, method, args=None, *, example_dir=Non
     cmd = ["dfx", "canister", "call", canister_id, method]
     if args:
         cmd.append(args)
-    if canister_id in _CANDID_MAP:
-        cmd.extend(["--candid", _CANDID_MAP[canister_id]])
+    info = _CANDID_MAP.get(canister_id)
+    if info:
+        cmd.extend(["--candid", info["did"]])
+        if method in info["queries"]:
+            cmd.append("--query")
 
     cwd = example_dir or EXAMPLES_DIR
     result = subprocess.run(
