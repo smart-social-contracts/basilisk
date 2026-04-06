@@ -49,19 +49,18 @@ def replica(tmp_path_factory):
         wrote_networks = True
 
     dfx_home = str(tmp_path_factory.mktemp("dfx_home"))
-    # Use DEVNULL for stdout to prevent PocketIC from inheriting pipes
-    # (capture_output=True creates pipes that backgrounded PocketIC may
-    # keep open, causing subprocess.run() to block indefinitely).
+    # DEVNULL for both stdout AND stderr: PocketIC inherits pipe FDs from
+    # its parent (dfx), keeping them open indefinitely.  With DEVNULL there
+    # are no pipes, so subprocess.run() returns as soon as dfx CLI exits.
     result = subprocess.run(
         ["dfx", "start", "--clean", "--background", "--pocketic"],
         cwd=dfx_home,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
+        stderr=subprocess.DEVNULL,
         timeout=300,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"dfx start failed: {result.stderr[-500:]}")
+        raise RuntimeError(f"dfx start --pocketic failed (exit code {result.returncode})")
 
     yield "local"
 
