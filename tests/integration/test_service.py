@@ -1,7 +1,7 @@
 """Integration tests for examples/service — Service type handling and cross-canister calls."""
 
 import pytest
-from .conftest import deploy_example, call_canister, EXAMPLES_DIR, _get_canister_id
+from .conftest import deploy_example, call_canister, EXAMPLES_DIR
 import os
 
 EXAMPLE = "service"

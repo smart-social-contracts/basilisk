@@ -2,7 +2,7 @@
 
 import subprocess
 import pytest
-from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR
+from .conftest import deploy_example, call_canister, parse_candid_text, _get_canister_id, EXAMPLES_DIR
 import os
 
 EXAMPLE = "init_and_post_upgrade_recovery"
@@ -20,7 +20,6 @@ def canister(replica):
         text=True,
         timeout=1800,
     )
-    from .conftest import _get_canister_id
     cid = _get_canister_id(example_dir, "init_and_post_upgrade_recovery")
     assert cid, "Failed to deploy init_and_post_upgrade_recovery"
     return cid
