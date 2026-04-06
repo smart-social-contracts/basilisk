@@ -34,3 +34,9 @@ jobs:
         if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         uses: ./.github/workflows/test-shell.yml
         secrets: inherit
+
+    integration-tests:
+        needs: wasm-build
+        if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
+        uses: ./.github/workflows/test-integration.yml
+        secrets: inherit

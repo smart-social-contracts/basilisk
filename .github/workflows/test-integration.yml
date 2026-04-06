@@ -1,0 +1,111 @@
+# Consolidated Python pytest integration tests for Basilisk examples.
+# Replaces the per-example TypeScript matrix with grouped pytest jobs
+# sharing a single PocketIC replica per shard.
+
+name: Integration Tests (Python)
+
+on:
+    pull_request:
+    workflow_call:
+    workflow_dispatch:
+
+env:
+    BASILISK_PYTHON_BACKEND: cpython
+    BASILISK_COMPILE_RUST_PYTHON_STDLIB: false
+    WASI_SDK_VERSION: "24"
+    WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
+    PYTHON_VERSION: "3.10.7"
+    DFX_VERSION: "0.29.0"
+
+jobs:
+    integration-tests:
+        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                shard:
+                    - name: "simple-a"
+                      tests: "tests/integration/test_counter.py tests/integration/test_query.py tests/integration/test_update.py tests/integration/test_date.py tests/integration/test_primitive_types.py tests/integration/test_annotated_tests.py tests/integration/test_blob_array.py tests/integration/test_bytes.py tests/integration/test_complex_init.py tests/integration/test_complex_types.py"
+                    - name: "simple-b"
+                      tests: "tests/integration/test_guard_functions.py tests/integration/test_filesystem.py tests/integration/test_generators.py tests/integration/test_timers.py tests/integration/test_inspect_message.py tests/integration/test_ic_api.py tests/integration/test_imports.py tests/integration/test_key_value_store.py tests/integration/test_keywords.py tests/integration/test_null_example.py"
+                    - name: "simple-c"
+                      tests: "tests/integration/test_manual_reply.py tests/integration/test_simple_erc20.py tests/integration/test_simple_user_accounts.py tests/integration/test_audio_recorder.py tests/integration/test_principal.py tests/integration/test_call_raw.py tests/integration/test_init.py tests/integration/test_optional_types.py tests/integration/test_list_of_lists.py tests/integration/test_tuple_types.py"
+                    - name: "advanced"
+                      tests: "tests/integration/test_stable_memory.py tests/integration/test_stable_structures.py tests/integration/test_stdlib.py tests/integration/test_randomness.py tests/integration/test_rejections.py tests/integration/test_outgoing_http_requests.py tests/integration/test_init_and_post_upgrade_recovery.py"
+                    - name: "multi-canister"
+                      tests: "tests/integration/test_cycles.py tests/integration/test_heartbeat.py tests/integration/test_management_canister.py tests/integration/test_notify_raw.py tests/integration/test_service.py"
+                    - name: "motoko"
+                      tests: "tests/integration/test_motoko_calc.py tests/integration/test_motoko_counter.py tests/integration/test_motoko_echo.py tests/integration/test_motoko_factorial.py tests/integration/test_motoko_hello.py tests/integration/test_motoko_hello_world.py tests/integration/test_motoko_persistent_storage.py tests/integration/test_motoko_phone_book.py tests/integration/test_motoko_quicksort.py tests/integration/test_motoko_simple_todo.py tests/integration/test_motoko_superheroes.py tests/integration/test_motoko_whoami.py"
+        name: "Integration (${{ matrix.shard.name }})"
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Cache basilisk cargo
+              uses: actions/cache@v4
+              with:
+                  path: ~/.config/basilisk
+                  key: basilisk-cargo-cpython-v4-${{ hashFiles('basilisk/cargotoml.py') }}
+
+            - name: Cache dfx
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/dfinity
+                  key: basilisk-dfx-${{ env.DFX_VERSION }}
+
+            - name: Install dfx
+              run: |
+                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Install WASI SDK
+              run: |
+                  curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
+
+            - name: Install wasm-opt (binaryen)
+              run: |
+                  curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
+                  tar xzf /tmp/binaryen.tar.gz -C /tmp
+                  sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
+                  wasm-opt --version
+
+            - name: Pre-download CPython wasm
+              run: |
+                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+                  CPYTHON_DIR="$HOME/.config/basilisk/${VERSION}/cpython_wasm"
+                  if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ] || [ ! -f "${CPYTHON_DIR}/lib/libz.a" ]; then
+                    mkdir -p "${CPYTHON_DIR}"
+                    curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
+                    tar -xzf /tmp/cpython-wasm.tar.gz -C "${CPYTHON_DIR}"
+                  fi
+
+            - name: Pre-download canister template
+              run: |
+                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+                  TEMPLATE_PATH="$HOME/.config/basilisk/${VERSION}/cpython_canister_template.wasm"
+                  mkdir -p "$(dirname $TEMPLATE_PATH)"
+                  curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm -o "$TEMPLATE_PATH"
+
+            - name: Setup Python environment
+              run: |
+                  curl https://pyenv.run | bash
+                  ~/.pyenv/bin/pyenv install ${{ env.PYTHON_VERSION }}
+                  ~/.pyenv/versions/${{ env.PYTHON_VERSION }}/bin/python -m venv venv
+
+            - name: Install basilisk from repo
+              shell: bash -l {0}
+              run: source venv/bin/activate && pip install -e .
+
+            - name: Install dfx extension
+              run: source venv/bin/activate && python -m basilisk install-dfx-extension
+
+            - name: Install pytest
+              run: source venv/bin/activate && pip install pytest
+
+            - name: Run integration tests
+              shell: bash -l {0}
+              timeout-minutes: 120
+              run: |
+                  source venv/bin/activate
+                  pytest ${{ matrix.shard.tests }} -v --tb=short 2>&1
