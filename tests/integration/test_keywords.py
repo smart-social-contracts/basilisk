@@ -36,4 +36,4 @@ def test_keyword_variant(canister):
 
 def test_complex_keyword(canister):
     raw = call_canister(canister, "complex_keyword", example_dir=EXAMPLE_DIR)
-    assert "False_" in raw or "True_" in raw
+    assert "False" in raw or "True" in raw

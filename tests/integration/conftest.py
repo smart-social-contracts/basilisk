@@ -166,29 +166,112 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
         raise RuntimeError(
             f"dfx canister create --all failed for {example_name}: {result.stderr[-300:]}"
         )
-    # Install each canister from pre-built WASM
-    for name in canister_names:
-        wasm_path = os.path.join(example_dir, ".basilisk", name, f"{name}.wasm")
-        if not os.path.exists(wasm_path):
-            raise FileNotFoundError(
-                f"Pre-built WASM not found: {wasm_path}. "
-                f"Run 'python scripts/build_all_wasms.py' first."
+    # Install each canister from pre-built WASM.
+    # Some canisters need init args — install those that don't depend on
+    # other canisters first, then install dependent ones with resolved IDs.
+    installed = set()
+    remaining = list(canister_names)
+
+    # Up to 2 passes: first pass installs canisters without inter-canister
+    # dependencies, second pass installs the rest with resolved IDs.
+    for _pass in range(2):
+        still_remaining = []
+        for name in remaining:
+            wasm_path = os.path.join(example_dir, ".basilisk", name, f"{name}.wasm")
+            if not os.path.exists(wasm_path):
+                raise FileNotFoundError(
+                    f"Pre-built WASM not found: {wasm_path}. "
+                    f"Run 'python scripts/build_all_wasms.py' first."
+                )
+
+            init_arg = _get_init_arg(example_dir, name, installed)
+            if init_arg is _DEFER:
+                still_remaining.append(name)
+                continue
+
+            cmd = ["dfx", "canister", "install", name, "--wasm", wasm_path]
+            if init_arg:
+                cmd.extend(["--argument", init_arg])
+
+            result = subprocess.run(
+                cmd,
+                cwd=example_dir,
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"dfx canister install {name} failed: {result.stderr[-300:]}"
+                )
+            installed.add(name)
 
-        cmd = ["dfx", "canister", "install", name, "--wasm", wasm_path]
+        remaining = still_remaining
+        if not remaining:
+            break
 
-        result = subprocess.run(
-            cmd,
-            cwd=example_dir,
-            capture_output=True,
-            text=True,
-            timeout=120,
+    if remaining:
+        raise RuntimeError(
+            f"Could not resolve init args for: {remaining}"
         )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"dfx canister install {name} failed: {result.stderr[-300:]}"
-            )
 
+
+
+_DEFER = object()  # sentinel: defer install to next pass (dependency not yet ready)
+
+# Known init args for canisters that require them.
+# Value is either a static candid string or a callable(example_dir, installed_set) -> str|None|_DEFER.
+_KNOWN_INIT_ARGS = {
+    "complex_init": '(record { "Hello"; record { id = "user1" } })',
+    "init": '(record { id = "user1" }, variant { Fire }, principal "aaaaa-aa")',
+    "whoami": '(principal "aaaaa-aa")',
+    "init_and_post_upgrade_recovery": "(false)",
+}
+
+
+def _get_init_arg(example_dir, canister_name, installed):
+    """Return the init argument string for a canister, or None if none needed.
+
+    Returns _DEFER if the canister depends on another that hasn't been installed yet.
+    """
+    # Check static known args first
+    if canister_name in _KNOWN_INIT_ARGS:
+        return _KNOWN_INIT_ARGS[canister_name]
+
+    # Handle multi-canister init dependencies:
+    # canister needs another canister's ID as init arg.
+    dep = _INIT_DEPS.get(canister_name)
+    if dep:
+        dep_name, arg_template = dep
+        if dep_name not in installed:
+            return _DEFER
+        # Get the dependency's canister ID
+        dep_id = _get_canister_id(example_dir, dep_name)
+        if not dep_id:
+            return _DEFER
+        return arg_template.format(dep_id)
+
+    # Check if the .did file declares init args
+    did_path = os.path.join(example_dir, ".basilisk", canister_name, f"{canister_name}.did")
+    if os.path.exists(did_path):
+        try:
+            with open(did_path) as f:
+                content = f.read()
+            # If the service has "init : (...)" with non-empty args, it needs init args
+            # but we don't have them → let install try without args (may fail)
+            pass
+        except OSError:
+            pass
+
+    return None
+
+
+# Inter-canister init dependencies: canister_name -> (dep_canister, arg_template)
+_INIT_DEPS = {
+    "rejections": ("some_service", '(principal "{}")'),
+    "intermediary": ("cycles", '(principal "{}")'),
+    "canister1": ("canister2", '(principal "{}")'),
+}
 
 
 def _patch_dfx_json_candid(example_dir, canister_names):

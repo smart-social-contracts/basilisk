@@ -30,5 +30,5 @@ def test_get_head_with_elements(canister):
 
 
 def test_get_element_empty(canister):
-    raw = call_canister(canister, "get_element", "(vec {})", example_dir=EXAMPLE_DIR)
-    assert "vec" in raw or "null" in raw or raw.strip() == "(vec {})"
+    raw = call_canister(canister, "get_element", "(opt opt record { id = \"test\" })", example_dir=EXAMPLE_DIR)
+    assert "test" in raw or "null" in raw

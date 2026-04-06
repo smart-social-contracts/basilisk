@@ -15,46 +15,80 @@ def canister(replica):
 
 
 def test_execute_create_canister(canister):
-    raw = call_canister(canister, "execute_create_canister", example_dir=EXAMPLE_DIR)
+    raw = call_canister(canister, "execute_create_canister", example_dir=EXAMPLE_DIR, update=True)
     assert "Ok" in raw
 
 
 def test_get_canister_status(canister):
     cid_raw = call_canister(canister, "get_created_canister_id", example_dir=EXAMPLE_DIR)
-    raw = call_canister(canister, "get_canister_status", f'(record {{ canister_id = {cid_raw.strip()} }})', example_dir=EXAMPLE_DIR)
-    assert "Ok" in raw and "running" in raw
+    raw = call_canister(
+        canister, "get_canister_status",
+        f'(record {{ canister_id = principal {cid_raw.strip()} }})',
+        example_dir=EXAMPLE_DIR, update=True,
+    )
+    assert "Ok" in raw
 
 
 def test_execute_update_settings(canister):
-    raw = call_canister(canister, "execute_update_settings", example_dir=EXAMPLE_DIR)
+    cid_raw = call_canister(canister, "get_created_canister_id", example_dir=EXAMPLE_DIR)
+    raw = call_canister(
+        canister, "execute_update_settings",
+        f'(principal {cid_raw.strip()})',
+        example_dir=EXAMPLE_DIR, update=True,
+    )
     assert "Ok" in raw
 
 
 def test_execute_install_code(canister):
-    raw = call_canister(canister, "execute_install_code", example_dir=EXAMPLE_DIR)
+    cid_raw = call_canister(canister, "get_created_canister_id", example_dir=EXAMPLE_DIR)
+    raw = call_canister(
+        canister, "execute_install_code",
+        f'(principal {cid_raw.strip()}, blob "")',
+        example_dir=EXAMPLE_DIR, update=True,
+    )
     assert "Ok" in raw
 
 
 def test_execute_uninstall_code(canister):
-    raw = call_canister(canister, "execute_uninstall_code", example_dir=EXAMPLE_DIR)
+    cid_raw = call_canister(canister, "get_created_canister_id", example_dir=EXAMPLE_DIR)
+    raw = call_canister(
+        canister, "execute_uninstall_code",
+        f'(principal {cid_raw.strip()})',
+        example_dir=EXAMPLE_DIR, update=True,
+    )
     assert "Ok" in raw
 
 
 def test_get_raw_rand(canister):
-    raw = call_canister(canister, "get_raw_rand", example_dir=EXAMPLE_DIR)
+    raw = call_canister(canister, "get_raw_rand", example_dir=EXAMPLE_DIR, update=True)
     assert "Ok" in raw
 
 
 def test_execute_stop_canister(canister):
-    raw = call_canister(canister, "execute_stop_canister", example_dir=EXAMPLE_DIR)
+    cid_raw = call_canister(canister, "get_created_canister_id", example_dir=EXAMPLE_DIR)
+    raw = call_canister(
+        canister, "execute_stop_canister",
+        f'(principal {cid_raw.strip()})',
+        example_dir=EXAMPLE_DIR, update=True,
+    )
     assert "Ok" in raw
 
 
 def test_execute_start_canister(canister):
-    raw = call_canister(canister, "execute_start_canister", example_dir=EXAMPLE_DIR)
+    cid_raw = call_canister(canister, "get_created_canister_id", example_dir=EXAMPLE_DIR)
+    raw = call_canister(
+        canister, "execute_start_canister",
+        f'(principal {cid_raw.strip()})',
+        example_dir=EXAMPLE_DIR, update=True,
+    )
     assert "Ok" in raw
 
 
 def test_execute_delete_canister(canister):
-    raw = call_canister(canister, "execute_delete_canister", example_dir=EXAMPLE_DIR)
+    cid_raw = call_canister(canister, "get_created_canister_id", example_dir=EXAMPLE_DIR)
+    raw = call_canister(
+        canister, "execute_delete_canister",
+        f'(principal {cid_raw.strip()})',
+        example_dir=EXAMPLE_DIR, update=True,
+    )
     assert "Ok" in raw

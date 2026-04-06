@@ -17,8 +17,8 @@ def canister(replica):
 def test_initialize_supply(canister):
     result = parse_candid_text(call_canister(
         canister, "initialize_supply",
-        '("TestToken", "addr1", "TT", 1_000_000 : nat)',
-        example_dir=EXAMPLE_DIR
+        '("TestToken", "addr1", "TT", 1_000_000 : nat64)',
+        example_dir=EXAMPLE_DIR, update=True,
     ))
     assert result is True
 
@@ -45,8 +45,8 @@ def test_balance_original(canister):
 
 def test_transfer(canister):
     result = parse_candid_text(call_canister(
-        canister, "transfer", '("addr1", "addr2", 500 : nat)',
-        example_dir=EXAMPLE_DIR
+        canister, "transfer", '("addr1", "addr2", 500 : nat64)',
+        example_dir=EXAMPLE_DIR, update=True,
     ))
     assert result is True
 

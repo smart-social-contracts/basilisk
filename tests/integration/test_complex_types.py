@@ -15,10 +15,10 @@ def canister(replica):
 
 
 def test_create_user(canister):
-    raw = call_canister(canister, "create_user", '("testuser")', example_dir=EXAMPLE_DIR)
-    assert "Ok" in raw
+    raw = call_canister(canister, "create_user", '("testuser", 0 : nat32)', example_dir=EXAMPLE_DIR, update=True)
+    assert "testuser" in raw
 
 
 def test_get_all_users(canister):
-    raw = call_canister(canister, "get_all_users", example_dir=EXAMPLE_DIR)
-    assert "vec" in raw or "record" in raw
+    raw = call_canister(canister, "get_all_users", '(0 : nat32)', example_dir=EXAMPLE_DIR)
+    assert "vec" in raw or "record" in raw or "testuser" in raw
