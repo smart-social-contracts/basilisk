@@ -12,6 +12,7 @@ Usage:
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 
@@ -156,13 +157,7 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
         raise RuntimeError(
             f"dfx canister create --all failed for {example_name}: {result.stderr[-300:]}"
         )
-    # Debug: show where dfx stored canister IDs
-    print(f"[deploy_prebuilt] create output for {example_name}: {result.stderr[:200]}")
-    for root, dirs, files in os.walk(os.path.join(example_dir, ".dfx")):
-        for f_name in files:
-            print(f"[deploy_prebuilt] .dfx file: {os.path.relpath(os.path.join(root, f_name), example_dir)}")
-
-    # Install each canister from pre-built WASM
+    # Install each canister from pre-built WASM and set up candid interface
     for name in canister_names:
         wasm_path = os.path.join(example_dir, ".basilisk", name, f"{name}.wasm")
         if not os.path.exists(wasm_path):
@@ -184,6 +179,14 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
             raise RuntimeError(
                 f"dfx canister install {name} failed: {result.stderr[-300:]}"
             )
+
+        # Copy .did file to where dfx expects it for `dfx canister call`.
+        # Without this, dfx can't encode complex candid arguments.
+        did_src = os.path.join(example_dir, ".basilisk", name, f"{name}.did")
+        if os.path.exists(did_src):
+            did_dest_dir = os.path.join(example_dir, ".dfx", "local", "canisters", name)
+            os.makedirs(did_dest_dir, exist_ok=True)
+            shutil.copy2(did_src, os.path.join(did_dest_dir, f"{name}.did"))
 
 
 def _wait_for_canisters(example_dir, canister_names, timeout=3600):
