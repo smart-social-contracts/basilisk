@@ -49,21 +49,27 @@ def replica(tmp_path_factory):
         wrote_networks = True
 
     dfx_home = str(tmp_path_factory.mktemp("dfx_home"))
-    subprocess.run(
+    # Use DEVNULL for stdout to prevent PocketIC from inheriting pipes
+    # (capture_output=True creates pipes that backgrounded PocketIC may
+    # keep open, causing subprocess.run() to block indefinitely).
+    result = subprocess.run(
         ["dfx", "start", "--clean", "--background", "--pocketic"],
         cwd=dfx_home,
-        capture_output=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
         text=True,
-        check=True,
-        timeout=120,
+        timeout=300,
     )
+    if result.returncode != 0:
+        raise RuntimeError(f"dfx start failed: {result.stderr[-500:]}")
 
     yield "local"
 
     subprocess.run(
         ["dfx", "stop"],
         cwd=dfx_home,
-        capture_output=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
     if wrote_networks:
         try:
