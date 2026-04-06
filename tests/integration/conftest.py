@@ -156,6 +156,11 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
         raise RuntimeError(
             f"dfx canister create --all failed for {example_name}: {result.stderr[-300:]}"
         )
+    # Debug: show where dfx stored canister IDs
+    print(f"[deploy_prebuilt] create output for {example_name}: {result.stderr[:200]}")
+    for root, dirs, files in os.walk(os.path.join(example_dir, ".dfx")):
+        for f_name in files:
+            print(f"[deploy_prebuilt] .dfx file: {os.path.relpath(os.path.join(root, f_name), example_dir)}")
 
     # Install each canister from pre-built WASM
     for name in canister_names:
@@ -208,7 +213,22 @@ def _wait_for_canisters(example_dir, canister_names, timeout=3600):
 
 
 def _get_canister_id(example_dir, canister_name):
-    """Read canister ID from .dfx/local/canister_ids.json."""
+    """Get canister ID, trying `dfx canister id` first then the JSON file."""
+    # Prefer dfx canister id — works regardless of where IDs are stored
+    try:
+        result = subprocess.run(
+            ["dfx", "canister", "id", canister_name],
+            cwd=example_dir,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+    # Fallback: read from .dfx/local/canister_ids.json
     ids_file = os.path.join(example_dir, ".dfx", "local", "canister_ids.json")
     if not os.path.exists(ids_file):
         return None
