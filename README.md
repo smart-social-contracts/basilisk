@@ -11,6 +11,8 @@
 
 An Internet Computer's Python Canister Development Kit. Write **Python canisters** efficiently for the [Internet Computer](https://internetcomputer.org/, with additional Operating System-like features on top.
 
+**Live demo:** [https://ic-basilisk.tech/](https://ic-basilisk.tech/).
+
 ## Features
 
 - **Based on CPython 3.13**, compiled to WASM — deploy in seconds with a pre-built template, no Rust toolchain needed
