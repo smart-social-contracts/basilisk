@@ -23,7 +23,6 @@ from basilisk import (
     StableBTreeMap, GuardResult, init, post_upgrade,
 )
 from basilisk.db import Database
-import ic_python_db  # noqa: kept for module bundler dependency tracing
 
 # ---------------------------------------------------------------------------
 # Step 1: Persistent database storage (survives canister upgrades)
