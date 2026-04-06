@@ -119,7 +119,7 @@ def execute_code_shell(code: str) -> str:
 # Step 6: Scheduled tasks (basilisk OS Task framework)
 # ---------------------------------------------------------------------------
 
-_FX_REFRESH_INTERVAL = 3600  # seconds (1 hour)
+_FX_REFRESH_INTERVAL = 3600  # in seconds
 _FX_TASK_NAME = "fx_refresh"
 
 _FX_REFRESH_CODE = """\
