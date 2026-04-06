@@ -85,6 +85,10 @@ def replica(tmp_path_factory):
 # When BASILISK_PREBUILT_WASMS=1, skip build and deploy pre-built WASMs directly.
 _USE_PREBUILT = os.environ.get("BASILISK_PREBUILT_WASMS", "") == "1"
 
+# Global mapping: canister_id -> absolute path to .did file.
+# Populated by deploy_example() so call_canister() can pass --candid.
+_CANDID_MAP: dict = {}
+
 
 def deploy_example(example_name, replica_host="127.0.0.1:8000"):
     """Build and deploy an example canister, returning a dict of {name: canister_id}.
@@ -112,12 +116,16 @@ def deploy_example(example_name, replica_host="127.0.0.1:8000"):
     else:
         _deploy_with_build(example_dir, example_name, canister_names)
 
-    # Read canister IDs
+    # Read canister IDs and register candid paths
     canister_ids = {}
     for name in canister_names:
         cid = _get_canister_id(example_dir, name)
         if cid:
             canister_ids[name] = cid
+            # Register .did path for --candid flag in call_canister()
+            did_path = os.path.join(example_dir, ".basilisk", name, f"{name}.did")
+            if os.path.exists(did_path):
+                _CANDID_MAP[cid] = os.path.abspath(did_path)
 
     if not canister_ids:
         raise RuntimeError(f"Failed to deploy {example_name}: no canister IDs found")
@@ -263,6 +271,9 @@ def call_canister(canister_id, method, args=None, *, example_dir=None, update=Fa
         cmd.append(args)
     if update:
         cmd.append("--update")
+    # Provide candid interface so dfx knows query vs update and arg types
+    if canister_id in _CANDID_MAP:
+        cmd.extend(["--candid", _CANDID_MAP[canister_id]])
 
     cwd = example_dir or EXAMPLES_DIR
     result = subprocess.run(
@@ -286,6 +297,8 @@ def call_canister_expect_trap(canister_id, method, args=None, *, example_dir=Non
     cmd = ["dfx", "canister", "call", canister_id, method]
     if args:
         cmd.append(args)
+    if canister_id in _CANDID_MAP:
+        cmd.extend(["--candid", _CANDID_MAP[canister_id]])
 
     cwd = example_dir or EXAMPLES_DIR
     result = subprocess.run(
