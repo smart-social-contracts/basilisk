@@ -17,6 +17,11 @@ def _wasm_path():
 @pytest.fixture(scope="module")
 def canister(replica):
     if _USE_PREBUILT:
+        # Start PocketIC from example dir so .dfx/ state is co-located
+        subprocess.run(
+            ["dfx", "start", "--clean", "--background", "--pocketic"],
+            cwd=EXAMPLE_DIR, capture_output=True, text=True, timeout=120,
+        )
         # Create canister + install pre-built WASM with init argument
         subprocess.run(
             ["dfx", "canister", "create", CANISTER_NAME],
