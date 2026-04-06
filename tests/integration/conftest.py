@@ -32,11 +32,12 @@ EXAMPLES_DIR = os.path.join(REPO_ROOT, "examples")
 
 @pytest.fixture(scope="session")
 def replica(tmp_path_factory):
-    """Configure system subnet for PocketIC.
+    """Start a shared PocketIC replica for the entire test session.
 
-    In prebuilt mode, each deploy_example() call starts its own PocketIC
-    from the example directory so that dfx state (.dfx/) is co-located.
-    In build mode, dfx deploy handles replica management internally.
+    Uses a *persistent* local network so the replica state is stored
+    globally (~/.local/share/dfx/) rather than per-project.  This lets
+    dfx commands run from any example directory and still find the
+    running PocketIC instance.
     """
     dfx_config_dir = os.path.expanduser("~/.config/dfx")
     os.makedirs(dfx_config_dir, exist_ok=True)
@@ -44,11 +45,26 @@ def replica(tmp_path_factory):
     wrote_networks = False
     if not os.path.exists(networks_json):
         with open(networks_json, "w") as f:
-            json.dump({"local": {"type": "ephemeral", "replica": {"subnet_type": "system"}}}, f)
+            json.dump({"local": {"type": "persistent", "replica": {"subnet_type": "system"}}}, f)
         wrote_networks = True
+
+    dfx_home = str(tmp_path_factory.mktemp("dfx_home"))
+    subprocess.run(
+        ["dfx", "start", "--clean", "--background", "--pocketic"],
+        cwd=dfx_home,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=120,
+    )
 
     yield "local"
 
+    subprocess.run(
+        ["dfx", "stop"],
+        cwd=dfx_home,
+        capture_output=True,
+    )
     if wrote_networks:
         try:
             os.remove(networks_json)
@@ -119,23 +135,10 @@ def _deploy_with_build(example_dir, example_name, canister_names):
 def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
     """Deploy pre-built WASMs without running the build step.
 
-    Starts a PocketIC replica from the example directory (so .dfx/ state
-    is co-located), then uses dfx canister create + install --wasm.
-    The WASMs must already exist at .basilisk/<name>/<name>.wasm.
+    Uses dfx canister create + dfx canister install --wasm for each canister.
+    Expects a persistent-network PocketIC already running (started by the
+    replica fixture).  The WASMs must exist at .basilisk/<name>/<name>.wasm.
     """
-    # Start PocketIC from example dir so .dfx/ state is local
-    result = subprocess.run(
-        ["dfx", "start", "--clean", "--background", "--pocketic"],
-        cwd=example_dir,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"dfx start failed for {example_name}: {result.stderr[-300:]}"
-        )
-
     # Create all canisters (allocates IDs)
     result = subprocess.run(
         ["dfx", "canister", "create", "--all"],
