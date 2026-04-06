@@ -6,7 +6,7 @@ The ``__alias__`` field enables lookup by a human-readable key, e.g.
 ``Donor["alice"]`` instead of ``Donor.load(3)``.
 """
 
-from basilisk.db import Entity, String, Integer
+from ic_python_db import Entity, String, Integer
 
 
 class Donor(Entity):

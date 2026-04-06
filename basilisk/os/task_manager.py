@@ -27,7 +27,7 @@ from .entities import Call, Task, TaskExecution, TaskSchedule, TaskStep
 from .status import TaskExecutionStatus, TaskStatus
 
 # These imports only work inside the canister runtime
-from _cdk import Async, Duration, ic, void
+from basilisk import Async, Duration, ic, void
 from basilisk.logging import get_logger
 
 logger = get_logger("basilisk.os.task_manager")

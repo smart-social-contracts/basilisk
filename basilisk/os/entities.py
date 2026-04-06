@@ -133,8 +133,8 @@ class Call(Entity, TimestampedMixin):
 
                 # Try to import canister-specific modules
                 try:
-                    import _cdk as basilisk
-                    from _cdk import ic
+                    import basilisk
+                    from basilisk import ic
                     namespace["basilisk"] = basilisk
                     namespace["ic"] = ic
                 except ImportError:

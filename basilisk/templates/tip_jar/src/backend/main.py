@@ -23,6 +23,7 @@ from basilisk import (
     StableBTreeMap, GuardResult, init, post_upgrade,
 )
 from basilisk.db import Database
+import ic_python_db  # noqa: kept for module bundler dependency tracing
 
 # ---------------------------------------------------------------------------
 # Step 1: Persistent database storage (survives canister upgrades)
@@ -43,7 +44,7 @@ import models  # noqa: F401 — registers Donor, TipMessage entities
 # Step 3: Initialize services (wallet, FX, encryption)
 # ---------------------------------------------------------------------------
 
-from services import setup_services, fx  # noqa: E402
+from services import setup_services  # noqa: E402
 setup_services()
 
 # ---------------------------------------------------------------------------
@@ -115,37 +116,56 @@ def execute_code_shell(code: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Step 6: Lifecycle hooks
+# Step 6: Scheduled tasks (basilisk OS Task framework)
 # ---------------------------------------------------------------------------
 
 _FX_REFRESH_INTERVAL = 3600  # seconds (1 hour)
+_FX_TASK_NAME = "fx_refresh"
+
+_FX_REFRESH_CODE = """\
+from basilisk import ic
+from services import fx
+
+def async_task():
+    result = yield from fx.refresh()
+    ic.print(f"[fx_refresh] done: {result}")
+"""
 
 
-def _start_fx_timer():
-    """Start a periodic timer to refresh FX rates every hour."""
-    from basilisk import Duration
-    def _fx_tick():
-        try:
-            ic.print(f"[timer] FX refresh starting at {ic.time()}")
-            result = yield from fx.refresh()
-            ic.print(f"[timer] FX refresh done: {result}")
-        except Exception as e:
-            ic.print(f"[timer] FX refresh error: {e}")
-    # Immediate first fetch so the rate is available right away
-    ic.set_timer(Duration(0), _fx_tick)
-    ic.set_timer_interval(Duration(_FX_REFRESH_INTERVAL), _fx_tick)
-    ic.print(f"FX auto-refresh timer started (every {_FX_REFRESH_INTERVAL}s)")
+def _ensure_fx_task():
+    """Create the recurring FX refresh task if it doesn't exist yet."""
+    from basilisk.os.entities import Task, Call, TaskStep, TaskSchedule, Codex
+    from basilisk.os.task_manager import TaskManager
 
+    task = Task[_FX_TASK_NAME]
+    if task is None:
+        codex = Codex(name=_FX_TASK_NAME)
+        codex.code = _FX_REFRESH_CODE
+        call = Call(codex=codex, is_async=True)
+        task = Task(name=_FX_TASK_NAME, status="pending")
+        TaskStep(task=task, call=call)
+        TaskSchedule(
+            name=_FX_TASK_NAME,
+            task=task,
+            repeat_every=_FX_REFRESH_INTERVAL,
+        )
+        ic.print(f"Created '{_FX_TASK_NAME}' task (every {_FX_REFRESH_INTERVAL}s)")
+    TaskManager().run()
+
+
+# ---------------------------------------------------------------------------
+# Step 7: Lifecycle hooks
+# ---------------------------------------------------------------------------
 
 @init
 def on_init():
     """Called once when the canister is first installed."""
     ic.print("Tip Jar canister initialized!")
-    _start_fx_timer()
+    _ensure_fx_task()
 
 
 @post_upgrade
 def on_post_upgrade():
     """Called after every canister upgrade (code redeploy)."""
     ic.print("Tip Jar canister upgraded!")
-    _start_fx_timer()
+    _ensure_fx_task()
