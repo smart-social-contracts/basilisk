@@ -276,11 +276,8 @@ def call_canister(canister_id, method, args=None, *, example_dir=None, update=Fa
     Returns:
         The raw Candid response string from dfx.
     """
-    cmd = ["dfx", "canister", "call", canister_id, method]
-    if args:
-        cmd.append(args)
-    if update:
-        cmd.append("--update")
+    # Build command with options BEFORE positional args so dfx parses them.
+    cmd = ["dfx", "canister", "call"]
     # With persistent network dfx can't auto-detect query vs update.
     # Parse the .did file to determine the method type explicitly.
     info = _CANDID_MAP.get(canister_id)
@@ -288,6 +285,11 @@ def call_canister(canister_id, method, args=None, *, example_dir=None, update=Fa
         cmd.extend(["--candid", info["did"]])
         if not update and method in info["queries"]:
             cmd.append("--query")
+    if update:
+        cmd.append("--update")
+    cmd.extend([canister_id, method])
+    if args:
+        cmd.append(args)
 
     cwd = example_dir or EXAMPLES_DIR
     result = subprocess.run(
@@ -308,14 +310,15 @@ def call_canister(canister_id, method, args=None, *, example_dir=None, update=Fa
 
 def call_canister_expect_trap(canister_id, method, args=None, *, example_dir=None):
     """Call a canister method expecting it to trap. Returns the error message."""
-    cmd = ["dfx", "canister", "call", canister_id, method]
-    if args:
-        cmd.append(args)
+    cmd = ["dfx", "canister", "call"]
     info = _CANDID_MAP.get(canister_id)
     if info:
         cmd.extend(["--candid", info["did"]])
         if method in info["queries"]:
             cmd.append("--query")
+    cmd.extend([canister_id, method])
+    if args:
+        cmd.append(args)
 
     cwd = example_dir or EXAMPLES_DIR
     result = subprocess.run(
