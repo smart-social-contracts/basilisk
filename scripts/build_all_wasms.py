@@ -102,11 +102,14 @@ def build_example(example_name: str) -> bool:
             print(f"  SKIP {example_name}/{canister_name}: no main entry")
             continue
 
-        # Set CANISTER_CANDID_PATH if there's a .did file alongside the main
+        # basilisk requires CANISTER_CANDID_PATH (normally set by dfx).
+        # Compute the .did output path the same way dfx would.
         candid_path = canister_config.get("candid", "")
+        if not candid_path:
+            candid_path = f".basilisk/{canister_name}/{canister_name}.did"
+
         env = os.environ.copy()
-        if candid_path:
-            env["CANISTER_CANDID_PATH"] = candid_path
+        env["CANISTER_CANDID_PATH"] = candid_path
 
         print(f"  BUILD {example_name}/{canister_name} ({main_file})")
         t0 = time.time()
@@ -122,7 +125,7 @@ def build_example(example_name: str) -> bool:
 
         if result.returncode != 0:
             print(f"  FAIL {example_name}/{canister_name} ({elapsed:.1f}s)")
-            print(f"    stderr: {result.stderr[-300:]}")
+            print(f"    stderr: {result.stderr[-500:]}")
             all_ok = False
         else:
             # Check output WASM exists
