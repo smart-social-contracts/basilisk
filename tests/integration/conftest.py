@@ -1,0 +1,284 @@
+"""
+Shared pytest fixtures for Basilisk integration tests.
+
+These tests build and deploy example canisters to a local PocketIC replica,
+then call canister methods via `dfx canister call` to verify behavior.
+
+Usage:
+    pytest tests/integration/ -v
+    pytest tests/integration/test_counter.py -v
+"""
+
+import json
+import os
+import re
+import subprocess
+import time
+
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+EXAMPLES_DIR = os.path.join(REPO_ROOT, "examples")
+
+
+# ---------------------------------------------------------------------------
+# Session-scoped replica
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def replica(tmp_path_factory):
+    """Start a shared PocketIC replica for the entire test session.
+
+    Configures a system subnet (no instruction limit) and returns the
+    host URL. The replica is stopped when all tests finish.
+    """
+    # Configure system subnet
+    dfx_config_dir = os.path.expanduser("~/.config/dfx")
+    os.makedirs(dfx_config_dir, exist_ok=True)
+    networks_json = os.path.join(dfx_config_dir, "networks.json")
+    wrote_networks = False
+    if not os.path.exists(networks_json):
+        with open(networks_json, "w") as f:
+            json.dump({"local": {"type": "ephemeral", "replica": {"subnet_type": "system"}}}, f)
+        wrote_networks = True
+
+    # Use a temp dir as dfx home to avoid interfering with user's dfx state
+    dfx_home = str(tmp_path_factory.mktemp("dfx_home"))
+    host = "127.0.0.1:8000"
+
+    # Start PocketIC
+    env = {**os.environ, "DFX_CONFIG_ROOT": dfx_home}
+    subprocess.run(
+        ["dfx", "start", "--clean", "--background", "--host", host, "--pocketic"],
+        cwd=dfx_home,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    yield host
+
+    # Cleanup
+    subprocess.run(
+        ["dfx", "stop"],
+        cwd=dfx_home,
+        env=env,
+        capture_output=True,
+    )
+    if wrote_networks:
+        try:
+            os.remove(networks_json)
+        except OSError:
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Example deployment
+# ---------------------------------------------------------------------------
+
+def deploy_example(example_name, replica_host="127.0.0.1:8000"):
+    """Build and deploy an example canister, returning a dict of {name: canister_id}.
+
+    For single-canister examples, returns e.g. {"counter": "bkyz2-..."}.
+    For multi-canister examples, returns all canisters.
+    """
+    example_dir = os.path.join(EXAMPLES_DIR, example_name)
+    if not os.path.isdir(example_dir):
+        raise FileNotFoundError(f"Example directory not found: {example_dir}")
+
+    dfx_json_path = os.path.join(example_dir, "dfx.json")
+    with open(dfx_json_path) as f:
+        dfx_config = json.load(f)
+
+    canister_names = list(dfx_config.get("canisters", {}).keys())
+    if not canister_names:
+        raise ValueError(f"No canisters defined in {dfx_json_path}")
+
+    # Deploy all canisters
+    result = subprocess.run(
+        ["dfx", "deploy"],
+        cwd=example_dir,
+        capture_output=True,
+        text=True,
+        timeout=1800,  # 30 min max for large WASM compilations
+    )
+
+    # If deploy timed out or failed, try polling for completion (system subnet)
+    if result.returncode != 0:
+        # On system subnet, PocketIC may still be compiling in background
+        _wait_for_canisters(example_dir, canister_names, timeout=3600)
+
+    # Read canister IDs
+    canister_ids = {}
+    for name in canister_names:
+        cid = _get_canister_id(example_dir, name)
+        if cid:
+            canister_ids[name] = cid
+
+    if not canister_ids:
+        raise RuntimeError(
+            f"Failed to deploy {example_name}. "
+            f"stdout: {result.stdout[-500:]}\n"
+            f"stderr: {result.stderr[-500:]}"
+        )
+
+    return canister_ids
+
+
+def _wait_for_canisters(example_dir, canister_names, timeout=3600):
+    """Poll until all canisters have a module hash (= installed)."""
+    start = time.time()
+    while time.time() - start < timeout:
+        time.sleep(15)
+        all_ready = True
+        for name in canister_names:
+            try:
+                status = subprocess.run(
+                    ["dfx", "canister", "status", name],
+                    cwd=example_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                )
+                if "Module hash: 0x" not in status.stdout:
+                    all_ready = False
+                    break
+            except (subprocess.TimeoutExpired, subprocess.CalledProcessError):
+                all_ready = False
+                break
+        if all_ready:
+            return
+    raise TimeoutError(f"Canisters did not install within {timeout}s")
+
+
+def _get_canister_id(example_dir, canister_name):
+    """Read canister ID from .dfx/local/canister_ids.json."""
+    ids_file = os.path.join(example_dir, ".dfx", "local", "canister_ids.json")
+    if not os.path.exists(ids_file):
+        return None
+    with open(ids_file) as f:
+        ids = json.load(f)
+    entry = ids.get(canister_name, {})
+    return entry.get("local")
+
+
+# ---------------------------------------------------------------------------
+# Canister call helpers
+# ---------------------------------------------------------------------------
+
+def call_canister(canister_id, method, args=None, *, example_dir=None, update=False):
+    """Call a canister method via dfx and return the parsed result.
+
+    Args:
+        canister_id: The canister ID string.
+        method: The method name to call.
+        args: Optional Candid argument string, e.g. '("hello")'.
+        example_dir: Working directory for dfx (needed for local replica).
+        update: If True, force update call. By default dfx auto-detects.
+
+    Returns:
+        The raw Candid response string from dfx.
+    """
+    cmd = ["dfx", "canister", "call", canister_id, method]
+    if args:
+        cmd.append(args)
+    if update:
+        cmd.append("--update")
+
+    cwd = example_dir or EXAMPLES_DIR
+    result = subprocess.run(
+        cmd,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"dfx canister call failed: {result.stderr.strip()}"
+        )
+
+    return result.stdout.strip()
+
+
+def call_canister_expect_trap(canister_id, method, args=None, *, example_dir=None):
+    """Call a canister method expecting it to trap. Returns the error message."""
+    cmd = ["dfx", "canister", "call", canister_id, method]
+    if args:
+        cmd.append(args)
+
+    cwd = example_dir or EXAMPLES_DIR
+    result = subprocess.run(
+        cmd,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    if result.returncode == 0:
+        raise AssertionError(
+            f"Expected trap but call succeeded: {result.stdout.strip()}"
+        )
+
+    return result.stderr.strip()
+
+
+# ---------------------------------------------------------------------------
+# Candid response parsing helpers
+# ---------------------------------------------------------------------------
+
+def parse_candid_text(response):
+    """Extract the inner value from a Candid text response like '("hello")'.
+
+    Handles common patterns:
+        '("text value")'  -> "text value"
+        '(42 : nat)'      -> 42
+        '(true)'          -> True
+        '(null)'          -> None
+        '(vec { ... })'   -> list (as raw string, caller parses further)
+        '(variant { Ok = ... })' -> {"Ok": ...}
+    """
+    response = response.strip()
+    if not response:
+        return None
+
+    # Remove outer parens
+    if response.startswith("(") and response.endswith(")"):
+        inner = response[1:-1].strip()
+    else:
+        inner = response
+
+    # Text
+    if inner.startswith('"') and inner.endswith('"'):
+        return inner[1:-1]
+
+    # Boolean
+    if inner == "true":
+        return True
+    if inner == "false":
+        return False
+
+    # Null
+    if inner == "null":
+        return None
+
+    # Nat/Int with type annotation
+    m = re.match(r'^(-?\d[\d_]*)\s*:\s*\w+$', inner)
+    if m:
+        return int(m.group(1).replace("_", ""))
+
+    # Plain integer
+    m = re.match(r'^(-?\d[\d_]*)$', inner)
+    if m:
+        return int(m.group(1).replace("_", ""))
+
+    # Return raw for complex types (vec, record, variant)
+    return inner
