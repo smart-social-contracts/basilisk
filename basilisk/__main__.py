@@ -287,6 +287,24 @@ def bundle_python_code(paths: Paths):
             )
             _ensure_parent_inits(python_source_path, dest_dir)
 
+    # Always include packages required by basilisk.db / basilisk.logging aliases.
+    # modulegraph can't trace these because the aliases only exist at canister
+    # runtime, so we force-copy the real packages if they aren't already bundled.
+    for pkg_name in ("ic_python_db", "ic_python_logging"):
+        dest_dir = os.path.join(python_source_path, pkg_name)
+        if not os.path.exists(dest_dir):
+            try:
+                import importlib
+                pkg = importlib.import_module(pkg_name)
+                pkg_path = os.path.dirname(pkg.__file__)
+                shutil.copytree(
+                    pkg_path, dest_dir,
+                    dirs_exist_ok=True,
+                    ignore=ignore_specific_dir,
+                )
+            except ImportError:
+                pass  # not installed — alias will be a no-op at runtime
+
     py_file_names = list(  # type: ignore
         filter(
             lambda filename: filename is not None and filename.endswith(".py"),  # type: ignore

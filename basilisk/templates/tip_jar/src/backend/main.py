@@ -24,7 +24,6 @@ from basilisk import (
 )
 from basilisk.db import Database
 from basilisk.logging import get_logger
-import ic_python_db  # noqa: kept for module bundler dependency tracing
 
 _log = get_logger("tip_jar")
 
