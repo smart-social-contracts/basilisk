@@ -41,12 +41,6 @@ An Internet Computer's Python Canister Development Kit. Write **Python canisters
 ├─────────────────────────────────────────────┤
 │         Internet Computer (IC)              │
 └─────────────────────────────────────────────┘
-```
-
-
-## TODO: Use cases
-
-
 
 ## Quick Start
 
@@ -225,7 +219,6 @@ basilisk exec [--canister <c>] [--network <n>] <code> Execute code on a deployed
 basilisk shell [--canister <c>] [--network <n>]      Interactive shell
 basilisk sshd [--canister <c>] [--network <n>] [--port <p>]  SSH/SFTP server
 basilisk --version                                   Print version -->
-```
 
 ## Why "Basilisk"?
 
