@@ -82,11 +82,18 @@ def replica(tmp_path_factory):
 # Example deployment
 # ---------------------------------------------------------------------------
 
+# When BASILISK_PREBUILT_WASMS=1, skip build and deploy pre-built WASMs directly.
+_USE_PREBUILT = os.environ.get("BASILISK_PREBUILT_WASMS", "") == "1"
+
+
 def deploy_example(example_name, replica_host="127.0.0.1:8000"):
     """Build and deploy an example canister, returning a dict of {name: canister_id}.
 
     For single-canister examples, returns e.g. {"counter": "bkyz2-..."}.
     For multi-canister examples, returns all canisters.
+
+    If BASILISK_PREBUILT_WASMS=1 is set, deploys pre-built WASMs from
+    .basilisk/<name>/<name>.wasm instead of running the full build.
     """
     example_dir = os.path.join(EXAMPLES_DIR, example_name)
     if not os.path.isdir(example_dir):
@@ -100,19 +107,10 @@ def deploy_example(example_name, replica_host="127.0.0.1:8000"):
     if not canister_names:
         raise ValueError(f"No canisters defined in {dfx_json_path}")
 
-    # Deploy all canisters
-    result = subprocess.run(
-        ["dfx", "deploy"],
-        cwd=example_dir,
-        capture_output=True,
-        text=True,
-        timeout=1800,  # 30 min max for large WASM compilations
-    )
-
-    # If deploy timed out or failed, try polling for completion (system subnet)
-    if result.returncode != 0:
-        # On system subnet, PocketIC may still be compiling in background
-        _wait_for_canisters(example_dir, canister_names, timeout=3600)
+    if _USE_PREBUILT:
+        _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config)
+    else:
+        _deploy_with_build(example_dir, example_name, canister_names)
 
     # Read canister IDs
     canister_ids = {}
@@ -122,13 +120,66 @@ def deploy_example(example_name, replica_host="127.0.0.1:8000"):
             canister_ids[name] = cid
 
     if not canister_ids:
-        raise RuntimeError(
-            f"Failed to deploy {example_name}. "
-            f"stdout: {result.stdout[-500:]}\n"
-            f"stderr: {result.stderr[-500:]}"
-        )
+        raise RuntimeError(f"Failed to deploy {example_name}: no canister IDs found")
 
     return canister_ids
+
+
+def _deploy_with_build(example_dir, example_name, canister_names):
+    """Full build + deploy via dfx deploy (slow — compiles WASM from source)."""
+    result = subprocess.run(
+        ["dfx", "deploy"],
+        cwd=example_dir,
+        capture_output=True,
+        text=True,
+        timeout=1800,
+    )
+    if result.returncode != 0:
+        _wait_for_canisters(example_dir, canister_names, timeout=3600)
+
+
+def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
+    """Deploy pre-built WASMs without running the build step.
+
+    Uses dfx canister create + dfx canister install --wasm for each canister.
+    The WASMs must already exist at .basilisk/<name>/<name>.wasm.
+    """
+    # Create all canisters (allocates IDs)
+    result = subprocess.run(
+        ["dfx", "canister", "create", "--all"],
+        cwd=example_dir,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"dfx canister create --all failed for {example_name}: {result.stderr[-300:]}"
+        )
+
+    # Install each canister from pre-built WASM
+    for name in canister_names:
+        wasm_path = os.path.join(example_dir, ".basilisk", name, f"{name}.wasm")
+        if not os.path.exists(wasm_path):
+            raise FileNotFoundError(
+                f"Pre-built WASM not found: {wasm_path}. "
+                f"Run 'python scripts/build_all_wasms.py' first."
+            )
+
+        # Build the install command with init args if needed
+        cmd = ["dfx", "canister", "install", name, "--wasm", wasm_path]
+
+        result = subprocess.run(
+            cmd,
+            cwd=example_dir,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"dfx canister install {name} failed: {result.stderr[-300:]}"
+            )
 
 
 def _wait_for_canisters(example_dir, canister_names, timeout=3600):
