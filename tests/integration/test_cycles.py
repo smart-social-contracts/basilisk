@@ -16,5 +16,5 @@ def canisters(replica):
 
 def test_send_cycles(canisters):
     intermediary = canisters.get("intermediary") or list(canisters.values())[-1]
-    raw = call_canister(intermediary, "send_cycles", example_dir=EXAMPLE_DIR)
+    raw = call_canister(intermediary, "send_cycles", example_dir=EXAMPLE_DIR, update=True)
     assert len(raw) > 0

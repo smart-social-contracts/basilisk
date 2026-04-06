@@ -19,7 +19,7 @@ def test_send_notification_and_verify(canisters):
     canister1 = canisters.get("canister1") or list(canisters.values())[0]
     canister2 = canisters.get("canister2") or list(canisters.values())[-1]
 
-    call_canister(canister1, "send_notification", example_dir=EXAMPLE_DIR)
+    call_canister(canister1, "send_notification", example_dir=EXAMPLE_DIR, update=True)
     time.sleep(5)
-    result = parse_candid_text(call_canister(canister2, "get_notification_received", example_dir=EXAMPLE_DIR))
+    result = parse_candid_text(call_canister(canister2, "get_notified", example_dir=EXAMPLE_DIR))
     assert result is True
