@@ -23,7 +23,10 @@ from basilisk import (
     StableBTreeMap, GuardResult, init, post_upgrade,
 )
 from basilisk.db import Database
+from basilisk.logging import get_logger
 import ic_python_db  # noqa: kept for module bundler dependency tracing
+
+_log = get_logger("tip_jar")
 
 # ---------------------------------------------------------------------------
 # Step 1: Persistent database storage (survives canister upgrades)
@@ -123,12 +126,14 @@ _FX_REFRESH_INTERVAL = 3600  # in seconds
 _FX_TASK_NAME = "fx_refresh"
 
 _FX_REFRESH_CODE = """\
-from basilisk import ic
+from basilisk.logging import get_logger
 from services import fx
+
+logger = get_logger("tip_jar.fx_refresh")
 
 def async_task():
     result = yield from fx.refresh()
-    ic.print(f"[fx_refresh] done: {result}")
+    logger.info(f"done: {result}")
 """
 
 
@@ -149,7 +154,7 @@ def _ensure_fx_task():
             task=task,
             repeat_every=_FX_REFRESH_INTERVAL,
         )
-        ic.print(f"Created '{_FX_TASK_NAME}' task (every {_FX_REFRESH_INTERVAL}s)")
+        _log.info(f"Created '{_FX_TASK_NAME}' task (every {_FX_REFRESH_INTERVAL}s)")
     TaskManager().run()
 
 
@@ -160,12 +165,12 @@ def _ensure_fx_task():
 @init
 def on_init():
     """Called once when the canister is first installed."""
-    ic.print("Tip Jar canister initialized!")
+    _log.info("Tip Jar canister initialized!")
     _ensure_fx_task()
 
 
 @post_upgrade
 def on_post_upgrade():
     """Called after every canister upgrade (code redeploy)."""
-    ic.print("Tip Jar canister upgraded!")
+    _log.info("Tip Jar canister upgraded!")
     _ensure_fx_task()

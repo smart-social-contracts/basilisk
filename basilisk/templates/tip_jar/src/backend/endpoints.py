@@ -17,9 +17,12 @@ import os
 
 from basilisk import query, update, text, nat64, ic, Async, match, CallResult
 from basilisk.canisters.management import HttpResponse, HttpTransformArgs
+from basilisk.logging import get_logger
 
 from models import Donor, PendingTip, TipMessage, SecretNote
 from services import wallet, fx, crypto, vetkeys
+
+logger = get_logger("tip_jar.endpoints")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -251,7 +254,7 @@ def write_file_endpoint(path: text, content: text) -> text:
 def start_fx_timer(interval_secs: nat64) -> text:
     """Start a periodic timer that refreshes FX rates every N seconds."""
     def on_tick():
-        ic.print(f"[timer] FX refresh tick at {ic.time()}")
+        logger.info(f"FX refresh tick at {ic.time()}")
     timer_id = ic.set_timer_interval(interval_secs, on_tick)
     return f"Started periodic FX timer id={timer_id}, interval={interval_secs}s"
 
@@ -260,7 +263,7 @@ def start_fx_timer(interval_secs: nat64) -> text:
 def schedule_once(delay_secs: nat64) -> text:
     """Schedule a one-shot timer that fires after N seconds."""
     def on_fire():
-        ic.print("[timer] One-shot timer fired!")
+        logger.info("One-shot timer fired!")
     timer_id = ic.set_timer(delay_secs, on_fire)
     return f"Scheduled one-shot timer id={timer_id}, fires in {delay_secs}s"
 
