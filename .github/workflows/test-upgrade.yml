@@ -12,6 +12,9 @@ jobs:
         env:
             WASI_SDK_VERSION: "24"
             WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
+            BASILISK_PYTHON_BACKEND: cpython
+            BASILISK_COMPILE_RUST_PYTHON_STDLIB: false
+            DFX_VERSION: "0.29.0"
         steps:
             - uses: actions/checkout@v4
 
@@ -23,11 +26,11 @@ jobs:
             - uses: actions/cache@v4
               with:
                   path: ~/.cache/dfinity
-                  key: basilisk-dfx-0.23.0
+                  key: basilisk-dfx-${{ env.DFX_VERSION }}
 
             - name: Install dfx
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.23.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
                   echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
 
             - name: Install WASI SDK
