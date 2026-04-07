@@ -1,10 +1,10 @@
-"""Integration tests for tests/fixtures/motoko_tests/fixtures/phone-book — phone book CRUD."""
+"""Integration tests for tests/fixtures/motoko_examples/phone-book — phone book CRUD."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR
 import os
 
-EXAMPLE = "motoko_tests/fixtures/phone-book"
+EXAMPLE = "motoko_examples/phone-book"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
 
 

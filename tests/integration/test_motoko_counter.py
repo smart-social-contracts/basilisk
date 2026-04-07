@@ -1,10 +1,10 @@
-"""Integration tests for tests/fixtures/motoko_tests/fixtures/counter — simple counter with get/inc/set."""
+"""Integration tests for tests/fixtures/motoko_examples/counter — simple counter with get/inc/set."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR
 import os
 
-EXAMPLE = "motoko_tests/fixtures/counter"
+EXAMPLE = "motoko_examples/counter"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
 
 

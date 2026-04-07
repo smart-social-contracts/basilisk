@@ -1,10 +1,10 @@
-"""Integration tests for tests/fixtures/motoko_tests/fixtures/whoami — identity/principal canister."""
+"""Integration tests for tests/fixtures/motoko_examples/whoami — identity/principal canister."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR
 import os
 
-EXAMPLE = "motoko_tests/fixtures/whoami"
+EXAMPLE = "motoko_examples/whoami"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
 
 
