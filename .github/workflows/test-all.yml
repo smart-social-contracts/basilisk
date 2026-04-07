@@ -40,5 +40,3 @@ jobs:
         if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         uses: ./.github/workflows/test-integration.yml
         secrets: inherit
-        # Ensure regressions fail the build (no silent failures)
-        continue-on-error: false
