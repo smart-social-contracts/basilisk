@@ -1,11 +1,11 @@
 # Integration tests for Basilisk Shell (shell, filesystem, SFTP, tasks, wallet, crypto).
-# These run against a LIVE canister on IC mainnet — they are not local unit tests.
+# These run against a canister on IC mainnet that gets reinstalled (state wiped) for each test run.
 
 name: Shell Integration Tests
 
 on:
-    pull_request: # Run on PRs to catch regressions early
-    workflow_call: # Called by test-all.yml orchestrator
+    pull_request:
+    workflow_call:
     workflow_dispatch:
         inputs:
             test_filter:
@@ -102,15 +102,15 @@ jobs:
               run: |
                   pip install -e ".[shell,test]"
 
-            - name: Verify canister reachable
+            - name: Stop and reinstall canister (wipe state)
               run: |
+                  echo "Stopping canister ${BASILISK_TEST_CANISTER}..."
+                  dfx canister stop "${BASILISK_TEST_CANISTER}" --network "${BASILISK_TEST_NETWORK}" || true
+                  echo "Reinstalling canister with empty state..."
+                  dfx canister install "${BASILISK_TEST_CANISTER}" --mode reinstall --wasm /dev/null --network "${BASILISK_TEST_NETWORK}" || true
+                  dfx canister start "${BASILISK_TEST_CANISTER}" --network "${BASILISK_TEST_NETWORK}" || true
+                  echo "Verifying canister is reachable..."
                   dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
-
-            - name: Reset canister state
-              continue-on-error: true
-              run: |
-                  echo "Clearing all scheduled tasks and entities from previous test runs..."
-                  dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("import task; [t.cancel() for t in Task.instances() if hasattr(t, \"cancel\")]; import entity; [e.delete() for e in Entity.instances()]; print(\"reset_complete\")",)' --network "$BASILISK_TEST_NETWORK" || echo "Reset failed, continuing anyway"
 
             - name: Run tests (${{ matrix.shard }})
               run: |
@@ -121,9 +121,8 @@ jobs:
                     PYTHONPATH=. python -m pytest ${{ matrix.pytest_args }} -v
                   fi
 
-            - name: Cleanup tasks after tests
+            - name: Stop canister after tests
               if: always()
-              continue-on-error: true
               run: |
-                  echo "Cancelling all scheduled tasks to prevent cycle burn..."
-                  dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("import task; [t.cancel() for t in Task.instances() if hasattr(t, \"cancel\")]; print(\"cleanup_complete\")",)' --network "$BASILISK_TEST_NETWORK" || echo "Cleanup failed"
+                  echo "Stopping canister ${BASILISK_TEST_CANISTER}..."
+                  dfx canister stop "${BASILISK_TEST_CANISTER}" --network "${BASILISK_TEST_NETWORK}" || true
