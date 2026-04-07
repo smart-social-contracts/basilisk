@@ -89,10 +89,10 @@ jobs:
 
             - name: Package pre-built WASMs
               run: |
-                  find examples -path '*/.basilisk/*.wasm' | head -20
+                  find tests/fixtures -path '*/.basilisk/*.wasm' | head -20
                   echo "---"
-                  find examples -path '*/.basilisk/*.wasm' | wc -l
-                  tar czf example-wasms.tar.gz $(find examples -name '.basilisk' -type d)
+                  find tests/fixtures -path '*/.basilisk/*.wasm' | wc -l
+                  tar czf example-wasms.tar.gz $(find tests/fixtures -name '.basilisk' -type d)
                   ls -lh example-wasms.tar.gz
 
             - name: Upload pre-built WASMs
@@ -136,7 +136,7 @@ jobs:
             - name: Extract pre-built WASMs
               run: |
                   tar xzf example-wasms.tar.gz
-                  find examples -path '*/.basilisk/*.wasm' | wc -l
+                  find tests/fixtures -path '*/.basilisk/*.wasm' | wc -l
 
             - name: Cache dfx
               uses: actions/cache@v4
