@@ -36,6 +36,6 @@ def test_canister2_set_and_get(canisters):
 
 def test_canister3_set_and_get(canisters):
     c3 = canisters.get("canister3") or list(canisters.values())[2]
-    call_canister(c3, "stable_map10_insert", '(10.0 : float32, opt opt true)', example_dir=EXAMPLE_DIR, update=True)
+    call_canister(c3, "stable_map10_insert", '(10.0 : float32, opt true)', example_dir=EXAMPLE_DIR, update=True)
     raw = call_canister(c3, "stable_map10_get", '(10.0 : float32)', example_dir=EXAMPLE_DIR)
     assert "true" in raw or "opt" in raw
