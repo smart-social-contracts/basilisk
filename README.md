@@ -7,7 +7,7 @@
 # Basilisk
 
 [![PyPI](https://img.shields.io/pypi/v/ic-basilisk)](https://pypi.org/project/ic-basilisk/)
-[![Test](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-all.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-all.yml)
+[![Integration Tests](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-integration.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-integration.yml)
 
 An Internet Computer's Python Canister Development Kit. Write **Python canisters** efficiently for the [Internet Computer](https://internetcomputer.org/, with additional Operating System-like features on top.
 
