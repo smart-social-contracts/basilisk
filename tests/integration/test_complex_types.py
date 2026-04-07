@@ -1,4 +1,4 @@
-"""Integration tests for examples/complex_types — record/variant types."""
+"""Integration tests for tests/fixtures/complex_types — record/variant types."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

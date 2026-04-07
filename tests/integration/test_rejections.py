@@ -1,4 +1,4 @@
-"""Integration tests for examples/rejections — rejection code/message handling."""
+"""Integration tests for tests/fixtures/rejections — rejection code/message handling."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

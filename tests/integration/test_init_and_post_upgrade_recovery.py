@@ -1,4 +1,4 @@
-"""Integration tests for examples/init_and_post_upgrade_recovery — init/upgrade error recovery."""
+"""Integration tests for tests/fixtures/init_and_post_upgrade_recovery — init/upgrade error recovery."""
 
 import subprocess
 import os

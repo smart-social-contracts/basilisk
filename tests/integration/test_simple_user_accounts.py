@@ -1,4 +1,4 @@
-"""Integration tests for examples/simple_user_accounts — user CRUD operations."""
+"""Integration tests for tests/fixtures/simple_user_accounts — user CRUD operations."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

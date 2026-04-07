@@ -1,4 +1,4 @@
-"""Integration tests for examples/inspect_message — inspect message guard."""
+"""Integration tests for tests/fixtures/inspect_message — inspect message guard."""
 
 import pytest
 from .conftest import deploy_example, call_canister, call_canister_expect_trap, parse_candid_text, EXAMPLES_DIR

@@ -1,4 +1,4 @@
-"""Integration tests for examples/service — Service type handling and cross-canister calls."""
+"""Integration tests for tests/fixtures/service — Service type handling and cross-canister calls."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

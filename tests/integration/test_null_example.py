@@ -1,4 +1,4 @@
-"""Integration tests for examples/null_example — null type handling."""
+"""Integration tests for tests/fixtures/null_example — null type handling."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

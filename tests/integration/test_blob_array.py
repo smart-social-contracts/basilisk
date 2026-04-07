@@ -1,4 +1,4 @@
-"""Integration tests for examples/blob_array — blob type handling."""
+"""Integration tests for tests/fixtures/blob_array — blob type handling."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

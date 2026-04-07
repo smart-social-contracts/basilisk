@@ -1,4 +1,4 @@
-"""Integration tests for examples/key_value_store — key-value CRUD operations."""
+"""Integration tests for tests/fixtures/key_value_store — key-value CRUD operations."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

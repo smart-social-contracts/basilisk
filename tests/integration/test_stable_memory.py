@@ -1,4 +1,4 @@
-"""Integration tests for examples/stable_memory — stable memory read/write/grow."""
+"""Integration tests for tests/fixtures/stable_memory — stable memory read/write/grow."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

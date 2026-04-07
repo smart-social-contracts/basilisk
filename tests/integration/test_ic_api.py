@@ -1,4 +1,4 @@
-"""Integration tests for examples/ic_api — IC system API calls."""
+"""Integration tests for tests/fixtures/ic_api — IC system API calls."""
 
 import pytest
 from .conftest import deploy_example, call_canister, call_canister_expect_trap, parse_candid_text, EXAMPLES_DIR

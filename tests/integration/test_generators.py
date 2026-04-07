@@ -1,4 +1,4 @@
-"""Integration tests for examples/generators — async generator (yield) patterns."""
+"""Integration tests for tests/fixtures/generators — async generator (yield) patterns."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

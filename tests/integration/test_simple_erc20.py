@@ -1,4 +1,4 @@
-"""Integration tests for examples/simple_erc20 — ERC20-like token canister."""
+"""Integration tests for tests/fixtures/simple_erc20 — ERC20-like token canister."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

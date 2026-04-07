@@ -1,4 +1,4 @@
-"""Integration tests for examples/manual_reply — manual reply mechanism."""
+"""Integration tests for tests/fixtures/manual_reply — manual reply mechanism."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

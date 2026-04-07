@@ -1,4 +1,4 @@
-"""Integration tests for examples/bytes — bytes roundtrip."""
+"""Integration tests for tests/fixtures/bytes — bytes roundtrip."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

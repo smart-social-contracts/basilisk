@@ -16,7 +16,7 @@ Last triaged: 2026-03-21
 
 | Example | Issue |
 |---|---|
-| `motoko_examples/http_counter` | Uses Func callback types + StableBTreeMap |
+| `motoko_tests/fixtures/http_counter` | Uses Func callback types + StableBTreeMap |
 | `pre_and_post_upgrade` | StableBTreeMap upgrade persistence not implemented |
 
 ## External Dependencies / Environment
@@ -31,5 +31,5 @@ Last triaged: 2026-03-21
 
 | Example | Issue |
 |---|---|
-| `motoko_examples/threshold_ecdsa` | Needs threshold ECDSA subnet |
+| `motoko_tests/fixtures/threshold_ecdsa` | Needs threshold ECDSA subnet |
 | `composite_queries` | Composite query times out in PocketIC |

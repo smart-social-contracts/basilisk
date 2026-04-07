@@ -1,4 +1,4 @@
-"""Integration tests for examples/timers — timer callback functionality."""
+"""Integration tests for tests/fixtures/timers — timer callback functionality."""
 
 import time
 import pytest

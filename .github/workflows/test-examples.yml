@@ -62,60 +62,60 @@ jobs:
                   # Known-failing examples excluded — see KNOWN_TEST_FAILURES.md
                   EXAMPLE_DIRECTORIES=$(cat << END
                   [
-                    "examples/annotated_tests",
-                    "examples/audio_recorder",
-                    "examples/blob_array",
-                    "examples/bytes",
-                    "examples/call_raw",
-                    "examples/complex_init",
-                    "examples/complex_types",
-                    "examples/counter",
-                    "examples/cycles",
-                    "examples/date",
-                    "examples/filesystem",
-                    "examples/generators",
-                    "examples/guard_functions",
-                    "examples/heartbeat",
-                    "examples/ic_api",
-                    "examples/imports",
-                    "examples/init_and_post_upgrade_recovery",
-                    "examples/init",
-                    "examples/inspect_message",
-                    "examples/key_value_store",
-                    "examples/keywords",
-                    "examples/list_of_lists",
-                    "examples/management_canister",
-                    "examples/manual_reply",
-                    "examples/motoko_examples/calc",
-                    "examples/motoko_examples/counter",
-                    "examples/motoko_examples/echo",
-                    "examples/motoko_examples/factorial",
-                    "examples/motoko_examples/hello",
-                    "examples/motoko_examples/hello-world",
-                    "examples/motoko_examples/persistent-storage",
-                    "examples/motoko_examples/phone-book",
-                    "examples/motoko_examples/quicksort",
-                    "examples/motoko_examples/simple-to-do",
-                    "examples/motoko_examples/superheroes",
-                    "examples/motoko_examples/whoami",
-                    "examples/notify_raw",
-                    "examples/null_example",
-                    "examples/optional_types",
-                    "examples/outgoing_http_requests",
-                    "examples/primitive_types",
-                    "examples/principal",
-                    "examples/query",
-                    "examples/randomness",
-                    "examples/rejections",
-                    "examples/service",
-                    "examples/simple_erc20",
-                    "examples/simple_user_accounts",
-                    "examples/stable_memory",
-                    "examples/stable_structures",
-                    "examples/stdlib",
-                    "examples/timers",
-                    "examples/tuple_types",
-                    "examples/update"
+                    "tests/fixtures/annotated_tests",
+                    "tests/fixtures/audio_recorder",
+                    "tests/fixtures/blob_array",
+                    "tests/fixtures/bytes",
+                    "tests/fixtures/call_raw",
+                    "tests/fixtures/complex_init",
+                    "tests/fixtures/complex_types",
+                    "tests/fixtures/counter",
+                    "tests/fixtures/cycles",
+                    "tests/fixtures/date",
+                    "tests/fixtures/filesystem",
+                    "tests/fixtures/generators",
+                    "tests/fixtures/guard_functions",
+                    "tests/fixtures/heartbeat",
+                    "tests/fixtures/ic_api",
+                    "tests/fixtures/imports",
+                    "tests/fixtures/init_and_post_upgrade_recovery",
+                    "tests/fixtures/init",
+                    "tests/fixtures/inspect_message",
+                    "tests/fixtures/key_value_store",
+                    "tests/fixtures/keywords",
+                    "tests/fixtures/list_of_lists",
+                    "tests/fixtures/management_canister",
+                    "tests/fixtures/manual_reply",
+                    "tests/fixtures/motoko_tests/fixtures/calc",
+                    "tests/fixtures/motoko_tests/fixtures/counter",
+                    "tests/fixtures/motoko_tests/fixtures/echo",
+                    "tests/fixtures/motoko_tests/fixtures/factorial",
+                    "tests/fixtures/motoko_tests/fixtures/hello",
+                    "tests/fixtures/motoko_tests/fixtures/hello-world",
+                    "tests/fixtures/motoko_tests/fixtures/persistent-storage",
+                    "tests/fixtures/motoko_tests/fixtures/phone-book",
+                    "tests/fixtures/motoko_tests/fixtures/quicksort",
+                    "tests/fixtures/motoko_tests/fixtures/simple-to-do",
+                    "tests/fixtures/motoko_tests/fixtures/superheroes",
+                    "tests/fixtures/motoko_tests/fixtures/whoami",
+                    "tests/fixtures/notify_raw",
+                    "tests/fixtures/null_example",
+                    "tests/fixtures/optional_types",
+                    "tests/fixtures/outgoing_http_requests",
+                    "tests/fixtures/primitive_types",
+                    "tests/fixtures/principal",
+                    "tests/fixtures/query",
+                    "tests/fixtures/randomness",
+                    "tests/fixtures/rejections",
+                    "tests/fixtures/service",
+                    "tests/fixtures/simple_erc20",
+                    "tests/fixtures/simple_user_accounts",
+                    "tests/fixtures/stable_memory",
+                    "tests/fixtures/stable_structures",
+                    "tests/fixtures/stdlib",
+                    "tests/fixtures/timers",
+                    "tests/fixtures/tuple_types",
+                    "tests/fixtures/update"
                   ]
                   END
                   )
@@ -185,7 +185,7 @@ jobs:
                   fi
 
             - name: Setup Python environment
-              working-directory: examples/query
+              working-directory: tests/fixtures/query
               run: |
                   curl https://pyenv.run | bash
                   ~/.pyenv/bin/pyenv install 3.10.7
@@ -193,11 +193,11 @@ jobs:
 
             - name: Install basilisk from repo
               shell: bash -l {0}
-              working-directory: examples/query
+              working-directory: tests/fixtures/query
               run: source venv/bin/activate && pip install ../..
 
             - name: Install dfx extension
-              working-directory: examples/query
+              working-directory: tests/fixtures/query
               run: source venv/bin/activate && python -m basilisk install-dfx-extension
 
             - name: Import DFX identity for IC deployment
@@ -213,14 +213,14 @@ jobs:
 
             - name: Build canister wasm
               shell: bash -l {0}
-              working-directory: examples/query
+              working-directory: tests/fixtures/query
               timeout-minutes: 10
               run: |
                   source venv/bin/activate
                   CANISTER_CANDID_PATH=query.did python -m basilisk query src/main.py
 
             - name: Deploy to IC mainnet
-              working-directory: examples/query
+              working-directory: tests/fixtures/query
               timeout-minutes: 15
               run: |
                   CANISTER_ID="2i66l-saaaa-aaaas-qe3sq-cai"
@@ -258,7 +258,7 @@ jobs:
                   exit 1
 
             - name: Verify deployment
-              working-directory: examples/query
+              working-directory: tests/fixtures/query
               run: |
                   CANISTER_ID="2i66l-saaaa-aaaas-qe3sq-cai"
                   RESULT=$(dfx canister call "${CANISTER_ID}" simple_query --network ic --identity ci-deploy 2>&1)

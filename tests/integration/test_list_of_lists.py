@@ -1,4 +1,4 @@
-"""Integration tests for examples/list_of_lists — nested list types."""
+"""Integration tests for tests/fixtures/list_of_lists — nested list types."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

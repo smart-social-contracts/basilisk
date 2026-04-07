@@ -1,4 +1,4 @@
-"""Integration tests for examples/cycles — cycle transfer between canisters."""
+"""Integration tests for tests/fixtures/cycles — cycle transfer between canisters."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

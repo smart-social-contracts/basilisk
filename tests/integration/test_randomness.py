@@ -1,4 +1,4 @@
-"""Integration tests for examples/randomness — random number generation in canister."""
+"""Integration tests for tests/fixtures/randomness — random number generation in canister."""
 
 import re
 import pytest

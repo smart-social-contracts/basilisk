@@ -1,4 +1,4 @@
-"""Integration tests for examples/counter — basic counter canister."""
+"""Integration tests for tests/fixtures/counter — basic counter canister."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

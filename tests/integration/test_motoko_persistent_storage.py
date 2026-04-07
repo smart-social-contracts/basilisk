@@ -1,10 +1,10 @@
-"""Integration tests for examples/motoko_examples/persistent-storage — persistent counter."""
+"""Integration tests for tests/fixtures/motoko_tests/fixtures/persistent-storage — persistent counter."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR
 import os
 
-EXAMPLE = "motoko_examples/persistent-storage"
+EXAMPLE = "motoko_tests/fixtures/persistent-storage"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
 
 

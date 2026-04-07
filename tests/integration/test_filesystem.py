@@ -1,4 +1,4 @@
-"""Integration tests for examples/filesystem — in-memory filesystem operations."""
+"""Integration tests for tests/fixtures/filesystem — in-memory filesystem operations."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

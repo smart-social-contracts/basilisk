@@ -1,4 +1,4 @@
-"""Integration tests for examples/annotated_tests — type annotations and func types."""
+"""Integration tests for tests/fixtures/annotated_tests — type annotations and func types."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

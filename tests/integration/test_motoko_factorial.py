@@ -1,10 +1,10 @@
-"""Integration tests for examples/motoko_examples/factorial — factorial computation."""
+"""Integration tests for tests/fixtures/motoko_tests/fixtures/factorial — factorial computation."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR
 import os
 
-EXAMPLE = "motoko_examples/factorial"
+EXAMPLE = "motoko_tests/fixtures/factorial"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
 
 

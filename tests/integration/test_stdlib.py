@@ -1,4 +1,4 @@
-"""Integration tests for examples/stdlib — standard library modules in canister."""
+"""Integration tests for tests/fixtures/stdlib — standard library modules in canister."""
 
 import re
 import pytest

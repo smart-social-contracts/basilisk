@@ -1,4 +1,4 @@
-"""Integration tests for examples/audio_recorder — CRUD for users and recordings."""
+"""Integration tests for tests/fixtures/audio_recorder — CRUD for users and recordings."""
 
 import re
 import pytest

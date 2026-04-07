@@ -1,4 +1,4 @@
-"""Integration tests for examples/management_canister — IC management canister API."""
+"""Integration tests for tests/fixtures/management_canister — IC management canister API."""
 
 import re
 import pytest

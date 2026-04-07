@@ -1,4 +1,4 @@
-"""Integration tests for examples/stable_structures — StableBTreeMap operations across canisters."""
+"""Integration tests for tests/fixtures/stable_structures — StableBTreeMap operations across canisters."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

@@ -37,7 +37,7 @@ do
     cd $root_dir
 done
 
-cd examples/simple_erc20
+cd tests/fixtures/simple_erc20
 ~/.pyenv/versions/3.10.7/bin/python -m venv venv
 source venv/bin/activate
 pip install ../..

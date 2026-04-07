@@ -1,4 +1,4 @@
-"""Integration tests for examples/tuple_types — tuple type handling."""
+"""Integration tests for tests/fixtures/tuple_types — tuple type handling."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

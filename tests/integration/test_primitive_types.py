@@ -1,4 +1,4 @@
-"""Integration tests for examples/primitive_types — all Candid primitive types."""
+"""Integration tests for tests/fixtures/primitive_types — all Candid primitive types."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

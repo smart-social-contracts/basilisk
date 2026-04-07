@@ -1,4 +1,4 @@
-"""Integration tests for examples/query — simple query canister."""
+"""Integration tests for tests/fixtures/query — simple query canister."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

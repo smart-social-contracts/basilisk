@@ -1,4 +1,4 @@
-"""Integration tests for examples/init — canister init hook."""
+"""Integration tests for tests/fixtures/init — canister init hook."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

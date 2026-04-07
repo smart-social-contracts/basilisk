@@ -1,4 +1,4 @@
-"""Integration tests for examples/guard_functions — guard function behavior."""
+"""Integration tests for tests/fixtures/guard_functions — guard function behavior."""
 
 import pytest
 from .conftest import deploy_example, call_canister, call_canister_expect_trap, parse_candid_text, EXAMPLES_DIR

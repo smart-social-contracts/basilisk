@@ -1,4 +1,4 @@
-"""Integration tests for examples/notify_raw — one-way notification between canisters."""
+"""Integration tests for tests/fixtures/notify_raw — one-way notification between canisters."""
 
 import time
 import pytest

@@ -1,4 +1,4 @@
-"""Integration tests for examples/imports — multi-module imports and stdlib usage.
+"""Integration tests for tests/fixtures/imports — multi-module imports and stdlib usage.
 
 NOTE: The imports canister WASM traps during install on PocketIC with
 ``it::{{closure}}``.  This appears to be a canister-level initialisation

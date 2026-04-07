@@ -1,4 +1,4 @@
-"""Integration tests for examples/principal — Principal type handling."""
+"""Integration tests for tests/fixtures/principal — Principal type handling."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

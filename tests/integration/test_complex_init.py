@@ -1,4 +1,4 @@
-"""Integration tests for examples/complex_init — complex initialization."""
+"""Integration tests for tests/fixtures/complex_init — complex initialization."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

@@ -727,7 +727,7 @@ or external service dependencies — not code bugs.
 | Double keyword-underscore stripping in type parsing | `method_dispatch.rs` | multiple |
 | Double keyword-underscore stripping in encoding | `method_dispatch.rs` | multiple |
 | Recursive type depth limit (16) | `method_dispatch.rs` | — |
-| `manual_reply` void tests — expect `undefined` | `examples/manual_reply/test/test.ts` | manual_reply |
+| `manual_reply` void tests — expect `undefined` | `tests/fixtures/manual_reply/test/test.ts` | manual_reply |
 | `init_and_post_upgrade_recovery` — `--upgrade-unchanged` | test files | init_and_post_upgrade |
 
 #### Cross-canister call support (v0.8.44–v0.8.45)

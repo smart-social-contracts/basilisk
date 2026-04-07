@@ -1,4 +1,4 @@
-"""Integration tests for examples/call_raw — raw canister calls."""
+"""Integration tests for tests/fixtures/call_raw — raw canister calls."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

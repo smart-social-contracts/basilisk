@@ -57,20 +57,20 @@ jobs:
                   fi
 
             - name: Setup venv and install basilisk from repo
-              working-directory: examples/upgrade_test
+              working-directory: tests/fixtures/upgrade_test
               run: |
                   ~/.pyenv/versions/3.10.7/bin/python -m venv venv
                   source venv/bin/activate
                   pip install ../..
 
             - name: Install basilisk dfx extension
-              working-directory: examples/upgrade_test
+              working-directory: tests/fixtures/upgrade_test
               run: |
                   source venv/bin/activate
                   python -m basilisk install-dfx-extension
 
             - name: Run upgrade test
-              working-directory: examples/upgrade_test
+              working-directory: tests/fixtures/upgrade_test
               timeout-minutes: 30
               run: |
                   source venv/bin/activate

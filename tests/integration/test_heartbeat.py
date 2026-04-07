@@ -1,4 +1,4 @@
-"""Integration tests for examples/heartbeat — heartbeat callback (async and sync)."""
+"""Integration tests for tests/fixtures/heartbeat — heartbeat callback (async and sync)."""
 
 import time
 import pytest

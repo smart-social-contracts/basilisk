@@ -1,4 +1,4 @@
-"""Integration tests for examples/update — simple update canister."""
+"""Integration tests for tests/fixtures/update — simple update canister."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR

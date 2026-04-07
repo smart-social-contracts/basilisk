@@ -1,4 +1,4 @@
-"""Integration tests for examples/optional_types — optional/opt type handling."""
+"""Integration tests for tests/fixtures/optional_types — optional/opt type handling."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

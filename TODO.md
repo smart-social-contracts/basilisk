@@ -6,7 +6,7 @@
 The `@/home/user/dev/smartsocialcontracts/some-repos-2/basilisk/README.md:1-370` is **solid** — well-structured with logo, badges, quick start, code examples, SSH/SFTP docs, Basilisk OS overview, benchmarks, CLI reference, and a disclaimer. The architecture diagram and benchmark table are compelling.
 
 ### `basilisk new` Scaffolding
-`@/home/user/dev/smartsocialcontracts/some-repos-2/basilisk/basilisk/cli.py:26-124` generates a working project with [icp.yaml](cci:7://file:///home/user/dev/smartsocialcontracts/some-repos-2/basilisk/examples/counter/icp.yaml:0:0-0:0), [src/main.py](cci:7://file:///home/user/dev/smartsocialcontracts/some-repos-2/basilisk/examples/counter/src/main.py:0:0-0:0), and [.gitignore](cci:7://file:///home/user/dev/smartsocialcontracts/some-repos-2/basilisk/.gitignore:0:0-0:0). The quick start flow (`basilisk new` → `icp deploy` → `basilisk shell`) is clean and uses `icp` CLI consistently.
+`@/home/user/dev/smartsocialcontracts/some-repos-2/basilisk/basilisk/cli.py:26-124` generates a working project with [icp.yaml](cci:7://file:///home/user/dev/smartsocialcontracts/some-repos-2/basilisk/tests/fixtures/counter/icp.yaml:0:0-0:0), [src/main.py](cci:7://file:///home/user/dev/smartsocialcontracts/some-repos-2/basilisk/tests/fixtures/counter/src/main.py:0:0-0:0), and [.gitignore](cci:7://file:///home/user/dev/smartsocialcontracts/some-repos-2/basilisk/.gitignore:0:0-0:0). The quick start flow (`basilisk new` → `icp deploy` → `basilisk shell`) is clean and uses `icp` CLI consistently.
 
 ### CI/CD Pipeline
 Comprehensive test infrastructure:

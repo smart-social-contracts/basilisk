@@ -1,4 +1,4 @@
-"""Integration tests for examples/keywords — Python/Rust keyword handling in Candid."""
+"""Integration tests for tests/fixtures/keywords — Python/Rust keyword handling in Candid."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

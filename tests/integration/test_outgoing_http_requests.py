@@ -1,4 +1,4 @@
-"""Integration tests for examples/outgoing_http_requests — HTTP outcalls from canister."""
+"""Integration tests for tests/fixtures/outgoing_http_requests — HTTP outcalls from canister."""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR

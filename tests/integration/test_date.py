@@ -1,4 +1,4 @@
-"""Integration tests for examples/date — datetime operations in canister."""
+"""Integration tests for tests/fixtures/date — datetime operations in canister."""
 
 import pytest
 from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR
