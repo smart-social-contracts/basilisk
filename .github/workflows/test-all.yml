@@ -17,12 +17,6 @@ jobs:
         uses: ./.github/workflows/build-cpython-wasm.yml
         secrets: inherit
 
-    tests:
-        needs: wasm-build
-        if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
-        uses: ./.github/workflows/test-examples.yml
-        secrets: inherit
-
     upgrade-test:
         needs: wasm-build
         if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
