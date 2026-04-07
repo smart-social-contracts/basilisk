@@ -107,13 +107,14 @@ jobs:
                   dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
 
             - name: Reset canister state
+              continue-on-error: true
               run: |
                   echo "Clearing all scheduled tasks and entities from previous test runs..."
                   dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '(
                     "import task; [t.cancel() for t in Task.instances() if hasattr(t, \"cancel\")];"
                     "import entity; [e.delete() for e in Entity.instances()];"
                     "print(\"reset_complete\")"
-                  ,)' --network "$BASILISK_TEST_NETWORK"
+                  ,)' --network "$BASILISK_TEST_NETWORK" || echo "Reset failed, continuing anyway"
 
             - name: Run tests (${{ matrix.shard }})
               run: |
@@ -126,9 +127,10 @@ jobs:
 
             - name: Cleanup tasks after tests
               if: always()
+              continue-on-error: true
               run: |
                   echo "Cancelling all scheduled tasks to prevent cycle burn..."
                   dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '(
                     "import task; [t.cancel() for t in Task.instances() if hasattr(t, \"cancel\")];"
                     "print(\"cleanup_complete\")"
-                  ,)' --network "$BASILISK_TEST_NETWORK" || true
+                  ,)' --network "$BASILISK_TEST_NETWORK" || echo "Cleanup failed"

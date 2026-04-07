@@ -9,7 +9,7 @@
 [![PyPI](https://img.shields.io/pypi/v/ic-basilisk)](https://pypi.org/project/ic-basilisk/)
 [![Integration Tests](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-integration.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-integration.yml)
 
-An Internet Computer's Python Canister Development Kit and Application Framework. Write decentralized applications in Python efficiently on the [Internet Computer](https://internetcomputer.org/).
+An ICP Python Canister Development Kit and Application Framework. Write decentralized applications in Python efficiently on the [Internet Computer](https://internetcomputer.org/).
 
 **Live demo:** [https://ic-basilisk.tech/](https://ic-basilisk.tech/).
 
@@ -18,10 +18,10 @@ An Internet Computer's Python Canister Development Kit and Application Framework
 - **Based on CPython 3.13**, compiled to WASM — deploy in seconds with a pre-built template, no Rust toolchain needed
 - **Near-complete standard library** — `os`, `json`, `re`, `math`, `datetime`, `hashlib`, `collections`, networking stubs, and more. A few modules requiring native OS threads or sockets (e.g. `threading`, `subprocess`, `socket`) are not available
 
-**Built-in Application Framework on top of standard Python:**
+**Built-in Application Framework:**
 
 - **Persistent ORM** — [ic-python-db](https://github.com/smart-social-contracts/ic-python-db) with typed fields, relationships, validation, and audit logging — stored in stable memory, survives canister upgrades
-- **In-memory filesystem** — standard `open()` and `os` calls, with optional persistence across upgrades
+- **Filesystem** — standard `open()` and `os` calls, with optional persistence across upgrades
 - **Interactive shell** — Python REPL running inside the canister, accessible via an SSH/SFTP proxy
 - **Task management** — multi-step task execution that overcomes per-call cycle limits, with one-shot and recurring scheduling
 - **File transfer** — upload/download files to and from the canister; fetch from the internet with `wget`-like command.
