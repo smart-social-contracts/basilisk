@@ -30,19 +30,22 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 - **IC system APIs** — `ic.caller()`, `ic.time()`, `ic.canister_balance()`, inter-canister calls, timers, and Candid types (`Principal`, `Record`, `Variant`, etc.)
 
 ```
-┌─────────────────────────────────────────────┐
-│                 Basilisk AF                 │
-├──────────────┬──────────────┬───────────────┤
-│ Task Manager │  Filesystem  │   Database    │
-│  Task        │  POSIX-like  │  ic-python-db │
-│  TaskStep    │  in-memory   │  Entity ORM   │
-│  TaskSchedule│  os / open() │  Stable Memory│
-│  Codex/Call  │              │               │
-├──────────────┴──────────────┴───────────────┤
-│           Basilisk CDK (Python → WASM)      │
-├─────────────────────────────────────────────┤
-│         Internet Computer (IC)              │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│              Basilisk Application Framework              │
+├─────────────┬────────────┬────────────┬─────────────────┤
+│ Task Mgr    │ Filesystem │ Database   │ Shell           │
+│  Tasks      │ POSIX-like │ Entity ORM │ Python REPL     │
+│  Scheduling │ os/open()  │ Stable Mem │ SSH / SFTP      │
+│  Codex/Call │ Persistence│            │                 │
+├─────────────┼────────────┼────────────┼─────────────────┤
+│ Wallet      │ Encryption │ File Xfer  │ IC System APIs  │
+│ ICRC-1      │ Key Envlps │ Upload/DL  │ Timers, Calls   │
+│ ckBTC/ckETH │ Crypto Grps│ wget       │ Candid Types    │
+├─────────────┴────────────┴────────────┴─────────────────┤
+│             Basilisk CDK (Python → WASM)                │
+├─────────────────────────────────────────────────────────┤
+│              Internet Computer (ICP)                    │
+└─────────────────────────────────────────────────────────┘
 
 ## Quick Start
 
