@@ -133,7 +133,8 @@ jobs:
                   else
                     echo "should_run_tests=true" >> $GITHUB_OUTPUT
                   fi
-    # cpython-ic-deploy: Mainnet smoke test (kept from original workflow)
+    cpython-ic-deploy:
+        # Mainnet smoke test (kept from original workflow)
         needs: release-candidate-deploy
         runs-on: ubuntu-latest
         if: ${{ needs.release-candidate-deploy.outputs.should_run_tests == 'true' }}
