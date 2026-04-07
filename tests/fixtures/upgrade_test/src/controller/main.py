@@ -16,7 +16,7 @@ class UpgradeResult(Variant, total=False):
 
 
 # Track uploaded chunk hashes per target canister
-uploaded_hashes: dict[str, list[bytes]] = {}
+uploaded_hashes: dict = {}
 
 
 @update
@@ -56,7 +56,7 @@ def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blo
         return {"Err": "No chunks uploaded. Call upload_wasm_chunk first."}
     
     # Build chunk hashes list
-    chunk_hashes_list: list[ChunkHash] = [
+    chunk_hashes_list = [
         {"hash": h} for h in uploaded_hashes[canister_key]
     ]
     
