@@ -15,10 +15,10 @@ def canister(replica):
 
 
 def test_get_rejection_code_no_error(canister):
-    raw = call_canister(canister, "get_rejection_code_no_error", example_dir=EXAMPLE_DIR)
+    raw = call_canister(canister, "get_rejection_code_no_error", example_dir=EXAMPLE_DIR, update=True)
     assert len(raw) > 0
 
 
-def test_get_rejection_message_no_error(canister):
-    raw = call_canister(canister, "get_rejection_message_no_error", example_dir=EXAMPLE_DIR)
+def test_get_rejection_message(canister):
+    raw = call_canister(canister, "get_rejection_message", '("test")', example_dir=EXAMPLE_DIR, update=True)
     assert len(raw) > 0

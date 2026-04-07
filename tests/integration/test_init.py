@@ -16,7 +16,7 @@ def canister(replica):
 
 def test_get_user(canister):
     raw = call_canister(canister, "get_user", example_dir=EXAMPLE_DIR)
-    assert "0" in raw
+    assert "user1" in raw
 
 
 def test_get_reaction(canister):

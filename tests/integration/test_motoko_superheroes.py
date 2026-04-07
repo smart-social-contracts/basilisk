@@ -17,8 +17,8 @@ def canister(replica):
 def test_create_superhero(canister):
     result = parse_candid_text(call_canister(
         canister, "create",
-        '(record { name = "Superman"; superpowers = vec {} })',
-        example_dir=EXAMPLE_DIR,
+        '(record { name = "Superman"; superpowers = null })',
+        example_dir=EXAMPLE_DIR, update=True,
     ))
     assert result == 0
 
@@ -31,8 +31,8 @@ def test_read_superhero(canister):
 def test_update_superhero(canister):
     result = parse_candid_text(call_canister(
         canister, "update_",
-        '(0 : nat32, record { name = "Batman"; superpowers = vec {} })',
-        example_dir=EXAMPLE_DIR,
+        '(0 : nat32, record { name = "Batman"; superpowers = null })',
+        example_dir=EXAMPLE_DIR, update=True,
     ))
     assert result is True
 
@@ -43,7 +43,7 @@ def test_read_updated_superhero(canister):
 
 
 def test_delete_hero(canister):
-    result = parse_candid_text(call_canister(canister, "delete_hero", "(0 : nat32)", example_dir=EXAMPLE_DIR))
+    result = parse_candid_text(call_canister(canister, "delete_hero", "(0 : nat32)", example_dir=EXAMPLE_DIR, update=True))
     assert result is True
 
 

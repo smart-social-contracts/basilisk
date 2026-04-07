@@ -33,8 +33,8 @@ def test_get_partially_null_record(canister):
 def test_set_partially_null_record(canister):
     raw = call_canister(
         canister, "set_partially_null_record",
-        '(record { first_item = 5 : int32; second_item = null; third_item = 10 : int32 })',
-        example_dir=EXAMPLE_DIR,
+        '(record { first_item = 5 : int; second_item = null; third_item = 10 : int })',
+        example_dir=EXAMPLE_DIR, update=True,
     )
     assert "5" in raw and "null" in raw and "10" in raw
 

@@ -42,7 +42,7 @@ def test_list_of_nat8(canister):
 def test_list_of_record(canister):
     raw = call_canister(
         canister, "list_of_record",
-        '(vec { vec { vec { record { name = "Alice"; age = 30 : nat32 } } } })',
+        '(vec { vec { vec { record { name = "Alice"; age = 30 : nat8 } } } })',
         example_dir=EXAMPLE_DIR,
     )
     assert "Alice" in raw

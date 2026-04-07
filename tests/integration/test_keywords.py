@@ -15,7 +15,7 @@ def canister(replica):
 
 
 def test_simple_keyword(canister):
-    raw = call_canister(canister, "simple_keyword", '(record { from_ = "hello" })', example_dir=EXAMPLE_DIR)
+    raw = call_canister(canister, "simple_keyword", '(record { "from" = "hello" })', example_dir=EXAMPLE_DIR)
     assert "hello" in raw
 
 
@@ -30,8 +30,8 @@ def test_rust_keyword_variant(canister):
 
 
 def test_keyword_variant(canister):
-    raw = call_canister(canister, "keyword_variant", '(variant { raise_ })', example_dir=EXAMPLE_DIR)
-    assert "raise_" in raw
+    raw = call_canister(canister, "keyword_variant", '(variant { "raise" })', example_dir=EXAMPLE_DIR)
+    assert "raise" in raw
 
 
 def test_complex_keyword(canister):
