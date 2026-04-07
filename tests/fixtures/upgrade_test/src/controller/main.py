@@ -24,8 +24,9 @@ def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> str:
     })
     
     def handle_ok(result):
-        ic.print(f"DEBUG: result type = {type(result)}, value = {result}")
-        chunk_hash = result["hash"]
+        # The result dict has mangled field names due to Record deserialization
+        # Just get the first (and only) value which is the hash blob
+        chunk_hash = list(result.values())[0]
         if canister_key not in uploaded_hashes:
             uploaded_hashes[canister_key] = []
         uploaded_hashes[canister_key].append(bytes(chunk_hash))
