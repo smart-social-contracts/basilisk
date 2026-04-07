@@ -61,7 +61,7 @@ jobs:
               run: |
                   ~/.pyenv/versions/3.10.7/bin/python -m venv venv
                   source venv/bin/activate
-                  pip install ../..
+                  pip install ../../../
 
             - name: Install basilisk dfx extension
               working-directory: tests/fixtures/upgrade_test
