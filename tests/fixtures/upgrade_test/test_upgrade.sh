@@ -14,11 +14,11 @@ echo "Creating canisters..."
 dfx canister create --all
 
 # 3. Build and deploy with per-canister backends
-# Controller needs RustPython (uses basilisk.canisters.management, async/yield)
+# Controller uses CPython (previously used rustpython but had compatibility issues)
 # Target canisters use CPython template mode (default) for StableBTreeMap persistence
 echo ""
-echo "=== Building controller (rustpython backend) ==="
-BASILISK_PYTHON_BACKEND=rustpython BASILISK_COMPILE_RUST_PYTHON_STDLIB=true dfx build controller
+echo "=== Building controller (cpython backend) ==="
+dfx build controller
 echo "=== Building target (cpython backend) ==="
 dfx build target
 echo "=== Installing controller and target canisters ==="
