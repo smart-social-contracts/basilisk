@@ -2,11 +2,11 @@
 Controller Canister - upgrade other canisters using IC's chunked code upload API
 """
 
-from basilisk import Async, blob, ic, match, nat32, Principal, query, update, Variant
+from basilisk import blob, ic, match, Principal, query, update, Variant
 from basilisk.canisters.management import management_canister
 
 
-class UpgradeResult(Variant, total=False):
+class UpgradeResult(Variant):
     Ok: str
     Err: str
 
@@ -16,7 +16,7 @@ uploaded_hashes: dict = {}
 
 
 @update
-def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> Async[UpgradeResult]:
+def upload_wasm_chunk(target_canister_id: Principal, chunk: blob):
     """Upload a WASM chunk to IC's chunk store via management canister"""
     canister_key = str(target_canister_id)
     
@@ -28,7 +28,7 @@ def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> Async[Upgra
         "chunk": chunk,
     })
     
-    def handle_ok(result) -> UpgradeResult:
+    def handle_ok(result):
         chunk_hash = result["hash"]
         if canister_key not in uploaded_hashes:
             uploaded_hashes[canister_key] = []
@@ -44,7 +44,7 @@ def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> Async[Upgra
 
 
 @update
-def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blob) -> Async[UpgradeResult]:
+def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blob):
     """Execute upgrade using IC's install_chunked_code with previously uploaded chunks"""
     canister_key = str(target_canister_id)
     
@@ -68,7 +68,7 @@ def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blo
         "arg": bytes(),
     })
     
-    def handle_ok(_) -> UpgradeResult:
+    def handle_ok(_):
         del uploaded_hashes[canister_key]
         return {"Ok": f"Canister {target_canister_id} upgraded successfully with chunked code"}
     
@@ -79,7 +79,7 @@ def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blo
 
 
 @update
-def clear_chunks(target_canister_id: Principal) -> Async[UpgradeResult]:
+def clear_chunks(target_canister_id: Principal):
     """Clear uploaded chunks from IC's chunk store"""
     canister_key = str(target_canister_id)
     
@@ -88,7 +88,7 @@ def clear_chunks(target_canister_id: Principal) -> Async[UpgradeResult]:
         "canister_id": target_canister_id,
     })
     
-    def handle_ok(_) -> UpgradeResult:
+    def handle_ok(_):
         count = 0
         if canister_key in uploaded_hashes:
             count = len(uploaded_hashes[canister_key])
@@ -102,7 +102,7 @@ def clear_chunks(target_canister_id: Principal) -> Async[UpgradeResult]:
 
 
 @query
-def get_chunk_count(target_canister_id: Principal) -> nat32:
+def get_chunk_count(target_canister_id: Principal):
     """Get number of uploaded chunks for a canister"""
     canister_key = str(target_canister_id)
     if canister_key in uploaded_hashes:
@@ -111,6 +111,6 @@ def get_chunk_count(target_canister_id: Principal) -> nat32:
 
 
 @query
-def whoami() -> str:
+def whoami():
     """Return this canister's ID"""
     return str(ic.id())
