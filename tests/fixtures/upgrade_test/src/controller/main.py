@@ -2,13 +2,8 @@
 Controller Canister - upgrade other canisters using IC's chunked code upload API
 """
 
-from basilisk import blob, ic, match, nat32, Principal, query, update, Variant
+from basilisk import blob, ic, match, nat32, Principal, query, update
 from basilisk.canisters.management import management_canister
-
-
-class UpgradeResult(Variant):
-    Ok: str
-    Err: str
 
 
 # Track uploaded chunk hashes per target canister
@@ -16,7 +11,7 @@ uploaded_hashes: dict = {}
 
 
 @update
-def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> UpgradeResult:
+def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> str:
     """Upload a WASM chunk to IC's chunk store via management canister"""
     canister_key = str(target_canister_id)
     
@@ -35,21 +30,21 @@ def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> UpgradeResu
         uploaded_hashes[canister_key].append(bytes(chunk_hash))
         chunk_index = len(uploaded_hashes[canister_key]) - 1
         ic.print(f"Chunk {chunk_index} uploaded, hash: {bytes(chunk_hash).hex()[:16]}...")
-        return {"Ok": f"Chunk {chunk_index} uploaded ({len(chunk)} bytes)"}
+        return f"OK: Chunk {chunk_index} uploaded ({len(chunk)} bytes)"
     
     return match(call_result, {
         "Ok": handle_ok,
-        "Err": lambda err: {"Err": f"Failed to upload chunk: {err}"}
+        "Err": lambda err: f"ERR: Failed to upload chunk: {err}"
     })
 
 
 @update
-def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blob) -> UpgradeResult:
+def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blob) -> str:
     """Execute upgrade using IC's install_chunked_code with previously uploaded chunks"""
     canister_key = str(target_canister_id)
     
     if canister_key not in uploaded_hashes or len(uploaded_hashes[canister_key]) == 0:
-        return {"Err": "No chunks uploaded. Call upload_wasm_chunk first."}
+        return "ERR: No chunks uploaded. Call upload_wasm_chunk first."
     
     # Build chunk hashes list
     chunk_hashes_list = [
@@ -70,16 +65,16 @@ def execute_chunked_upgrade(target_canister_id: Principal, wasm_module_hash: blo
     
     def handle_ok(_):
         del uploaded_hashes[canister_key]
-        return {"Ok": f"Canister {target_canister_id} upgraded successfully with chunked code"}
+        return f"OK: Canister {target_canister_id} upgraded successfully with chunked code"
     
     return match(call_result, {
         "Ok": handle_ok,
-        "Err": lambda err: {"Err": f"Failed to install chunked code: {err}"}
+        "Err": lambda err: f"ERR: Failed to install chunked code: {err}"
     })
 
 
 @update
-def clear_chunks(target_canister_id: Principal) -> UpgradeResult:
+def clear_chunks(target_canister_id: Principal) -> str:
     """Clear uploaded chunks from IC's chunk store"""
     canister_key = str(target_canister_id)
     
@@ -93,11 +88,11 @@ def clear_chunks(target_canister_id: Principal) -> UpgradeResult:
         if canister_key in uploaded_hashes:
             count = len(uploaded_hashes[canister_key])
             del uploaded_hashes[canister_key]
-        return {"Ok": f"Cleared {count} chunks"}
+        return f"OK: Cleared {count} chunks"
     
     return match(call_result, {
         "Ok": handle_ok,
-        "Err": lambda err: {"Err": f"Failed to clear chunk store: {err}"}
+        "Err": lambda err: f"ERR: Failed to clear chunk store: {err}"
     })
 
 
