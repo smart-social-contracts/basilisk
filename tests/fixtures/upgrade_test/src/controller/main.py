@@ -24,7 +24,7 @@ def upload_wasm_chunk(target_canister_id: Principal, chunk: blob) -> str:
     })
     
     def handle_ok(result):
-        chunk_hash = result.hash
+        chunk_hash = result["hash"]
         if canister_key not in uploaded_hashes:
             uploaded_hashes[canister_key] = []
         uploaded_hashes[canister_key].append(bytes(chunk_hash))
