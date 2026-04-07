@@ -107,7 +107,7 @@ jobs:
                   echo "Stopping canister ${BASILISK_TEST_CANISTER}..."
                   dfx canister stop "${BASILISK_TEST_CANISTER}" --network "${BASILISK_TEST_NETWORK}" || true
                   echo "Reinstalling canister with empty state..."
-                  dfx canister install "${BASILISK_TEST_CANISTER}" --mode reinstall --wasm /dev/null --network "${BASILISK_TEST_NETWORK}" || true
+                  dfx canister install "${BASILISK_TEST_CANISTER}" --mode reinstall --wasm /dev/null --yes --network "${BASILISK_TEST_NETWORK}" || true
                   dfx canister start "${BASILISK_TEST_CANISTER}" --network "${BASILISK_TEST_NETWORK}" || true
                   echo "Verifying canister is reachable..."
                   dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
