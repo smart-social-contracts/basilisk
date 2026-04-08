@@ -172,10 +172,10 @@ def _scaffold_tip_jar(project_dir: Path, project_name: str, backend: str, templa
     """Scaffold the full-stack Tip Jar template with frontend."""
     tip_jar_template = template_dir / "tip_jar"
 
-    # Copy the entire template tree (exclude build artifacts)
+    # Copy the entire template tree (exclude build artifacts and production canister IDs)
     shutil.copytree(
         tip_jar_template, project_dir,
-        ignore=shutil.ignore_patterns('.basilisk', '.dfx', '__pycache__'),
+        ignore=shutil.ignore_patterns('.basilisk', '.dfx', '__pycache__', 'canister_ids.json'),
     )
 
     # Rename canister references from "tip_jar" to <project_name>
