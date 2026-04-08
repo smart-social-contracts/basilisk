@@ -134,6 +134,7 @@ jobs:
               apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
               DFXVM_INIT_YES=true DFX_VERSION=0.30.2 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)" > /dev/null 2>&1
               export PATH="$HOME/.local/share/dfx/bin:$PATH"
+              export DFX_WARNING=-mainnet_plaintext_identity
 
               # Wait for PyPI propagation
               echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
