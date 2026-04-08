@@ -548,6 +548,7 @@ def persistence_injected(canister_reachable, canister, network):
     return True
 
 
+@pytest.mark.usefixtures("persistence_injected")
 class TestFilePersistenceMap:
     """Test that files are automatically persisted to StableBTreeMap on write."""
 
