@@ -23,8 +23,8 @@ from tests.conftest import exec_on_canister, _get_canister, _get_network
 # Unit tests — guard metadata extraction from AST (no canister needed)
 # ===========================================================================
 
-class TestGuardMetadataExtraction:
-    """Verify wasm_manipulator correctly extracts guard= from decorators."""
+class _GuardMetadataMixin:
+    """Shared helper for extracting guard metadata from Python source."""
 
     def _extract_guards(self, source: str) -> dict:
         """Parse source and return {func_name: guard_name} for guarded methods."""
@@ -40,6 +40,18 @@ class TestGuardMetadataExtraction:
                     if kw.arg == "guard" and isinstance(kw.value, ast.Name):
                         guards[node.name] = kw.value.id
         return guards
+
+    def _extract_func_names(self, source: str) -> list:
+        """Parse source and return all function names."""
+        tree = ast.parse(source)
+        return [
+            node.name for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+        ]
+
+
+class TestGuardMetadataExtraction(_GuardMetadataMixin):
+    """Verify wasm_manipulator correctly extracts guard= from decorators."""
 
     @property
     def _canister_source(self):
@@ -60,16 +72,47 @@ class TestGuardMetadataExtraction:
         assert guards["download_to_file"] == "guard_against_non_controllers"
 
     def test_canister_guard_function_defined(self):
-        tree = ast.parse(self._canister_source)
-        func_names = [
-            node.name for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef)
-        ]
-        assert "guard_against_non_controllers" in func_names
+        assert "guard_against_non_controllers" in self._extract_func_names(self._canister_source)
 
     def test_benign_endpoints_not_guarded(self):
         guards = self._extract_guards(self._canister_source)
         for name in ("status", "whoami", "http_transform"):
+            assert name not in guards, f"{name} should not have a guard"
+
+
+class TestTipJarGuardMetadata(_GuardMetadataMixin):
+    """Verify the tip_jar template has correct guards on sensitive endpoints."""
+
+    @property
+    def _tip_jar_main_source(self):
+        tip_jar_main = os.path.join(
+            os.path.dirname(__file__), "..",
+            "basilisk", "templates", "tip_jar", "src", "backend", "main.py",
+        )
+        with open(tip_jar_main) as f:
+            return f.read()
+
+    def test_withdraw_has_guard(self):
+        guards = self._extract_guards(self._tip_jar_main_source)
+        assert "withdraw" in guards
+        assert guards["withdraw"] == "guard_against_non_controllers"
+
+    def test_execute_code_shell_has_guard(self):
+        guards = self._extract_guards(self._tip_jar_main_source)
+        assert "execute_code_shell" in guards
+        assert guards["execute_code_shell"] == "guard_against_non_controllers"
+
+    def test_read_secret_notes_has_guard(self):
+        guards = self._extract_guards(self._tip_jar_main_source)
+        assert "read_secret_notes" in guards
+        assert guards["read_secret_notes"] == "guard_against_non_controllers"
+
+    def test_guard_function_defined(self):
+        assert "guard_against_non_controllers" in self._extract_func_names(self._tip_jar_main_source)
+
+    def test_public_endpoints_not_guarded(self):
+        guards = self._extract_guards(self._tip_jar_main_source)
+        for name in ("status", "whoami", "get_leaderboard", "get_stats", "get_fx_rates"):
             assert name not in guards, f"{name} should not have a guard"
 
 
