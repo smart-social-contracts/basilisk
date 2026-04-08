@@ -3,6 +3,7 @@
 
 name: Upgrade Test
 on:
+    workflow_dispatch:
     pull_request:
     workflow_call: # Called by test-all.yml orchestrator
 
