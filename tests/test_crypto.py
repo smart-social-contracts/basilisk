@@ -206,7 +206,7 @@ class TestGroupCodeGeneration:
     def test_delete_code_valid(self):
         code = _group_delete_code("admins")
         assert "'admins'" in code
-        assert "_delete" in code
+        assert ".delete()" in code
         compile(code, "<test>", "exec")
 
     def test_members_code_valid(self):
@@ -277,7 +277,7 @@ class TestCryptoCodeGeneration:
         code = _crypto_revoke_principal_code("project:alpha", "bob-principal")
         assert "'project:alpha'" in code
         assert "'bob-principal'" in code
-        assert "_delete" in code
+        assert ".delete()" in code
         compile(code, "<test>", "exec")
 
     def test_revoke_group_code_valid(self):
@@ -495,10 +495,10 @@ def _cleanup_groups(prefix=_TEST_PREFIX):
         f"_prefix = '{prefix}'\n"
         "for _m in list(CryptoGroupMember.instances()):\n"
         "    if str(_m.group).startswith(_prefix):\n"
-        "        _m._delete()\n"
+        "        _m.delete()\n"
         "for _g in list(CryptoGroup.instances()):\n"
         "    if str(_g.name).startswith(_prefix):\n"
-        "        _g._delete()\n"
+        "        _g.delete()\n"
         "print('cleanup_groups_done')\n"
     )
 
@@ -510,7 +510,7 @@ def _cleanup_envelopes(prefix=_TEST_PREFIX):
         f"_prefix = '{prefix}'\n"
         "for _e in list(KeyEnvelope.instances()):\n"
         "    if str(_e.scope).startswith(_prefix):\n"
-        "        _e._delete()\n"
+        "        _e.delete()\n"
         "print('cleanup_envelopes_done')\n"
     )
 
@@ -1259,7 +1259,7 @@ class TestCryptoEntityCRUDOnCanister:
                 _CRYPTO_RESOLVE +
                 f"_found = [e for e in KeyEnvelope.instances() if str(e.scope) == '{scope}']\n"
                 "for _e in _found:\n"
-                "    _e._delete()\n"
+                "    _e.delete()\n"
                 f"_after = [e for e in KeyEnvelope.instances() if str(e.scope) == '{scope}']\n"
                 "print(f'{len(_after)}')\n"
             )

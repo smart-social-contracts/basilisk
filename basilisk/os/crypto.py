@@ -386,7 +386,7 @@ class CryptoService:
         """
         envelope = self._find_envelope(scope, target_principal)
         if envelope:
-            envelope._delete()
+            envelope.delete()
             logger.info(f"Revoked access: scope={scope!r} from {target_principal}")
             return True
         return False
@@ -473,8 +473,8 @@ class CryptoService:
         # Delete all members
         for member in list(CryptoGroupMember.instances()):
             if str(member.group) == name:
-                member._delete()
-        group._delete()
+                member.delete()
+        group.delete()
         logger.info(f"Deleted group: {name!r}")
         return True
 
@@ -512,7 +512,7 @@ class CryptoService:
         """
         for m in list(CryptoGroupMember.instances()):
             if str(m.group) == group_name and str(m.principal) == principal:
-                m._delete()
+                m.delete()
                 logger.info(f"Removed {principal} from group {group_name!r}")
                 return True
         return False
