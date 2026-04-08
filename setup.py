@@ -42,7 +42,7 @@ setup(
         "compiler/**/LICENSE*",
         "canisters/**",
         "py.typed",
-        "templates/*.py",
+        "templates/**/*",
         "*.wasm",
         "*.js",
     ]},
