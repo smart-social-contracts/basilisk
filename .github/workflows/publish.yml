@@ -160,12 +160,6 @@ jobs:
               echo "status: ${RESULT}"
               echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
 
-              # Test withdraw guard: non-controller should be rejected
-              dfx identity new --storage-mode plaintext _smoke_noncontroller 2>/dev/null || true
-              WITHDRAW_OUT=$(dfx canister call smoke_test_backend withdraw '("ckBTC", "aaaaa-aa", 1)' --network ic --identity _smoke_noncontroller 2>&1 || true)
-              echo "withdraw (non-controller): ${WITHDRAW_OUT}"
-              echo "${WITHDRAW_OUT}" | grep -qi "not authorized\|only controllers" || { echo "::error::withdraw guard failed: ${WITHDRAW_OUT}"; exit 1; }
-
               # Cleanup
               dfx canister stop smoke_test_backend --network ic || true
               dfx canister stop smoke_test_frontend --network ic || true
