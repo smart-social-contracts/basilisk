@@ -40,6 +40,13 @@ jobs:
             CANISTER_ID: ru4ga-siaaa-aaaai-q7f3a-cai
             NETWORK: ic
         steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.10"
+
             - name: Install dfx
               run: |
                   DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
@@ -52,10 +59,25 @@ jobs:
                   rm /tmp/ci-identity.pem
                   dfx identity use ci-deploy
 
-            - name: Start canister
+            - name: Install basilisk
+              run: pip install -e .
+
+            - name: Build test canister WASM
+              working-directory: tests/test_canister
               run: |
-                  echo "Starting canister $CANISTER_ID on $NETWORK..."
-                  dfx canister start "$CANISTER_ID" --network "$NETWORK" 2>/dev/null || true
+                  CANISTER_CANDID_PATH=./shell_test.did python -m basilisk shell_test src/main.py
+                  ls -la .basilisk/shell_test/shell_test.wasm
+
+            - name: Reinstall canister with fresh WASM
+              working-directory: tests/test_canister
+              run: |
+                  echo "Stopping canister $CANISTER_ID..."
+                  dfx canister stop "$CANISTER_ID" --network "$NETWORK" 2>/dev/null || true
+                  sleep 3
+                  echo "Reinstalling canister with fresh WASM..."
+                  dfx canister install "$CANISTER_ID" --mode reinstall --yes --network "$NETWORK" --wasm .basilisk/shell_test/shell_test.wasm
+                  echo "Starting canister..."
+                  dfx canister start "$CANISTER_ID" --network "$NETWORK"
                   echo "Verifying canister is reachable..."
                   dfx canister call "$CANISTER_ID" status --network "$NETWORK"
 
