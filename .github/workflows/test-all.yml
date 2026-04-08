@@ -2,7 +2,7 @@
 # First builds the CPython WASM template (if template paths changed),
 # then runs all test suites in parallel.
 #
-# Shell tests use a live canister on IC mainnet (ru4ga-siaaa-aaaai-q7f3a-cai).
+# IC tests use a live canister on IC mainnet (ru4ga-siaaa-aaaai-q7f3a-cai).
 # The canister is started before tests and stopped after to save idle cycles.
 # Ensure the canister has enough cycles above its freezing threshold (~1.6 TC).
 
@@ -15,6 +15,10 @@ on:
 concurrency:
     group: ci-main-${{ github.ref }}
     cancel-in-progress: true
+
+env:
+    PYTHON_VERSION: "3.13"
+    DFX_VERSION: "0.30.2"
 
 permissions:
     contents: write # Required by build-cpython-wasm for GitHub releases
@@ -31,7 +35,7 @@ jobs:
         uses: ./.github/workflows/test-upgrade.yml
         secrets: inherit
 
-    setup-shell-canister:
+    setup-ic-canister:
         needs: wasm-build
         if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         runs-on: ubuntu-latest
@@ -45,11 +49,11 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  python-version: "3.10"
+                  python-version: ${{ env.PYTHON_VERSION }}
 
             - name: Install dfx
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
                   echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
 
             - name: Import DFX identity
@@ -90,14 +94,14 @@ jobs:
                   echo "Verifying canister is reachable..."
                   dfx canister call "$CANISTER_ID" status --network "$NETWORK"
 
-    shell-tests:
-        needs: setup-shell-canister
-        if: ${{ !cancelled() && needs.setup-shell-canister.result == 'success' }}
+    ic-tests:
+        needs: setup-ic-canister
+        if: ${{ !cancelled() && needs.setup-ic-canister.result == 'success' }}
         uses: ./.github/workflows/test-shell.yml
         secrets: inherit
 
-    teardown-shell-canister:
-        needs: shell-tests
+    teardown-ic-canister:
+        needs: ic-tests
         if: always()
         runs-on: ubuntu-latest
         env:
@@ -107,7 +111,7 @@ jobs:
         steps:
             - name: Install dfx
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
                   echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
 
             - name: Import DFX identity
@@ -122,7 +126,7 @@ jobs:
                   echo "Stopping canister $CANISTER_ID on $NETWORK..."
                   dfx canister stop "$CANISTER_ID" --network "$NETWORK" || true
 
-    integration-tests:
+    local-tests:
         needs: wasm-build
         if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         uses: ./.github/workflows/test-integration.yml

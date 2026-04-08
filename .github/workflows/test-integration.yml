@@ -1,12 +1,12 @@
-# Consolidated Python pytest integration tests for Basilisk examples.
+# Local Tests — build and test example canisters on a local dfx replica.
 #
 # Architecture: build-once + deploy-only
 #   1. build-wasms: Single runner builds ALL example WASMs (~minutes total
 #      in CPython template mode) and uploads as artifact.
-#   2. integration-tests (6 shards): Each shard downloads pre-built WASMs,
+#   2. local-tests (6 shards): Each shard downloads pre-built WASMs,
 #      deploys via `dfx canister install --wasm` (no rebuild), and runs tests.
 
-name: Integration Tests (Python)
+name: Local Tests
 
 on:
     pull_request:
@@ -18,8 +18,8 @@ env:
     BASILISK_COMPILE_RUST_PYTHON_STDLIB: false
     WASI_SDK_VERSION: "24"
     WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
-    PYTHON_VERSION: "3.10.7"
-    DFX_VERSION: "0.29.0"
+    PYTHON_VERSION: "3.13"
+    DFX_VERSION: "0.30.2"
 
 jobs:
     # -----------------------------------------------------------------------
@@ -67,11 +67,13 @@ jobs:
                   mkdir -p "$(dirname $TEMPLATE_PATH)"
                   curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm -o "$TEMPLATE_PATH"
 
-            - name: Setup Python environment
-              run: |
-                  curl https://pyenv.run | bash
-                  ~/.pyenv/bin/pyenv install ${{ env.PYTHON_VERSION }}
-                  ~/.pyenv/versions/${{ env.PYTHON_VERSION }}/bin/python -m venv venv
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+
+            - name: Create venv
+              run: python -m venv venv
 
             - name: Install basilisk from repo
               shell: bash -l {0}
@@ -148,6 +150,11 @@ jobs:
               run: |
                   DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
                   echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
 
             - name: Install pytest
               run: pip install pytest

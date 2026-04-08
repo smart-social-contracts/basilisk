@@ -7,7 +7,8 @@
 # Basilisk
 
 [![PyPI](https://img.shields.io/pypi/v/ic-basilisk)](https://pypi.org/project/ic-basilisk/)
-[![Integration Tests](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-integration.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-integration.yml)
+[![Local Tests](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-integration.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-integration.yml)
+[![IC Tests](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-shell.yml/badge.svg)](https://github.com/smart-social-contracts/basilisk/actions/workflows/test-shell.yml)
 
 An ICP Python Canister Development Kit and Application Framework. Write decentralized applications in Python efficiently on the [Internet Computer](https://internetcomputer.org/).
 
@@ -67,7 +68,7 @@ pip install ic-basilisk
 basilisk new my_project
 cd my_project
 
-# 2. Start the local replica and deploy (builds in < 5 seconds)
+# 2. Start the local replica and deploy
 icp network start -d
 icp deploy
 

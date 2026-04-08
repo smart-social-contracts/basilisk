@@ -1,8 +1,16 @@
-# Integration tests for Basilisk Shell (shell, filesystem, SFTP, tasks, wallet, crypto).
+# IC Tests — Basilisk OS runtime features (tasks, wallet, crypto, filesystem, etc.)
 # These run against a live canister on IC mainnet. The canister must already be deployed.
 # The test conftest.py handles health checks and state cleanup.
 
-name: Shell Integration Tests
+name: IC Tests
+
+env:
+    PYTHON_VERSION: "3.13"
+    DFX_VERSION: "0.30.2"
+
+concurrency:
+    group: ic-tests-mainnet
+    cancel-in-progress: true
 
 on:
     pull_request:
@@ -29,7 +37,7 @@ on:
                     - local
 
 jobs:
-    shell-tests:
+    ic-tests:
         runs-on: ubuntu-latest
         strategy:
             fail-fast: false
@@ -74,13 +82,14 @@ jobs:
             DFX_WARNING: -mainnet_plaintext_identity
             BASILISK_TEST_CANISTER: ${{ inputs.canister || 'ru4ga-siaaa-aaaai-q7f3a-cai' }}
             BASILISK_TEST_NETWORK: ${{ inputs.network || 'ic' }}
-        name: shell-tests (${{ matrix.shard }})
+        name: ic-tests (${{ matrix.shard }})
+        timeout-minutes: 20
         steps:
             - uses: actions/checkout@v4
 
             - name: Install dfx
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
                   echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
 
             - name: Import DFX identity
@@ -97,7 +106,7 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  python-version: "3.10"
+                  python-version: ${{ env.PYTHON_VERSION }}
 
             - name: Install dependencies
               run: |
