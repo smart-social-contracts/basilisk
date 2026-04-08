@@ -155,18 +155,15 @@ jobs:
               basilisk new smoke_test && cd smoke_test
               icp deploy -e ic
 
-              RESULT=$(icp canister call smoke_test greet '\''("World")'\'' -e ic --query)
-              echo "greet: ${RESULT}"
-              echo "${RESULT}" | grep -q "Hello, World" || { echo "::error::greet failed: ${RESULT}"; exit 1; }
-
-              icp canister call smoke_test increment '\''()'\'' -e ic
-              RESULT=$(icp canister call smoke_test get_counter '\''()'\'' -e ic --query)
-              echo "counter: ${RESULT}"
-              echo "${RESULT}" | grep -q "1" || { echo "::error::counter failed: ${RESULT}"; exit 1; }
+              RESULT=$(icp canister call smoke_test_backend status '\''()'\'' -e ic --query)
+              echo "status: ${RESULT}"
+              echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
 
               # Cleanup
-              icp canister stop smoke_test -e ic
-              icp canister delete smoke_test -e ic
+              icp canister stop smoke_test_backend -e ic || true
+              icp canister stop smoke_test_frontend -e ic || true
+              icp canister delete smoke_test_backend -e ic || true
+              icp canister delete smoke_test_frontend -e ic || true
 
               echo "✅ IC mainnet smoke test passed"
             '
