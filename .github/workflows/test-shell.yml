@@ -1,5 +1,6 @@
 # Integration tests for Basilisk Shell (shell, filesystem, SFTP, tasks, wallet, crypto).
-# These run against a canister on IC mainnet that gets reinstalled (state wiped) for each test run.
+# These run against a live canister on IC mainnet. The canister must already be deployed.
+# The test conftest.py handles health checks and state cleanup.
 
 name: Shell Integration Tests
 
@@ -102,17 +103,6 @@ jobs:
               run: |
                   pip install -e ".[shell,test]"
 
-            - name: Stop and reinstall canister (wipe state)
-              run: |
-                  echo "Stopping canister ${BASILISK_TEST_CANISTER}..."
-                  dfx canister stop "${BASILISK_TEST_CANISTER}" --network "${BASILISK_TEST_NETWORK}" || true
-                  echo "Reinstalling canister with empty state..."
-                  dfx canister install "${BASILISK_TEST_CANISTER}" --mode reinstall --wasm /dev/null --yes --network "${BASILISK_TEST_NETWORK}"
-                  echo "Starting canister..."
-                  dfx canister start "${BASILISK_TEST_CANISTER}" --network "${BASILISK_TEST_NETWORK}"
-                  echo "Verifying canister is reachable..."
-                  dfx canister call "$BASILISK_TEST_CANISTER" execute_code_shell '("print(\"ping\")",)' --network "$BASILISK_TEST_NETWORK"
-
             - name: Run tests (${{ matrix.shard }})
               run: |
                   FILTER="${{ inputs.test_filter }}"
@@ -121,9 +111,3 @@ jobs:
                   else
                     PYTHONPATH=. python -m pytest ${{ matrix.pytest_args }} -v
                   fi
-
-            - name: Stop canister after tests
-              if: always()
-              run: |
-                  echo "Stopping canister ${BASILISK_TEST_CANISTER}..."
-                  dfx canister stop "${BASILISK_TEST_CANISTER}" --network "${BASILISK_TEST_NETWORK}" || true
