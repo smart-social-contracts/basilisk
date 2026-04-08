@@ -23,11 +23,65 @@ jobs:
         uses: ./.github/workflows/test-upgrade.yml
         secrets: inherit
 
-    shell-tests:
+    setup-shell-canister:
         needs: wasm-build
         if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
+        runs-on: ubuntu-latest
+        env:
+            DFX_WARNING: -mainnet_plaintext_identity
+            CANISTER_ID: ru4ga-siaaa-aaaai-q7f3a-cai
+            NETWORK: ic
+        steps:
+            - name: Install dfx
+              run: |
+                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Import DFX identity
+              run: |
+                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  rm /tmp/ci-identity.pem
+                  dfx identity use ci-deploy
+
+            - name: Start canister
+              run: |
+                  echo "Starting canister $CANISTER_ID on $NETWORK..."
+                  dfx canister start "$CANISTER_ID" --network "$NETWORK" 2>/dev/null || true
+                  echo "Verifying canister is reachable..."
+                  dfx canister call "$CANISTER_ID" status --network "$NETWORK"
+
+    shell-tests:
+        needs: setup-shell-canister
+        if: ${{ !cancelled() && needs.setup-shell-canister.result == 'success' }}
         uses: ./.github/workflows/test-shell.yml
         secrets: inherit
+
+    teardown-shell-canister:
+        needs: shell-tests
+        if: always()
+        runs-on: ubuntu-latest
+        env:
+            DFX_WARNING: -mainnet_plaintext_identity
+            CANISTER_ID: ru4ga-siaaa-aaaai-q7f3a-cai
+            NETWORK: ic
+        steps:
+            - name: Install dfx
+              run: |
+                  DFXVM_INIT_YES=true DFX_VERSION=0.29.0 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
+                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+            - name: Import DFX identity
+              run: |
+                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  rm /tmp/ci-identity.pem
+                  dfx identity use ci-deploy
+
+            - name: Stop canister
+              run: |
+                  echo "Stopping canister $CANISTER_ID on $NETWORK..."
+                  dfx canister stop "$CANISTER_ID" --network "$NETWORK" || true
 
     integration-tests:
         needs: wasm-build
