@@ -62,6 +62,15 @@ jobs:
             - name: Install basilisk
               run: pip install -e .
 
+            - name: Pre-download canister template
+              run: |
+                  VERSION=$(python3 -c "import basilisk; print(basilisk.__version__)")
+                  TEMPLATE_DIR="$HOME/.config/basilisk/${VERSION}"
+                  mkdir -p "$TEMPLATE_DIR"
+                  curl -Lf "https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm" \
+                    -o "$TEMPLATE_DIR/cpython_canister_template.wasm"
+                  echo "Template cached at $TEMPLATE_DIR/cpython_canister_template.wasm ($(du -sh "$TEMPLATE_DIR/cpython_canister_template.wasm" | cut -f1))"
+
             - name: Build test canister WASM
               working-directory: tests/test_canister
               run: |
