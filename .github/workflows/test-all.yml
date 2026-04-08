@@ -1,6 +1,10 @@
 # Orchestrator workflow that runs all test suites on push to main.
 # First builds the CPython WASM template (if template paths changed),
 # then runs all test suites in parallel.
+#
+# Shell tests use a live canister on IC mainnet (ru4ga-siaaa-aaaai-q7f3a-cai).
+# The canister is started before tests and stopped after to save idle cycles.
+# Ensure the canister has enough cycles above its freezing threshold (~1.6 TC).
 
 name: All Tests
 on:
