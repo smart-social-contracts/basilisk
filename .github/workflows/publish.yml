@@ -17,7 +17,7 @@ on:
         default: ''
         type: string
 env:
-    PYTHON_VERSION: "3.13"
+    PYTHON_VERSION: "3.11"
     DFX_VERSION: "0.30.2"
 
 jobs:
