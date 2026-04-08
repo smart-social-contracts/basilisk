@@ -80,25 +80,11 @@ rustpython-stdlib = {{ git = "https://github.com/demergent-labs/RustPython", rev
 rustpython-derive = {{ git = "https://github.com/demergent-labs/RustPython", rev = "e87c5ddc56ac94fc5dc42aedb1e03bee21e5b9b7", default-features = false, features = [] }}
 rustpython-compiler-core = {{ git = "https://github.com/demergent-labs/RustPython", rev = "e87c5ddc56ac94fc5dc42aedb1e03bee21e5b9b7", default-features = false, features = [] }}
 
-# rustpython = {{ path = "/home/lastmjs/development/RustPython", default-features = false, features = ["stdlib", "encodings"] }}
-# rustpython-vm = {{ path = "/home/lastmjs/development/RustPython/vm", default-features = false, features = ["ic"] }}
-# rustpython-stdlib = {{ path = "/home/lastmjs/development/RustPython/stdlib", default-features = false, features = [] }}
-# rustpython-derive = {{ path = "/home/lastmjs/development/RustPython/derive", default-features = false, features = [] }}
-# rustpython-compiler-core = {{ path = "/home/lastmjs/development/RustPython/compiler/core", default-features = false, features = [] }}
-
-# rustpython = {{ path = "/home/RustPython", default-features = false, features = ["stdlib"] }}
-# rustpython-vm = {{ path = "/home/RustPython/vm", default-features = false, features = ["ic"] }}
-# rustpython-stdlib = {{ path = "/home/RustPython/stdlib", default-features = false, features = [] }}
-# rustpython-derive = {{ path = "/home/RustPython/derive", default-features = false, features = [] }}
-# TODO add this back once we support the full stdlib: https://github.com/demergent-labs/basilisk/issues/12
-# rustpython-pylib = {{ git = "https://github.com/demergent-labs/RustPython", rev = "e87c5ddc56ac94fc5dc42aedb1e03bee21e5b9b7", default-features = false, features = ["freeze-stdlib"] }}
-# rustpython = {{ path = "../../../../../../RustPython", default-features = false, features = [] }}
 serde = {{ version = "1.0.137", default-features = false, features = [] }}
 async-recursion = "1.0.0"
-ic-stable-structures = "0.5.2" # TODO shall we update? Shall we remove the need to specify max size?
+ic-stable-structures = "0.5.2"
 slotmap = "1.0.6"
 
-# TODO transient feature can be removed once https://github.com/demergent-labs/azle/issues/1731 is resolved
 ic-wasi-polyfill = {{ version = "0.6.1", features = [
     "transient",
 ] }}

@@ -76,13 +76,14 @@ icp deploy
 icp canister call my_project greet '("World")'
 # ("Hello, World! The counter is at 0.")
 
+# 4. Open an interactive Python shell inside the canister
+basilisk shell --canister my_project
+
 # 5. Or connect via SSH and SFTP
 basilisk sshd --canister my_project
 ssh -p 2222 localhost              # Python shell over SSH
 sftp -P 2222 localhost             # browse the canister filesystem
-
-# 4. Open an interactive Python shell inside the canister
-basilisk shell --canister my_project
+```
 
 ```
 basilisk>>> print("Hello from the IC!")
@@ -102,46 +103,7 @@ basilisk>>> %task create heartbeat every 60s --code "print('alive at', ic.time()
 # View task details and list all tasks
 basilisk>>> %task info 1
 basilisk>>> %task list
-<!-- 
-## Remote Code Execution
-
-Execute Python on a deployed canister without redeploying:
-
-```bash
-# One-liner
-basilisk exec --canister my_project 'print(1 + 1)'
-
-# Run a local script on the canister
-basilisk exec --canister my_project -f analysis.py
-
-# Pipe code
-echo "import os; print(os.listdir('/'))" | basilisk exec --canister my_project
-
-# Target IC mainnet
-basilisk exec --canister my_project --network ic 'print(ic.canister_balance())'
-``` -->
-<!-- 
-## Filesystem
-
-Standard Python `os` operations and `open()` work inside the canister. The filesystem is also accessible via SFTP (see above).
-
-```python
-import os
-
-@update
-def setup() -> text:
-    os.makedirs("/data/reports", exist_ok=True)
-    with open("/data/config.json", "w") as f:
-        f.write('{"version": 1}')
-    return f"exists={os.path.exists('/data/config.json')}"
-
-@query
-def load_config() -> text:
-    with open("/data/config.json", "r") as f:
-        return f.read()
-``` -->
-<!-- 
-> **Note:** The filesystem is in-memory (heap). Data persists across calls but resets on canister upgrade. For persistent storage, use the [Database](#database). -->
+```
 
 ## Database
 
