@@ -20,8 +20,8 @@ on:
 env:
     PYTHON_VERSION: "3.13"
     DFX_VERSION: "0.30.2"
-    BACKEND_CANISTER_ID: k5ony-gyaaa-aaaam-aityq-cai
-    FRONTEND_CANISTER_ID: kunge-qqaaa-aaaam-aitza-cai
+    BACKEND_CANISTER_ID: o6z3g-eiaaa-aaaau-agj6q-cai
+    FRONTEND_CANISTER_ID: ox2q2-saaaa-aaaau-agj7a-cai
     NETWORK: ic
 
 jobs:
