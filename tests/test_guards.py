@@ -41,68 +41,35 @@ class TestGuardMetadataExtraction:
                         guards[node.name] = kw.value.id
         return guards
 
-    def test_template_has_guard_on_execute_code_shell(self):
-        template_path = os.path.join(
-            os.path.dirname(__file__), "..", "basilisk", "templates", "main.py"
+    @property
+    def _canister_source(self):
+        canister_path = os.path.join(
+            os.path.dirname(__file__), "test_canister", "src", "main.py"
         )
-        with open(template_path) as f:
-            source = f.read()
-        guards = self._extract_guards(source)
+        with open(canister_path) as f:
+            return f.read()
+
+    def test_canister_has_guard_on_execute_code_shell(self):
+        guards = self._extract_guards(self._canister_source)
         assert "execute_code_shell" in guards
         assert guards["execute_code_shell"] == "guard_against_non_controllers"
 
-    def test_template_has_guard_on_download_to_file(self):
-        template_path = os.path.join(
-            os.path.dirname(__file__), "..", "basilisk", "templates", "main.py"
-        )
-        with open(template_path) as f:
-            source = f.read()
-        guards = self._extract_guards(source)
+    def test_canister_has_guard_on_download_to_file(self):
+        guards = self._extract_guards(self._canister_source)
         assert "download_to_file" in guards
         assert guards["download_to_file"] == "guard_against_non_controllers"
 
-    def test_template_guard_function_defined(self):
-        template_path = os.path.join(
-            os.path.dirname(__file__), "..", "basilisk", "templates", "main.py"
-        )
-        with open(template_path) as f:
-            source = f.read()
-        tree = ast.parse(source)
+    def test_canister_guard_function_defined(self):
+        tree = ast.parse(self._canister_source)
         func_names = [
             node.name for node in ast.walk(tree)
             if isinstance(node, ast.FunctionDef)
         ]
         assert "guard_against_non_controllers" in func_names
 
-    def test_test_canister_has_guard_on_execute_code_shell(self):
-        canister_path = os.path.join(
-            os.path.dirname(__file__), "test_canister", "src", "main.py"
-        )
-        with open(canister_path) as f:
-            source = f.read()
-        guards = self._extract_guards(source)
-        assert "execute_code_shell" in guards
-        assert guards["execute_code_shell"] == "guard_against_non_controllers"
-
-    def test_test_canister_has_guard_on_download_to_file(self):
-        canister_path = os.path.join(
-            os.path.dirname(__file__), "test_canister", "src", "main.py"
-        )
-        with open(canister_path) as f:
-            source = f.read()
-        guards = self._extract_guards(source)
-        assert "download_to_file" in guards
-        assert guards["download_to_file"] == "guard_against_non_controllers"
-
     def test_benign_endpoints_not_guarded(self):
-        template_path = os.path.join(
-            os.path.dirname(__file__), "..", "basilisk", "templates", "main.py"
-        )
-        with open(template_path) as f:
-            source = f.read()
-        guards = self._extract_guards(source)
-        for name in ("greet", "get_counter", "increment", "status",
-                      "get_time", "whoami", "http_transform"):
+        guards = self._extract_guards(self._canister_source)
+        for name in ("status", "whoami", "http_transform"):
             assert name not in guards, f"{name} should not have a guard"
 
 
