@@ -59,8 +59,9 @@ setup_services()
 
 from endpoints import *  # noqa: F401,F403 — exposes all canister methods
 
-# Re-import read_secret_notes so we can re-decorate it with a guard below
+# Re-import guarded endpoints so we can re-decorate them with a guard below
 from endpoints import read_secret_notes as _read_secret_notes_unguarded
+from endpoints import withdraw as _withdraw_unguarded
 
 # ---------------------------------------------------------------------------
 # Step 5: Controller guard + interactive shell
@@ -80,6 +81,14 @@ def guard_against_non_controllers() -> GuardResult:
 def read_secret_notes() -> text:
     """Read all decrypted secret notes (controller-only)."""
     return _read_secret_notes_unguarded()
+
+
+# Guard the withdraw endpoint — only controllers can withdraw tokens
+@update(guard=guard_against_non_controllers)
+def withdraw(token_name: text, to_principal: text, amount: nat64) -> Async[text]:
+    """Withdraw donated tokens to a specified address (controller-only)."""
+    result = yield from _withdraw_unguarded(token_name, to_principal, amount)
+    return result
 
 
 @update(guard=guard_against_non_controllers)

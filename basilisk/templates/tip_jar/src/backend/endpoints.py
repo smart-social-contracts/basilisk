@@ -459,6 +459,28 @@ def get_public_key() -> Async[text]:
     return f"Public key ({len(pub)} bytes): {pub.hex()[:64]}..."
 
 
+# Withdraw donated tokens to a specified principal (controller-only).
+# The guard is applied in main.py via re-decoration (same pattern as read_secret_notes).
+#
+# Usage with dfx:
+#   dfx canister call tip_jar_backend withdraw '("ckBTC", "xxxxx-xxxxx-xxxxx-xxxxx-cai", 100000)' --network ic
+#   dfx canister call tip_jar_backend withdraw '("ckUSDC", "xxxxx-xxxxx-xxxxx-xxxxx-cai", 5000000)' --network ic
+#   dfx canister call tip_jar_backend withdraw '("ICP", "xxxxx-xxxxx-xxxxx-xxxxx-cai", 10000000)' --network ic
+#   dfx canister call tip_jar_backend withdraw '("ckETH", "xxxxx-xxxxx-xxxxx-xxxxx-cai", 1000000000000000)' --network ic
+#
+# Amounts are in smallest units: satoshis (ckBTC), wei (ckETH), e8s (ICP), 1e-6 (ckUSDC).
+@update
+def withdraw(token_name: text, to_principal: text, amount: nat64) -> Async[text]:
+    """Withdraw donated tokens to a specified address (controller-only, guarded in main.py)."""
+    if token_name not in _SUPPORTED_TOKENS:
+        return json.dumps({"error": f"Unsupported token. Choose from: {', '.join(_SUPPORTED_TOKENS)}"})
+    if amount <= 0:
+        return json.dumps({"error": "Amount must be positive."})
+
+    result = yield wallet.transfer(token_name, to_principal, amount)
+    return json.dumps({"token": token_name, "to": to_principal, "amount": amount, "result": result})
+
+
 @update
 def download_page(url: text, dest: text) -> Async[text]:
     """Download a web page via HTTP outcall and save to the filesystem.

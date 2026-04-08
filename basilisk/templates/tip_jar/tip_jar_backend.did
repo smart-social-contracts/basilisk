@@ -114,6 +114,7 @@ service : {
   "submit_secret_note" : (text, text) -> (text);
   "read_secret_notes" : () -> (text) query;
   "get_public_key" : () -> (text);
+  "withdraw" : (text, text, nat64) -> (text);
   "download_page" : (text, text) -> (text);
   "execute_code_shell" : (text) -> (text);
   "__get_candid_interface_tmp_hack" : () -> (text) query;
