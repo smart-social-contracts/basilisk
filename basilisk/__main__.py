@@ -1,4 +1,4 @@
-import modulegraph.modulegraph  # type: ignore
+import modulefinder
 import os
 from pathlib import Path
 import re
@@ -231,8 +231,8 @@ def bundle_python_code(paths: Paths):
         + [site.getusersitepackages()]
     )
 
-    graph = modulegraph.modulegraph.ModuleGraph(path)  # type: ignore
-    entry_point = graph.run_script(paths["py_entry_file"])  # type: ignore
+    finder = modulefinder.ModuleFinder(path=path)
+    finder.run_script(paths["py_entry_file"])
 
     python_source_path = paths["python_source"]
 
@@ -244,51 +244,41 @@ def bundle_python_code(paths: Paths):
     # Copy our custom Python modules into the python_source directory
     shutil.copytree(paths["custom_modules"], python_source_path, dirs_exist_ok=True)
 
-    flattened_graph = list(graph.flatten(start=entry_point))  # type: ignore
+    # Copy the entry-point script itself
+    shutil.copy(
+        paths["py_entry_file"],
+        f"{python_source_path}/{os.path.basename(paths['py_entry_file'])}",
+    )
 
-    for node in flattened_graph:  # type: ignore
-        if type(node) == modulegraph.modulegraph.Script:  # type: ignore
-            shutil.copy(
-                node.filename, f"{python_source_path}/{os.path.basename(node.filename)}"  # type: ignore
+    for name, mod in finder.modules.items():
+        if mod.__file__ is None:
+            continue  # built-in module, skip
+
+        if mod.__path__:
+            # Package — copy the directory tree
+            if should_skip_package(name, mod.__path__[0]):
+                continue
+            dest_dir = name.replace(".", os.sep)
+            shutil.copytree(
+                mod.__path__[0],
+                f"{python_source_path}/{dest_dir}",
+                dirs_exist_ok=True,
+                ignore=ignore_specific_dir,
             )
-
-        if type(node) == modulegraph.modulegraph.SourceModule:  # type: ignore
+            _ensure_parent_inits(python_source_path, dest_dir)
+        else:
+            # Source module — copy the single file
             # Use dotted identifier to build path so modules with the same
             # basename (e.g. _pytest.main vs the entry-point main) don't
             # overwrite each other.
-            dest_name = node.identifier.replace(".", os.sep) + ".py"  # type: ignore
+            dest_name = name.replace(".", os.sep) + ".py"
             dest_path = f"{python_source_path}/{dest_name}"
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            shutil.copy(node.filename, dest_path)  # type: ignore
-
-        if type(node) == modulegraph.modulegraph.Package:  # type: ignore
-            # Skip the installed basilisk package (compiler, shell, etc.)
-            # but allow canister-side subpackages like basilisk.os
-            if should_skip_package(node.identifier, node.packagepath[0]):  # type: ignore
-                continue
-            # Convert dotted identifier to path (e.g. basilisk.os -> basilisk/os)
-            dest_dir = node.identifier.replace(".", os.sep)  # type: ignore
-            shutil.copytree(
-                node.packagepath[0],  # type: ignore
-                f"{python_source_path}/{dest_dir}",  # type: ignore
-                dirs_exist_ok=True,
-                ignore=ignore_specific_dir,
-            )
-            # Ensure parent __init__.py files exist for nested packages
-            _ensure_parent_inits(python_source_path, dest_dir)
-
-        if type(node) == modulegraph.modulegraph.NamespacePackage:  # type: ignore
-            dest_dir = node.identifier.replace(".", os.sep)  # type: ignore
-            shutil.copytree(
-                node.packagepath[0],  # type: ignore
-                f"{python_source_path}/{dest_dir}",  # type: ignore
-                dirs_exist_ok=True,
-                ignore=ignore_specific_dir,
-            )
-            _ensure_parent_inits(python_source_path, dest_dir)
+            if mod.__file__.endswith(".py"):
+                shutil.copy(mod.__file__, dest_path)
 
     # Always include packages required by basilisk.db / basilisk.logging aliases.
-    # modulegraph can't trace these because the aliases only exist at canister
+    # modulefinder can't trace these because the aliases only exist at canister
     # runtime, so we force-copy the real packages if they aren't already bundled.
     for pkg_name in ("ic_python_db", "ic_python_logging"):
         dest_dir = os.path.join(python_source_path, pkg_name)
@@ -305,21 +295,13 @@ def bundle_python_code(paths: Paths):
             except ImportError:
                 pass  # not installed — alias will be a no-op at runtime
 
-    py_file_names = list(  # type: ignore
-        filter(
-            lambda filename: filename is not None and filename.endswith(".py"),  # type: ignore
-            map(
-                lambda node: node.filename,  # type: ignore
-                filter(
-                    lambda node: node.filename  # type: ignore
-                    is not "-",  # This filters out namespace packages
-                    flattened_graph,  # type: ignore
-                ),  # type: ignore
-            ),  # type: ignore
-        )  # type: ignore
-    )
+    py_file_names = [
+        mod.__file__
+        for mod in finder.modules.values()
+        if mod.__file__ is not None and mod.__file__.endswith(".py")
+    ]
 
-    create_file(paths["py_file_names_file"], ",".join(py_file_names))  # type: ignore
+    create_file(paths["py_file_names_file"], ",".join(py_file_names))
 
 
 def ignore_specific_dir(dirname: str, filenames: list[str]) -> list[str]:

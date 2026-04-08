@@ -25,7 +25,7 @@ setup(
     ]},
     include_package_data=True,
     packages=["basilisk", "basilisk.os"],
-    install_requires=["modulegraph==0.19.3", "ic-python-db>=0.7.7", "ic-python-logging>=0.3.1"],
+    install_requires=["ic-python-db>=0.7.7", "ic-python-logging>=0.3.1"],
     extras_require={
         "shell": ["asyncssh"],
         "test": ["pytest"],
