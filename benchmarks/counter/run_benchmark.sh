@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Benchmark runner for Basilisk (CPython) vs Kybra (RustPython)
+# Benchmark runner for Basilisk (CPython) vs RustPython
 #
 # Usage:
 #   ./run_benchmark.sh <backend> [--network <local|ic>] [--skip-build] [--skip-deploy]

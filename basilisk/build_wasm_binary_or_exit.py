@@ -603,7 +603,7 @@ def download_rust_python_stdlib_tar_gz(
         [
             "curl",
             "-Lf",
-            "https://github.com/demergent-labs/kybra/releases/download/0.7.1/rust_python_stdlib.tar.gz",  # Pinned to kybra 0.7.1 (last available); RustPython backend is deprecated
+            "https://github.com/demergent-labs/kybra/releases/download/0.7.1/rust_python_stdlib.tar.gz",  # RustPython stdlib archive (legacy, only used by RustPython backend)
             "-o",
             "rust_python_stdlib.tar.gz",
         ],

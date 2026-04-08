@@ -56,7 +56,7 @@ impl PyAst {
         };
 
         Ok(AbstractCanisterTree {
-            cdk_name: "kybra".to_string(),
+            cdk_name: "basilisk".to_string(),
             header: generated_header,
             body: generated_body,
             candid_types,

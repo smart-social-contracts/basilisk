@@ -147,7 +147,7 @@ dfx canister call my_project get_user '("Alice")'
 
 See the [ic-python-db documentation](https://github.com/smart-social-contracts/ic-python-db) for relationships (`OneToMany`, `ManyToOne`, etc.), access control, entity hooks, and more.
 
-### Basilisk (CPython) vs Kybra (RustPython)
+### Basilisk (CPython) vs RustPython
 
 |  | CPython 3.13 | RustPython |
 |---|---|---|

@@ -1,2 +1,2 @@
-kybra==0.7.1
+ic-basilisk
 boltons==23.0.0

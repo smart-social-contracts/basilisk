@@ -140,7 +140,7 @@ fn execute_guard(guard_name: &str) {
     };
 
     // Guard must return a dict with {"Ok": None} or {"Err": "message"}.
-    // Validate the result type and structure, producing Kybra-compatible error messages.
+    // Validate the result type and structure, producing meaningful error messages.
 
     // Get the Python type name of the result
     let type_name = result.type_name();
