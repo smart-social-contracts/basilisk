@@ -8,6 +8,10 @@ on:
         branches:
             - main
 
+concurrency:
+    group: ci-main-${{ github.ref }}
+    cancel-in-progress: true
+
 permissions:
     contents: write # Required by build-cpython-wasm for GitHub releases
     actions: write  # Required by build-cpython-wasm for workflow dispatch
