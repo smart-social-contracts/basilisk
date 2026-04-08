@@ -69,11 +69,11 @@ basilisk new my_project
 cd my_project
 
 # 2. Start the local replica and deploy
-icp network start -d
-icp deploy
+dfx start --background
+dfx deploy
 
 # 3. Call your canister
-icp canister call my_project greet '("World")'
+dfx canister call my_project greet '("World")'
 # ("Hello, World! The counter is at 0.")
 
 # 4. Open an interactive Python shell inside the canister
@@ -134,14 +134,14 @@ def list_users() -> text:
 ```
 
 ```bash
-icp canister call my_project add_user '("Alice", "30")'
+dfx canister call my_project add_user '("Alice", "30")'
 # ("Created user Alice with id 1")
-icp canister call my_project get_user '("Alice")'
+dfx canister call my_project get_user '("Alice")'
 # ("Alice, age 30")
 
 # Data survives upgrades:
-icp deploy my_project --upgrade-unchanged
-icp canister call my_project get_user '("Alice")'
+dfx deploy my_project --upgrade-unchanged
+dfx canister call my_project get_user '("Alice")'
 # ("Alice, age 30")  ← still there!
 ```
 

@@ -172,8 +172,11 @@ def _scaffold_tip_jar(project_dir: Path, project_name: str, backend: str, templa
     """Scaffold the full-stack Tip Jar template with frontend."""
     tip_jar_template = template_dir / "tip_jar"
 
-    # Copy the entire template tree
-    shutil.copytree(tip_jar_template, project_dir)
+    # Copy the entire template tree (exclude build artifacts)
+    shutil.copytree(
+        tip_jar_template, project_dir,
+        ignore=shutil.ignore_patterns('.basilisk', '.dfx', '__pycache__'),
+    )
 
     # Rename canister references from "tip_jar" to <project_name>
     _replace_in_project(project_dir, project_name, backend)
@@ -217,7 +220,7 @@ def _replace_in_project(project_dir: Path, project_name: str, backend: str):
             f"CANISTER_CANDID_PATH=./{project_name}_backend.did python -m basilisk"
         ] = f"{backend_prefix}CANISTER_CANDID_PATH=./{project_name}_backend.did python -m basilisk"
 
-    text_extensions = {".py", ".json", ".html", ".js", ".css", ".md", ".gitignore"}
+    text_extensions = {".py", ".json", ".html", ".js", ".css", ".md", ".gitignore", ".yaml", ".did"}
 
     for filepath in project_dir.rglob("*"):
         if not filepath.is_file():
@@ -233,6 +236,16 @@ def _replace_in_project(project_dir: Path, project_name: str, backend: str):
             content = content.replace(old, new)
         if content != original:
             filepath.write_text(content)
+
+    # Rename files that contain "tip_jar" in their name (e.g. .did files)
+    for filepath in sorted(project_dir.rglob("*"), reverse=True):
+        if not filepath.is_file():
+            continue
+        new_name = filepath.name
+        for old, new in replacements.items():
+            new_name = new_name.replace(old, new)
+        if new_name != filepath.name:
+            filepath.rename(filepath.with_name(new_name))
 
 
 def cmd_build():

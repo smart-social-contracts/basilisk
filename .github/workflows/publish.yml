@@ -131,9 +131,9 @@ jobs:
             python:${{ env.PYTHON_VERSION }}-slim-bookworm bash -c '
               set -e
 
-              apt-get update -qq && apt-get install -y -qq curl ca-certificates npm > /dev/null 2>&1
-              npm install -g @icp-sdk/icp-cli > /dev/null 2>&1
-              export PATH="$HOME/.local/share/icp/bin:$PATH"
+              apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
+              sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)" < /dev/null > /dev/null 2>&1
+              export PATH="$HOME/bin:$PATH"
 
               # Wait for PyPI propagation
               echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
@@ -148,22 +148,22 @@ jobs:
               basilisk --version | grep -q "${VERSION}" || { echo "::error::Version mismatch"; exit 1; }
 
               # Import IC identity
-              icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy
-              icp identity default ci-deploy
+              dfx identity import --storage-mode plaintext ci-deploy /tmp/ci-identity.pem
+              dfx identity use ci-deploy
 
               # Scaffold, deploy, test
               basilisk new smoke_test && cd smoke_test
-              icp deploy -e ic
+              dfx deploy --network ic
 
-              RESULT=$(icp canister call smoke_test_backend status '\''()'\'' -e ic --query)
+              RESULT=$(dfx canister call smoke_test_backend status "()" --network ic --query)
               echo "status: ${RESULT}"
               echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
 
               # Cleanup
-              icp canister stop smoke_test_backend -e ic || true
-              icp canister stop smoke_test_frontend -e ic || true
-              icp canister delete smoke_test_backend -e ic || true
-              icp canister delete smoke_test_frontend -e ic || true
+              dfx canister stop smoke_test_backend --network ic || true
+              dfx canister stop smoke_test_frontend --network ic || true
+              dfx canister delete smoke_test_backend --network ic || true
+              dfx canister delete smoke_test_frontend --network ic || true
 
               echo "✅ IC mainnet smoke test passed"
             '
