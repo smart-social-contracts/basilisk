@@ -14,7 +14,7 @@ const IS_LOCAL = window.location.hostname === "localhost"
 
 const IC_HOST = IS_LOCAL ? "http://localhost:4943" : "https://ic0.app";
 
-let BACKEND_CANISTER_ID = "k5ony-gyaaa-aaaam-aityq-cai";
+let BACKEND_CANISTER_ID = "o6z3g-eiaaa-aaaau-agj6q-cai";
 
 async function detectBackendCanisterId() {
   if (BACKEND_CANISTER_ID && !BACKEND_CANISTER_ID.startsWith("__")) {
