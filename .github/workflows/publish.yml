@@ -119,22 +119,18 @@ jobs:
     needs: publish
     runs-on: ubuntu-latest
     steps:
-      - name: Smoke test in Docker on IC mainnet
+      - name: Smoke test in Docker (local replica)
         env:
-          IC_IDENTITY_PEM: ${{ secrets.IC_IDENTITY_PEM }}
           VERSION: ${{ needs.publish.outputs.version }}
         run: |
-          echo "$IC_IDENTITY_PEM" > /tmp/ci-identity.pem
           docker run --rm \
             -e VERSION="$VERSION" \
-            -v /tmp/ci-identity.pem:/tmp/ci-identity.pem:ro \
             python:${{ env.PYTHON_VERSION }}-slim-bookworm bash -c '
               set -e
 
               apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
               DFXVM_INIT_YES=true DFX_VERSION=0.30.2 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)" > /dev/null 2>&1
               export PATH="$HOME/.local/share/dfx/bin:$PATH"
-              export DFX_WARNING=-mainnet_plaintext_identity
 
               # Wait for PyPI propagation
               echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
@@ -148,24 +144,16 @@ jobs:
               done
               basilisk --version | grep -q "${VERSION}" || { echo "::error::Version mismatch"; exit 1; }
 
-              # Import IC identity
-              dfx identity import --storage-mode plaintext ci-deploy /tmp/ci-identity.pem
-              dfx identity use ci-deploy
-
-              # Scaffold, deploy, test
+              # Scaffold, build, deploy locally, and test
               basilisk new smoke_test && cd smoke_test
-              dfx deploy --network ic
+              dfx start --background
+              dfx deploy
 
-              RESULT=$(dfx canister call smoke_test_backend status "()" --network ic --query)
+              RESULT=$(dfx canister call smoke_test_backend status "()")
               echo "status: ${RESULT}"
               echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
 
-              # Cleanup
-              dfx canister stop smoke_test_backend --network ic || true
-              dfx canister stop smoke_test_frontend --network ic || true
-              dfx canister delete smoke_test_backend --network ic || true
-              dfx canister delete smoke_test_frontend --network ic || true
+              dfx stop
 
-              echo "✅ IC mainnet smoke test passed"
+              echo "✅ Local smoke test passed"
             '
-          rm -f /tmp/ci-identity.pem
