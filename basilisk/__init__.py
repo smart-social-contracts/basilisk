@@ -21,7 +21,7 @@ from typing import (
 # TODO I think we can simplify this just like we're doing with canisters
 from .compiler.custom_modules.principal import Principal as PrincipalRenamed
 
-__version__ = "0.11.6"
+__version__ = "0.11.7"
 __rust_version__ = "1.88.0"
 
 Principal = PrincipalRenamed
