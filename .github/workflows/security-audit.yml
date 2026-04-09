@@ -1,0 +1,53 @@
+# Security audit — checks Rust dependencies for known vulnerabilities.
+# Runs on PRs, pushes to main, and weekly schedule.
+
+name: Security Audit
+
+on:
+    pull_request:
+    push:
+        branches:
+            - main
+    schedule:
+        - cron: "0 6 * * 1" # Every Monday at 06:00 UTC
+    workflow_dispatch:
+
+jobs:
+    cargo-audit:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install cargo-audit
+              run: cargo install cargo-audit
+
+            - name: Run cargo audit (cpython_canister_template)
+              working-directory: basilisk/compiler/cpython_canister_template
+              run: cargo audit
+
+            - name: Run cargo audit (basilisk_cpython)
+              working-directory: basilisk/compiler/basilisk_cpython
+              run: cargo audit
+
+            - name: Run cargo audit (ic-wasi-polyfill-patched)
+              working-directory: basilisk/compiler/ic-wasi-polyfill-patched
+              run: cargo audit
+
+    pip-audit:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.13"
+
+            - name: Install pip-audit
+              run: pip install pip-audit
+
+            - name: Install basilisk dependencies
+              run: pip install -e .
+
+            - name: Run pip-audit
+              run: pip-audit

@@ -31,5 +31,5 @@ slotmap = "1.0.6"
 ic-wasi-polyfill = { version = "0.6.1", features = ["transient"] }
 
 [patch.crates-io]
-num-bigint = { git = "https://github.com/rust-num/num-bigint" }
+num-bigint = { git = "https://github.com/rust-num/num-bigint", rev = "575cea47d21f969e541a7668751d4a82825d02bd" }
 ic-wasi-polyfill = { path = "../ic-wasi-polyfill-patched" }

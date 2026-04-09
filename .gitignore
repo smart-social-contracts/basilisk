@@ -6,7 +6,7 @@ dist
 target
 build
 *.egg-info
-.basilisk
+**/.basilisk
 node_modules
 __pycache__
 .test

@@ -8,7 +8,7 @@ pub fn generate() -> TokenStream {
     let traits = traits::generate();
 
     quote::quote! {
-        #![allow(warnings, unused)]
+        #![allow(unused_imports, dead_code, unused_variables, non_snake_case, non_upper_case_globals)]
 
         #use_statements
         #traits

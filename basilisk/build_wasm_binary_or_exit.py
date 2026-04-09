@@ -233,12 +233,47 @@ def _download_template(dest_path: str) -> bool:
             urllib.request.urlretrieve(url, dest_path)
             size_mb = os.path.getsize(dest_path) / (1024 * 1024)
             print(f"Template downloaded ({size_mb:.1f} MB) -> {dest_path}")
+
+            # Verify integrity: try to download .sha256 checksum and validate
+            _verify_template_checksum(url, dest_path)
+
             return True
         except Exception as e:
             print(f"Download failed: {e}")
             if os.path.exists(dest_path):
                 os.remove(dest_path)
     return False
+
+
+def _verify_template_checksum(wasm_url: str, wasm_path: str) -> None:
+    """Verify downloaded WASM against a .sha256 checksum file (if available).
+
+    Downloads <wasm_url>.sha256 and compares the hash. If the checksum file
+    is not found (404), prints a warning but does not fail — this allows
+    older releases without checksums to still work.
+    """
+    import hashlib
+
+    checksum_url = wasm_url + ".sha256"
+    try:
+        response = urllib.request.urlopen(checksum_url)
+        expected_hash = response.read().decode("utf-8").strip().split()[0].lower()
+    except Exception:
+        print("Warning: No .sha256 checksum file found for template WASM — skipping verification")
+        return
+
+    with open(wasm_path, "rb") as f:
+        actual_hash = hashlib.sha256(f.read()).hexdigest().lower()
+
+    if actual_hash != expected_hash:
+        os.remove(wasm_path)
+        raise RuntimeError(
+            f"Template WASM checksum mismatch!\n"
+            f"  Expected: {expected_hash}\n"
+            f"  Actual:   {actual_hash}\n"
+            f"This could indicate a corrupted download or supply-chain attack.\n"
+            f"The file has been removed. Try again or build from source."
+        )
 
 
 def build_template_from_source(

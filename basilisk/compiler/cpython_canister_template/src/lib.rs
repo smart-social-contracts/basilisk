@@ -11,7 +11,7 @@
 //! Per-project customization (Python source code, method metadata) is injected
 //! as passive data segments via wasm binary manipulation at build time.
 
-#![allow(warnings, unused)]
+#![allow(unused_imports, dead_code, unused_variables, non_snake_case, non_upper_case_globals)]
 
 use basilisk_cpython::{
     Interpreter, PyDict, PyError, PyObjectRef, PyTuple, Scope,
