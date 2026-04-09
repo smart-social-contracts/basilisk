@@ -11,8 +11,9 @@ Commands:
   sshd             Start an SSH/SFTP server proxy to a canister
 
 Options (exec, shell, sshd):
-  --canister <id>  Canister name or principal ID  [auto-detect from dfx.json]
-  --network <net>  Network: local, ic, or URL     [default: local]
+  --canister <id>   Canister name or principal ID  [auto-detect from dfx.json]
+  --network <net>   Network: local, ic, or URL     [default: local]
+  --identity <name> dfx identity to use            [default: current identity]
 
 Other:
   --version        Print version info
@@ -324,6 +325,7 @@ def cmd_exec(args: list[str]):
     """Execute Python code on a deployed basilisk canister."""
     canister = None
     network = None
+    identity = None
     file_path = None
     code_parts = []
 
@@ -333,6 +335,8 @@ def cmd_exec(args: list[str]):
             canister = args[i + 1]; i += 2
         elif args[i] == "--network" and i + 1 < len(args):
             network = args[i + 1]; i += 2
+        elif args[i] == "--identity" and i + 1 < len(args):
+            identity = args[i + 1]; i += 2
         elif args[i] == "-f" and i + 1 < len(args):
             file_path = args[i + 1]; i += 2
         else:
@@ -365,6 +369,8 @@ def cmd_exec(args: list[str]):
     # Build dfx command
     escaped_code = code.replace('"', '\\"').replace("\n", "\\n")
     cmd = ["dfx", "canister", "call"]
+    if identity:
+        cmd.extend(["--identity", identity])
     if network:
         cmd.extend(["--network", network])
     cmd.extend([canister, "execute_code_shell", f'("{escaped_code}")'])

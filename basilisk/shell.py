@@ -126,6 +126,22 @@ def _is_transient_dfx_error(stderr: str) -> bool:
     return any(m in s for m in transient_markers)
 
 
+# Module-level identity — set once in main(), used by all dfx commands.
+_IDENTITY: str | None = None
+
+
+def _dfx_call_cmd(network: str = None, *, extra_flags: list[str] | None = None) -> list[str]:
+    """Build the common `dfx canister call [--identity ...] [--network ...]` prefix."""
+    cmd = ["dfx", "canister", "call"]
+    if _IDENTITY:
+        cmd.extend(["--identity", _IDENTITY])
+    if extra_flags:
+        cmd.extend(extra_flags)
+    if network:
+        cmd.extend(["--network", network])
+    return cmd
+
+
 def _run_dfx_with_retries(
     cmd: list[str],
     *,
@@ -156,9 +172,7 @@ def _run_dfx_with_retries(
 def canister_exec(code: str, canister: str, network: str = None) -> str:
     """Send Python code to the canister and return the output."""
     escaped = code.replace('"', '\\"').replace("\n", "\\n")
-    cmd = ["dfx", "canister", "call"]
-    if network:
-        cmd.extend(["--network", network])
+    cmd = _dfx_call_cmd(network)
     cmd.extend([canister, "execute_code_shell", f'("{escaped}")'])
 
     try:
@@ -1622,9 +1636,7 @@ def _wallet_balance(token: str, canister: str, network: str, subaccount: str = N
     if sub_candid is None:
         return f"Invalid subaccount hex: {subaccount}"
 
-    cmd = ["dfx", "canister", "call", "--query", "--output", "json"]
-    if network:
-        cmd.extend(["--network", network])
+    cmd = _dfx_call_cmd(network, extra_flags=["--query", "--output", "json"])
     cmd.extend([
         ledger, "icrc1_balance_of",
         f'(record {{ owner = principal "{canister}"; subaccount = {sub_candid} }})',
@@ -1823,9 +1835,7 @@ def _wallet_history(token: str, canister: str, network: str, count: int = 10,
     if sub_candid is None:
         return f"Invalid subaccount hex: {subaccount}"
 
-    cmd = ["dfx", "canister", "call", "--query", "--output", "json"]
-    if network:
-        cmd.extend(["--network", network])
+    cmd = _dfx_call_cmd(network, extra_flags=["--query", "--output", "json"])
     cmd.extend([
         index, "get_account_transactions",
         f'(record {{ max_results = {count} : nat; start = null;'
@@ -2733,9 +2743,7 @@ def _wget(url: str, dest: str, canister: str, network: str) -> str:
     """Call the canister's download_to_file endpoint directly via dfx."""
     escaped_url = url.replace('"', '\\"')
     escaped_dest = dest.replace('"', '\\"')
-    cmd = ["dfx", "canister", "call"]
-    if network:
-        cmd.extend(["--network", network])
+    cmd = _dfx_call_cmd(network)
     cmd.extend([canister, "download_to_file", f'("{escaped_url}", "{escaped_dest}")'])
 
     try:
@@ -3463,7 +3471,6 @@ _CRYPTO_USAGE = (
 def _crypto_status_code() -> str:
     """Generate on-canister code for %crypto status."""
     return (
-        "from _cdk import ic\n"
         "from basilisk.os.crypto import KeyEnvelope\n"
         "_caller = ic.caller().to_str()\n"
         "_scopes = set()\n"
@@ -3481,7 +3488,6 @@ def _crypto_status_code() -> str:
 def _crypto_scopes_code() -> str:
     """Generate on-canister code for %crypto scopes."""
     return (
-        "from _cdk import ic\n"
         "from basilisk.os.crypto import KeyEnvelope\n"
         "_caller = ic.caller().to_str()\n"
         "_scopes = {}\n"
@@ -3508,7 +3514,6 @@ def _crypto_envelopes_code(scope: str) -> str:
     """Generate on-canister code for %crypto envelopes <scope>."""
     esc = scope.replace("'", "\\'")
     return (
-        "from _cdk import ic\n"
         "from basilisk.os.crypto import KeyEnvelope, CryptoGroupMember\n"
         f"_scope = '{esc}'\n"
         "_caller = ic.caller().to_str()\n"
@@ -3538,7 +3543,6 @@ def _crypto_init_code(scope: str) -> str:
     """Generate on-canister code for %crypto init --scope <s>."""
     esc = scope.replace("'", "\\'")
     return (
-        "from _cdk import ic\n"
         "import os as _os\n"
         "from basilisk.os.crypto import KeyEnvelope, encode_envelope\n"
         f"_scope = '{esc}'\n"
@@ -3962,6 +3966,20 @@ def _handle_magic(line: str, canister: str, network: str) -> str:
         args = stripped[7:].strip()
         return _handle_crypto(args, canister, network)
 
+    # %whoami — show the principal of the current dfx identity
+    if stripped == "%whoami":
+        cmd = ["dfx", "identity", "get-principal"]
+        if _IDENTITY:
+            cmd.extend(["--identity", _IDENTITY])
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if r.returncode != 0:
+                return f"[dfx error] {r.stderr.strip()}"
+            identity_name = _IDENTITY or "(default)"
+            return f"{r.stdout.strip()}  [{identity_name}]"
+        except FileNotFoundError:
+            return "[error] dfx not found — install the DFINITY SDK"
+
     # %info — comprehensive canister information
     if stripped == "%info":
         return _canister_info(canister, network)
@@ -4005,16 +4023,17 @@ def _welcome_banner(canister: str, network: str):
     ver = _get_basilisk_version()
     print(f"basilisk shell {ver} | {canister} ({net_label})")
 
-    # Get principal with a quick canister call
+    # Get principal from local dfx identity (fast, no canister call needed)
     try:
-        result = canister_exec("print(str(ic.caller()))", canister, network)
-        if result:
-            lines = [l for l in result.strip().split('\n') if l and not l.startswith('2026-')]
-            if lines:
-                principal = lines[-1].strip()
-                if len(principal) > 20:
-                    principal = principal[:12] + "..." + principal[-6:]
-                print(f"  principal: {principal}")
+        cmd = ["dfx", "identity", "get-principal"]
+        if _IDENTITY:
+            cmd.extend(["--identity", _IDENTITY])
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if r.returncode == 0:
+            principal = r.stdout.strip()
+            if len(principal) > 20:
+                principal = principal[:12] + "..." + principal[-6:]
+            print(f"  principal: {principal}")
     except:
         pass
     print("  :help for commands")
@@ -4113,6 +4132,7 @@ CRYPTO (File Encryption)
 REPL COMMANDS
   %who                     List variables in namespace
       Python: dir() or [k for k in globals() if not k.startswith('_')]
+  %whoami                  Show principal of the current dfx identity
   %info                    Show canister info (principal, cycles)
       Python: ic.id(), ic.caller(), ic.canister_balance()
   %get <remote> [local]    Download file from canister
@@ -4329,6 +4349,7 @@ def main():
     )
     parser.add_argument("--canister", required=True, help="Canister name or ID")
     parser.add_argument("--network", default=None, help="Network: local, ic, or URL")
+    parser.add_argument("--identity", default=None, help="dfx identity to use")
     parser.add_argument("-c", dest="code", default=None, help="Execute code string")
     parser.add_argument("--watch", default=None, metavar="INBOX",
                         help="Watch mode: read commands from INBOX file")
@@ -4339,6 +4360,9 @@ def main():
     parser.add_argument("file", nargs="?", default=None, help="Script file to execute")
 
     args = parser.parse_args()
+
+    global _IDENTITY
+    _IDENTITY = args.identity
 
     if args.watch:
         run_watch(args.canister, args.network, args.watch, args.outbox)
