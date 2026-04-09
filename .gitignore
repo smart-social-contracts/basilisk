@@ -9,4 +9,5 @@ build
 **/.basilisk
 node_modules
 __pycache__
+basilisk/_build_info.py
 .test

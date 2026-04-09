@@ -55,6 +55,12 @@ jobs:
           # Update __init__.py
           sed -i "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" basilisk/__init__.py
       
+      - name: Write build info
+        run: |
+          COMMIT=$(git rev-parse HEAD | head -c 8)
+          DATE=$(git log -1 --format=%cI)
+          printf '__commit__ = "%s"\n__date__ = "%s"\n' "$COMMIT" "$DATE" > basilisk/_build_info.py
+
       - name: Build and publish to PyPI
         env:
           TWINE_USERNAME: __token__

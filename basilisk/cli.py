@@ -447,22 +447,33 @@ def main():
 
     elif command == "--version":
         from basilisk import __version__
-        import subprocess
         commit = ""
         date = ""
         try:
-            commit = subprocess.run(
-                ["git", "rev-parse", "HEAD"], capture_output=True, text=True,
-                cwd=os.path.dirname(os.path.abspath(__file__)),
-            ).stdout.strip()[:8]
-            date = subprocess.run(
-                ["git", "log", "-1", "--format=%cI"],
-                capture_output=True, text=True,
-                cwd=os.path.dirname(os.path.abspath(__file__)),
-            ).stdout.strip()
-        except FileNotFoundError:
+            from basilisk._build_info import __commit__, __date__
+            commit = __commit__
+            date = __date__
+        except ImportError:
             pass
-        print(f"{__version__},{date},{commit}")
+        if not commit:
+            import subprocess
+            try:
+                commit = subprocess.run(
+                    ["git", "rev-parse", "HEAD"], capture_output=True, text=True,
+                    cwd=os.path.dirname(os.path.abspath(__file__)),
+                ).stdout.strip()[:8]
+                date = subprocess.run(
+                    ["git", "log", "-1", "--format=%cI"],
+                    capture_output=True, text=True,
+                    cwd=os.path.dirname(os.path.abspath(__file__)),
+                ).stdout.strip()
+            except FileNotFoundError:
+                pass
+        print(__version__)
+        if date:
+            print(date)
+        if commit:
+            print(commit)
 
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
