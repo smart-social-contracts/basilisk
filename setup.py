@@ -6,7 +6,7 @@ setup(
     name="ic-basilisk",
     version=__version__,
     author="Smart Social Contracts",
-    author_email="info@smartsocialcontracts.org",
+    author_email="contact@smartsocialcontracts.org",
     description="An ICP Python Canister Development Kit and Application Framework for the Internet Computer",
     url="https://github.com/smart-social-contracts/basilisk",
     project_urls={
