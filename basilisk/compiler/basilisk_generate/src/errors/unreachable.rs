@@ -13,7 +13,7 @@ impl std::fmt::Display for Unreachable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let message = "Oops! Looks like we introduced a bug while refactoring.";
         let ticket_url =
-            "Please open a ticket at https://github.com/demergent-labs/basilisk/issues/new";
+            "Please open a ticket at https://github.com/smart-social-contracts/basilisk/issues/new";
         let stack_trace = "Please include the following backtrace:";
         write!(
             f,

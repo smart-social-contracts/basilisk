@@ -12,7 +12,7 @@
 # specific language governing permissions and limitations under the License.
 
 # The original license for the DFINITY code can be found here: https://github.com/dfinity/ic/blob/master/LICENSE
-# This file contains derivative works licensed as MIT: https://github.com/demergent-labs/azle/blob/main/LICENSE
+# This file contains derivative works licensed as MIT: https://github.com/smart-social-contracts/basilisk/blob/main/LICENSE
 
 # Taken in part from: https://github.com/dfinity/interface-spec/blob/master/spec/ic.did
 

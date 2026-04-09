@@ -13,8 +13,6 @@ pub struct PyAst {
 
 impl PyAst {
     pub fn new(py_file_names: &Vec<&str>, entry_module_name: &str) -> Result<PyAst, Vec<Error>> {
-        // TODO: Use collect_results from CDK Framework instead once
-        // https://github.com/demergent-labs/cdk_framework/pull/75 is merged.
         let (source_mapped_mods, errors) = py_file_names
             .iter()
             .map(|py_file_name| -> Result<SourceMapped<Mod>, Error> {

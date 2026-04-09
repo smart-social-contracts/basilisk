@@ -518,7 +518,7 @@ and the user's Python source differ.
 
 ### Solution: pre-built template wasm + wasm binary manipulation
 
-Inspired by [Azle](https://github.com/demergent-labs/azle)'s approach for QuickJS:
+Inspired by Azle's approach for QuickJS:
 
 1. **Pre-compile a canister template wasm** (one-time build, published as CI artifact)
 2. **Per-project: inject Python source + method metadata** via wasm binary manipulation (~seconds)

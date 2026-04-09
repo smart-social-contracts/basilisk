@@ -30,10 +30,7 @@ impl Analyze for SourceMapped<Mod> {
         eprintln!("#########################");
         eprintln!("### This is a basilisk file: {}", self.source_map.file_name);
         eprintln!("#########################");
-        if "/home/bdemann/code/demergent_labs/basilisk/examples/query/src/main.py"
-            == self.source_map.file_name
-            || false
-        {
+        if false {
             eprintln!("{} is the length of this program", self.get_token_length());
             match &self.deref() {
                 rustpython_parser::ast::Mod::Module { body, type_ignores } => {
