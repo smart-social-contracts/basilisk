@@ -4021,156 +4021,136 @@ def _welcome_banner(canister: str, network: str):
     print()
 
 
-def _print_help():
-    """Print comprehensive help with Python equivalents."""
-    print("""
-BASILISK SHELL COMMANDS
-=======================
-
+_HELP_TOPICS = {
+    "fs": """\
 FILESYSTEM
-----------
-%ls [path]                List directory contents
-    Python: os.listdir(path) or Path(path).iterdir()
+  %ls [path]                List directory contents
+      Python: os.listdir(path) or Path(path).iterdir()
+  %cat <file>              Print file contents
+      Python: print(open(file).read())
+  %mkdir <path>            Create directory
+      Python: os.makedirs(path, exist_ok=True)
+  %wget <url> <dest>       Download URL to canister
+      Python: basilisk.io.wget(url, dest)
+  %run <file>              Execute Python file in canister
+      Python: basilisk.run(file)""",
 
-%cat <file>              Print file contents
-    Python: print(open(file).read())
-
-%mkdir <path>            Create directory
-    Python: os.makedirs(path, exist_ok=True)
-
-%wget <url> <dest>       Download URL to canister
-    Python: basilisk.io.wget(url, dest)
-
-%run <file>              Execute Python file in canister
-    Python: basilisk.run(file)
-
-
+    "task": """\
 TASKS
------
-%task                    List all tasks (alias: %ps)
-    Python: Task.instances()
+  %task                    List all tasks (alias: %ps)
+      Python: Task.instances()
+  %task create <name> [every Ns] [--code "..."|--file <f>]
+      Python: Task(name=..., code=..., schedule=...)
+  %task add-step <id|name> [--code "..."|--file <f>] [--async]
+      Python: TaskStep(task_id=..., code=..., is_async=...)
+  %task info <id|name>     Show task details and steps
+  %task log <id|name>      Show task execution logs
+  %task start <id|name>    Start task (timer-based)
+  %task stop <id|name>     Stop running task
+  %task delete <id|name>   Delete task and all steps""",
 
-%task create <name> [every Ns] [--code "..."|--file <f>]
-                         Create a new task
-    Python: Task(name=..., code=..., schedule=...)
-
-%task add-step <id|name> [--code "..."|--file <f>] [--async]
-                         Add step to existing task
-    Python: TaskStep(task_id=..., code=..., is_async=...)
-
-%task info <id|name>     Show task details and steps
-%task log <id|name>      Show task execution logs
-%task start <id|name>    Start task (timer-based)
-%task stop <id|name>     Stop running task
-%task delete <id|name>   Delete task and all steps
-
-
+    "db": """\
 DATABASE
---------
-%db types                List entity types with counts
-    Python: Database.get_instance()._entity_types
+  %db types                List entity types with counts
+      Python: Database.get_instance()._entity_types
+  %db list <Type> [N]      List entity instances (default 20)
+      Python: Type.instances() or Type.instances(limit=N)
+  %db show <Type> <id>     Show full entity as JSON
+      Python: Type.get(id).__dict__
+  %db search <Type> <field>=<value>  Search by field value
+      Python: [e for e in Type.instances() if getattr(e, field) == value]
+  %db export <Type> [file] Export entities to JSON
+  %db import <file.json>   Import entities from JSON (upsert)
+  %db count                Show total entity count
+  %db dump                 Dump all entities as JSON
+  %db clear                Clear all entities (danger!)""",
 
-%db list <Type> [N]      List entity instances (default 20)
-    Python: Type.instances() or Type.instances(limit=N)
-
-%db show <Type> <id>     Show full entity as JSON
-    Python: Type.get(id).__dict__
-
-%db search <Type> <field>=<value>
-                         Search entities by field value
-    Python: [e for e in Type.instances() if getattr(e, field) == value]
-
-%db export <Type> [file.json]
-                         Export entities to JSON file
-%db import <file.json>   Import entities from JSON (upsert)
-%db count                Show total entity count
-%db dump                 Dump all entities as JSON
-%db clear                Clear all entities (danger!)
-
-
+    "wallet": """\
 WALLET
-------
-%wallet <token> balance  Check canister token balance
-    Python: Wallet.balance(token)  # token: "ckbtc", "cketh", "icp"
+  %wallet <token> balance              Check canister token balance
+      Python: Wallet.balance(token)  # token: "ckbtc", "cketh", "icp"
+  %wallet <token> deposit              Show deposit address
+      Python: Wallet.deposit_address(token)
+  %wallet <token> transfer <amt> <to>  Transfer tokens
+      Python: Wallet.transfer(token, to, amount)  # returns transfer_id
+  %wallet result                       Check last transfer result
+      Python: Wallet.last_result()
 
-%wallet <token> deposit  Show deposit address for token
-    Python: Wallet.deposit_address(token)
+  Supported tokens: ckbtc, cketh, icp""",
 
-%wallet <token> transfer <amount> <to>
-                         Transfer tokens from canister
-    Python: Wallet.transfer(token, to, amount)  # returns transfer_id
-
-%wallet result           Check last transfer result
-    Python: Wallet.last_result()
-
-
+    "vetkey": """\
 VETKEY (Encryption)
--------------------
-%vetkey pubkey [--scope <s>]     Get vetKD public key
-    Python: vetkey.pubkey(scope)
+  %vetkey pubkey [--scope <s>]     Get vetKD public key
+      Python: vetkey.pubkey(scope)
+  %vetkey derive <tpk> [--scope <s>] [--input <s>]
+      Python: vetkey.derive(tpk_hex, scope, input)
+  %vetkey encrypt <file|text>      Encrypt file or text
+      Python: vetkey.encrypt(target)
+  %vetkey decrypt <file|text>      Decrypt file or text
+      Python: vetkey.decrypt(target)""",
 
-%vetkey derive <tpk_hex> [--scope <s>] [--input <s>]
-                         Derive encrypted key from TPK
-    Python: vetkey.derive(tpk_hex, scope, input)
-
-%vetkey encrypt <file|text>      Encrypt file or text
-    Python: vetkey.encrypt(target)
-
-%vetkey decrypt <file|text>      Decrypt file or text
-    Python: vetkey.decrypt(target)
-
-
+    "group": """\
 GROUPS (Encryption Groups)
---------------------------
-%group                           List groups
-%group create <name>             Create encryption group
-%group delete <name>             Delete group
-%group add <name> <principal>    Add member to group
-%group remove <name> <principal> Remove member
-%group members <name>            List group members
+  %group                           List groups
+  %group create <name>             Create encryption group
+  %group delete <name>             Delete group
+  %group add <name> <principal>    Add member
+  %group remove <name> <principal> Remove member
+  %group members <name>            List members""",
 
-
+    "crypto": """\
 CRYPTO (File Encryption)
-------------------------
-%crypto status              Show encryption status
-%crypto scopes              List encryption scopes
-%crypto encrypt <target>    Encrypt file or text
-%crypto decrypt <target>    Decrypt file or text
-%crypto share <target>      Share encrypted file
-%crypto revoke <target>     Revoke shared access
-%crypto envelopes           List key envelopes
-%crypto init                Initialize encryption
+  %crypto status              Show encryption status
+  %crypto scopes              List encryption scopes
+  %crypto encrypt <target>    Encrypt file or text
+  %crypto decrypt <target>    Decrypt file or text
+  %crypto share <target>      Share encrypted file
+  %crypto revoke <target>     Revoke shared access
+  %crypto envelopes           List key envelopes
+  %crypto init                Initialize encryption""",
 
-
+    "repl": """\
 REPL COMMANDS
--------------
-%who                 List variables in namespace
-    Python: dir() or [k for k in globals() if not k.startswith('_')]
-
-%info                Show canister info (principal, cycles)
-    Python: ic.id(), ic.caller(), ic.canister_balance()
-
-%get <remote> [local]    Download file from canister to local
-%put <local> [remote]    Upload file from local to canister
-
-!<cmd>             Run local OS command (e.g. !ls, !cat file.py)
-
-:q / exit          Quit the shell
-:help              Show this help
+  %who                     List variables in namespace
+      Python: dir() or [k for k in globals() if not k.startswith('_')]
+  %info                    Show canister info (principal, cycles)
+      Python: ic.id(), ic.caller(), ic.canister_balance()
+  %get <remote> [local]    Download file from canister
+  %put <local> [remote]    Upload file to canister
+  !<cmd>                   Run local OS command
+  :q / exit                Quit the shell
+  :help [topic]            Show help (topics listed below)""",
+}
 
 
-EXAMPLES
---------
-  %ls /myapp
-  %cat /myapp/config.json
-  %task create daily_sync every 60 --code "print('sync')"
-  %db list User 10
-  %db search User name=alice
-  %wallet ckbtc balance
-  %wallet ckbtc transfer 100 <to_principal>
-  !ls -la
+def _print_help(topic=None):
+    """Print help — overview or a specific topic."""
+    if topic:
+        key = topic.lower().lstrip("%")
+        if key in _HELP_TOPICS:
+            print(f"\n{_HELP_TOPICS[key]}\n")
+        else:
+            print(f"\nUnknown topic: {topic}")
+            print(f"Available: {', '.join(sorted(_HELP_TOPICS))}\n")
+        return
+
+    print("""
+BASILISK SHELL — :help [topic] for details
+
+  fs       Filesystem (%ls, %cat, %mkdir, %wget, %run)
+  task     Task management (%task create, start, stop, ...)
+  db       Database (%db list, search, export, ...)
+  wallet   Wallet (%wallet balance, transfer, ...)
+  vetkey   VetKey encryption (%vetkey encrypt, decrypt, ...)
+  group    Encryption groups (%group create, add, ...)
+  crypto   File encryption (%crypto encrypt, share, ...)
+  repl     REPL commands (%who, %info, %get, %put, !)
+
+Examples:
+  %ls /myapp                %db list User 10
+  %wallet ckbtc balance     %task create sync every 60s --code "..."
+  !ls -la                   :q to quit
 """)
-    print("  :q to quit")
 
 
 def run_interactive(canister: str, network: str):
@@ -4200,8 +4180,9 @@ def run_interactive(canister: str, network: str):
         if stripped == "clear":
             os.system("clear")
             continue
-        if stripped == ":help":
-            _print_help()
+        if stripped == ":help" or stripped.startswith(":help "):
+            topic = stripped[6:].strip() or None
+            _print_help(topic)
             continue
 
         # Local OS commands
