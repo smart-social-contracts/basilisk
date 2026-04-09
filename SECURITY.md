@@ -6,7 +6,7 @@ If you discover a security vulnerability in Basilisk, **please report it respons
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
-Instead, please email: **security@smartsocialcontracts.org**
+Instead, please email: **contact@smartsocialcontracts.org** using a secure channel like GPG.
 
 Include:
 - Description of the vulnerability
