@@ -141,15 +141,15 @@ def _task_magic(cmd, canister, network):
 
 
 def _wait_for_task_execution(tid, canister, network, timeout=90, poll=3):
-    """Poll task info until it has executions or timeout."""
+    """Poll task log until execution completes/fails or timeout."""
     deadline = time.time() + timeout
-    info = ""
+    log = ""
     while time.time() < deadline:
-        info = _task_magic(f"%task info {tid}", canister, network)
-        if "Executions: 0" not in info and "Executions:" in info:
-            return info
+        log = _task_magic(f"%task log {tid}", canister, network)
+        if "completed" in log or "failed" in log:
+            return log
         time.sleep(poll)
-    return info
+    return log
 
 
 def _run_async_task(name, code, canister, network, timeout=90):
@@ -169,10 +169,7 @@ def _run_async_task(name, code, canister, network, timeout=90):
         f"Failed to add step: {step_result}"
 
     _task_magic(f"%task start {tid}", canister, network)
-    info = _wait_for_task_execution(tid, canister, network, timeout=timeout)
-    assert "Executions: 0" not in info, f"Task never executed: {info}"
-
-    log = _task_magic(f"%task log {tid}", canister, network)
+    log = _wait_for_task_execution(tid, canister, network, timeout=timeout)
 
     # Clean up
     _task_magic(f"%task delete {tid}", canister, network)
