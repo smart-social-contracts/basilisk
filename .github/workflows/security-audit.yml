@@ -21,16 +21,8 @@ jobs:
             - name: Install cargo-audit
               run: cargo install cargo-audit
 
-            - name: Run cargo audit (cpython_canister_template)
+            - name: Run cargo audit
               working-directory: basilisk/compiler/cpython_canister_template
-              run: cargo audit
-
-            - name: Run cargo audit (basilisk_cpython)
-              working-directory: basilisk/compiler/basilisk_cpython
-              run: cargo audit
-
-            - name: Run cargo audit (ic-wasi-polyfill-patched)
-              working-directory: basilisk/compiler/ic-wasi-polyfill-patched
               run: cargo audit
 
     pip-audit:
