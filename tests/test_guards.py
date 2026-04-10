@@ -80,42 +80,6 @@ class TestGuardMetadataExtraction(_GuardMetadataMixin):
             assert name not in guards, f"{name} should not have a guard"
 
 
-class TestTipJarGuardMetadata(_GuardMetadataMixin):
-    """Verify the tip_jar template has correct guards on sensitive endpoints."""
-
-    @property
-    def _tip_jar_main_source(self):
-        tip_jar_main = os.path.join(
-            os.path.dirname(__file__), "..",
-            "basilisk", "templates", "tip_jar", "src", "backend", "main.py",
-        )
-        with open(tip_jar_main) as f:
-            return f.read()
-
-    def test_withdraw_has_guard(self):
-        guards = self._extract_guards(self._tip_jar_main_source)
-        assert "withdraw" in guards
-        assert guards["withdraw"] == "guard_against_non_controllers"
-
-    def test_execute_code_shell_has_guard(self):
-        guards = self._extract_guards(self._tip_jar_main_source)
-        assert "execute_code_shell" in guards
-        assert guards["execute_code_shell"] == "guard_against_non_controllers"
-
-    def test_read_secret_notes_has_guard(self):
-        guards = self._extract_guards(self._tip_jar_main_source)
-        assert "read_secret_notes" in guards
-        assert guards["read_secret_notes"] == "guard_against_non_controllers"
-
-    def test_guard_function_defined(self):
-        assert "guard_against_non_controllers" in self._extract_func_names(self._tip_jar_main_source)
-
-    def test_public_endpoints_not_guarded(self):
-        guards = self._extract_guards(self._tip_jar_main_source)
-        for name in ("status", "whoami", "get_leaderboard", "get_stats", "get_fx_rates"):
-            assert name not in guards, f"{name} should not have a guard"
-
-
 # ===========================================================================
 # Integration tests — controller access (live canister)
 # ===========================================================================

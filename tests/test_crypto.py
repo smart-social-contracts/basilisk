@@ -59,7 +59,7 @@ from tests.conftest import exec_on_canister, magic_on_canister
 
 _skip_no_crypto = pytest.mark.skipif(
     not _HAS_CRYPTO,
-    reason="basilisk.toolkit.crypto not importable (basilisk.db not installed)",
+    reason="basilisk.toolkit.crypto not importable (ic_python_db not installed)",
 )
 
 

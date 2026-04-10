@@ -44,7 +44,7 @@ class TestDbCodeGeneration:
 
     def test_types_code_is_valid_python(self):
         code = _db_types_code()
-        assert "from basilisk.db import Database" in code
+        assert "from ic_python_db import Database" in code
         compile(code, "<test>", "exec")
 
     def test_list_code_is_valid_python(self):

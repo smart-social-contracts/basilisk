@@ -122,7 +122,7 @@ def _get_indexer_id():
 _WALLET_RESOLVE = (
     "if 'Token' not in dir():\n"
     "    try:\n"
-    "        from basilisk.db import Entity, String, Integer, ManyToOne, OneToMany, TimestampedMixin\n"
+    "        from ic_python_db import Entity, String, Integer, ManyToOne, OneToMany, TimestampedMixin\n"
     "        class Token(Entity, TimestampedMixin):\n"
     "            __alias__ = 'name'\n"
     "            name = String(max_length=64)\n"

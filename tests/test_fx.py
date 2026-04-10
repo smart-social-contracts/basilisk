@@ -84,7 +84,7 @@ def _get_network():
 _FXPAIR_RESOLVE = (
     "if 'FXPair' not in dir():\n"
     "    try:\n"
-    "        from basilisk.db import Entity, String, Integer, TimestampedMixin\n"
+    "        from ic_python_db import Entity, String, Integer, TimestampedMixin\n"
     "        class FXPair(Entity, TimestampedMixin):\n"
     "            __alias__ = 'name'\n"
     "            name = String(max_length=16)\n"
@@ -1041,7 +1041,7 @@ class TestFXServiceRefresh:
         # The refresh async code — loop over registered pairs, query XRC, update DB
         code = (
             "from basilisk import Record, Service, service_update, Principal, Opt, Variant, nat32, nat64, null, text, Async\n"
-            "from basilisk.db import Entity, String, Integer, TimestampedMixin\n"
+            "from ic_python_db import Entity, String, Integer, TimestampedMixin\n"
             "\n"
             "if 'FXPair' not in dir():\n"
             "    class FXPair(Entity, TimestampedMixin):\n"
@@ -1217,7 +1217,7 @@ class TestFXServiceFetchRate:
 
         code = (
             "from basilisk import Record, Service, service_update, Principal, Opt, Variant, nat32, nat64, null, text, Async\n"
-            "from basilisk.db import Entity, String, Integer, TimestampedMixin\n"
+            "from ic_python_db import Entity, String, Integer, TimestampedMixin\n"
             "\n"
             "if 'FXPair' not in dir():\n"
             "    class FXPair(Entity, TimestampedMixin):\n"
