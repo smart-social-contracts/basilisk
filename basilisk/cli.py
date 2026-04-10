@@ -434,9 +434,9 @@ def main():
 
     elif command == "exec":
         try:
-            from ic_basilisk_os.cli import cmd_exec
+            from ic_basilisk_toolkit.cli import cmd_exec
         except ImportError:
-            print("Error: 'exec' requires ic-basilisk-os. Install: pip install ic-basilisk-os", file=sys.stderr)
+            print("Error: 'exec' requires ic-basilisk-toolkit. Install: pip install ic-basilisk-toolkit", file=sys.stderr)
             sys.exit(1)
         if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
             print(_HELP_EXEC, end="")
@@ -445,18 +445,18 @@ def main():
 
     elif command == "shell":
         try:
-            from ic_basilisk_os.shell import main as shell_main
+            from ic_basilisk_toolkit.shell import main as shell_main
         except ImportError:
-            print("Error: 'shell' requires ic-basilisk-os. Install: pip install ic-basilisk-os[shell]", file=sys.stderr)
+            print("Error: 'shell' requires ic-basilisk-toolkit. Install: pip install ic-basilisk-toolkit[shell]", file=sys.stderr)
             sys.exit(1)
         sys.argv = ["basilisk-shell"] + sys.argv[2:]
         shell_main()
 
     elif command == "sshd":
         try:
-            from ic_basilisk_os.sshd import main as sshd_main
+            from ic_basilisk_toolkit.sshd import main as sshd_main
         except ImportError:
-            print("Error: 'sshd' requires ic-basilisk-os. Install: pip install ic-basilisk-os[shell]", file=sys.stderr)
+            print("Error: 'sshd' requires ic-basilisk-toolkit. Install: pip install ic-basilisk-toolkit[shell]", file=sys.stderr)
             sys.exit(1)
         sys.argv = ["basilisk-sshd"] + sys.argv[2:]
         sshd_main()
