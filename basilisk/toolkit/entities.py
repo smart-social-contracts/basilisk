@@ -13,7 +13,7 @@ Entities:
     TaskExecution — Record of a single task execution attempt.
 """
 
-from basilisk.db import (
+from ic_python_db import (
     Boolean,
     Entity,
     Integer,
@@ -23,7 +23,7 @@ from basilisk.db import (
     String,
     TimestampedMixin,
 )
-from basilisk.logging import get_logger
+from ic_python_logging import get_logger
 
 from .status import TaskExecutionStatus
 
@@ -140,9 +140,9 @@ class Call(Entity, TimestampedMixin):
                 except ImportError:
                     pass
 
-                # Monkey-patch get_logger so that `from basilisk.logging import get_logger`
+                # Monkey-patch get_logger so that `from ic_python_logging import get_logger`
                 # inside the exec'd code returns the task execution logger.
-                import basilisk.logging as _bl
+                import ic_python_logging as _bl
                 _orig_get_logger = _bl.get_logger
                 _bl.get_logger = lambda name=None: exec_logger
                 try:

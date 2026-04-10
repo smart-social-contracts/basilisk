@@ -28,7 +28,7 @@ from .status import TaskExecutionStatus, TaskStatus
 
 # These imports only work inside the canister runtime
 from basilisk import Async, Duration, ic, void
-from basilisk.logging import get_logger
+from ic_python_logging import get_logger
 
 logger = get_logger("basilisk.toolkit.task_manager")
 

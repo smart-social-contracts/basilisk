@@ -31,7 +31,7 @@ from basilisk.canisters.xrc import (
     XRCCanister,
     XRC_CANISTER_ID,
 )
-from basilisk.logging import get_logger
+from ic_python_logging import get_logger
 
 from .entities import FXPair
 

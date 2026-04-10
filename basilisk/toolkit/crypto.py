@@ -46,9 +46,9 @@ Usage (canister-side)::
     yield crypto.grant_group_access("user:alice:private", "admins")
 """
 
-from basilisk.db import Entity, String, TimestampedMixin
+from ic_python_db import Entity, String, TimestampedMixin
 try:
-    from basilisk.logging import get_logger
+    from ic_python_logging import get_logger
 except ImportError:
     import logging
     get_logger = logging.getLogger

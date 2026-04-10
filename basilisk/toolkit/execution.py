@@ -36,7 +36,7 @@ except ImportError:
             pass
     redirect_stdout = redirect_stderr = _NullRedirect
 
-from basilisk.logging import get_logger, get_logs
+from ic_python_logging import get_logger, get_logs
 
 if TYPE_CHECKING:
     from .entities import TaskExecution, Task
@@ -154,7 +154,7 @@ def create_task_entity_class(task_name):
     Returns:
         A class that can be used as base for entities with automatic namespacing
     """
-    from basilisk.db import Entity, TimestampedMixin
+    from ic_python_db import Entity, TimestampedMixin
 
     class TaskEntity(Entity, TimestampedMixin):
         """Base class for task-scoped entities with automatic namespacing.
@@ -240,7 +240,7 @@ def run_code(source_code, locals={}, task: Optional["Task"] = None, task_executi
             execution_logger.info("Execution started")
             # Redirect any get_logger() calls in exec'd code to the execution logger
             # so codex log output is captured under the task execution's logger name
-            import basilisk.logging as _ipl
+            import ic_python_logging as _ipl
             _original_get_logger = _ipl.get_logger
             _ipl.get_logger = lambda name=None: execution_logger
             safe_globals["get_logger"] = lambda name=None: execution_logger
