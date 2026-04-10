@@ -48,9 +48,12 @@ setup(
     ]},
     include_package_data=True,
     packages=["basilisk", "basilisk.os"],
-    install_requires=["ic-python-db>=0.7.7", "ic-python-logging>=0.3.1"],
+    install_requires=[],
     extras_require={
-        "shell": ["asyncssh"],
+        "os": ["ic-basilisk-os>=0.1.0"],
+        "shell": ["ic-basilisk-os[shell]>=0.1.0"],
+        "db": ["ic-python-db>=0.7.7"],
+        "logging": ["ic-python-logging>=0.3.1"],
         "test": ["pytest"],
     },
     entry_points={

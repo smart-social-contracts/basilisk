@@ -1,72 +1,16 @@
 """
-Basilisk OS — Operating system services for IC canisters.
+Basilisk OS — Backward-compatibility re-export layer.
 
-Provides POSIX-like abstractions on top of the Basilisk CDK:
+This module re-exports everything from ``ic_basilisk_os`` so that
+existing code using ``from basilisk.os import ...`` continues to work.
 
-  - Task/process management (Task, TaskStep, TaskSchedule, TaskManager)
-  - Wallet (ICRC-1 token registry, transfers, balance tracking)
-  - Filesystem (in-memory POSIX fs via frozen_stdlib_preamble)
-  - Persistent storage (via ic-python-db entity ORM)
-  - Encryption (vetKeys + per-principal envelopes + groups)
-  - Logging (via ic-python-logging)
+Install the standalone package::
 
-Canister-side code: entities and task_manager run *inside* the canister.
-Client-side code: shell, sshd, sftp run on the developer machine.
+    pip install ic-basilisk-os
 """
 
-__all__ = [
-    # Status enums
-    "TaskStatus",
-    "TaskExecutionStatus",
-    # Task entities
-    "Codex",
-    "Call",
-    "Task",
-    "TaskStep",
-    "TaskSchedule",
-    "TaskExecution",
-    # Wallet entities
-    "Token",
-    "WalletBalance",
-    "WalletTransfer",
-    # FX entities
-    "FXPair",
-    # Wallet
-    "Wallet",
-    # FX service
-    "FXService",
-    # VetKey service
-    "VetKeyService",
-    # Crypto entities & service
-    "KeyEnvelope",
-    "CryptoGroup",
-    "CryptoGroupMember",
-    "CryptoService",
-    "EncryptedString",
-    # Task manager
-    "TaskManager",
-    # Execution
-    "run_code",
-    "create_task_entity_class",
-]
-
-# These imports will only work inside a canister (they depend on ic-python-db).
-# When used client-side (e.g. in tests), import individual modules directly.
 try:
-    from .status import TaskStatus, TaskExecutionStatus
-    from .entities import (
-        Codex, Call, Task, TaskStep, TaskSchedule, TaskExecution,
-        Token, WalletBalance, WalletTransfer,
-        FXPair,
-    )
-    from .wallet import Wallet
-    from .fx import FXService
-    from .vetkeys import VetKeyService
-    from .crypto import (
-        KeyEnvelope, CryptoGroup, CryptoGroupMember,
-        CryptoService, EncryptedString,
-    )
-    from .task_manager import TaskManager
-    from .execution import run_code, create_task_entity_class
+    from ic_basilisk_os import *          # noqa: F401,F403
+    from ic_basilisk_os import __all__    # noqa: F401
 except ImportError:
     pass

@@ -433,18 +433,31 @@ def main():
         cmd_build()
 
     elif command == "exec":
+        try:
+            from ic_basilisk_os.cli import cmd_exec
+        except ImportError:
+            print("Error: 'exec' requires ic-basilisk-os. Install: pip install ic-basilisk-os", file=sys.stderr)
+            sys.exit(1)
         if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
             print(_HELP_EXEC, end="")
             return
         cmd_exec(sys.argv[2:])
 
     elif command == "shell":
-        from basilisk.shell import main as shell_main
+        try:
+            from ic_basilisk_os.shell import main as shell_main
+        except ImportError:
+            print("Error: 'shell' requires ic-basilisk-os. Install: pip install ic-basilisk-os[shell]", file=sys.stderr)
+            sys.exit(1)
         sys.argv = ["basilisk-shell"] + sys.argv[2:]
         shell_main()
 
     elif command == "sshd":
-        from basilisk.sshd import main as sshd_main
+        try:
+            from ic_basilisk_os.sshd import main as sshd_main
+        except ImportError:
+            print("Error: 'sshd' requires ic-basilisk-os. Install: pip install ic-basilisk-os[shell]", file=sys.stderr)
+            sys.exit(1)
         sys.argv = ["basilisk-sshd"] + sys.argv[2:]
         sshd_main()
 

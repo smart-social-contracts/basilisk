@@ -12,7 +12,7 @@ from typing import Any, Callable
 import basilisk
 from basilisk.build_wasm_binary_or_exit import build_wasm_binary_or_exit
 from basilisk.cargotoml import generate_cargo_toml, generate_cargo_lock
-from basilisk.colors import red, green, dim
+from basilisk.colors import red, yellow, green, dim
 from basilisk.run_basilisk_generate_or_exit import run_basilisk_generate_or_exit
 from basilisk.timed import timed, timed_inline
 from basilisk.types import Args, Paths
@@ -234,6 +234,12 @@ def bundle_python_code(paths: Paths):
     finder = modulefinder.ModuleFinder(path=path)
     finder.run_script(paths["py_entry_file"])
 
+    # ── Reject pip packages that contain native (C) extensions ──
+    _check_native_extensions(finder)
+
+    # ── Warn about unresolved imports ──
+    _warn_unresolved_imports(finder)
+
     python_source_path = paths["python_source"]
 
     if os.path.exists(python_source_path):
@@ -249,6 +255,8 @@ def bundle_python_code(paths: Paths):
         paths["py_entry_file"],
         f"{python_source_path}/{os.path.basename(paths['py_entry_file'])}",
     )
+
+    bundled_packages: dict[str, int] = {}  # top-level package -> module count
 
     for name, mod in finder.modules.items():
         if mod.__file__ is None:
@@ -266,6 +274,8 @@ def bundle_python_code(paths: Paths):
                 ignore=ignore_specific_dir,
             )
             _ensure_parent_inits(python_source_path, dest_dir)
+            if _is_from_site_packages(mod.__path__[0]):
+                _track_bundled_package(bundled_packages, name)
         else:
             # Source module — copy the single file
             # Use dotted identifier to build path so modules with the same
@@ -276,6 +286,8 @@ def bundle_python_code(paths: Paths):
             os.makedirs(os.path.dirname(dest_path), exist_ok=True)
             if mod.__file__.endswith(".py"):
                 shutil.copy(mod.__file__, dest_path)
+                if _is_from_site_packages(mod.__file__):
+                    _track_bundled_package(bundled_packages, name)
 
     # Always include packages required by basilisk.db / basilisk.logging aliases.
     # modulefinder can't trace these because the aliases only exist at canister
@@ -292,8 +304,12 @@ def bundle_python_code(paths: Paths):
                     dirs_exist_ok=True,
                     ignore=ignore_specific_dir,
                 )
+                bundled_packages.setdefault(pkg_name, 0)
             except ImportError:
                 pass  # not installed — alias will be a no-op at runtime
+
+    # ── Print bundled packages summary ──
+    _print_bundle_summary(bundled_packages)
 
     py_file_names = [
         mod.__file__
@@ -313,6 +329,103 @@ def ignore_specific_dir(dirname: str, filenames: list[str]) -> list[str]:
         if f in (".basilisk", "__pycache__", ".dfx"):
             ignored.append(f)
     return ignored
+
+
+def _is_from_site_packages(filepath: str) -> bool:
+    """Return True if the file lives inside a site-packages or dist-packages directory."""
+    return "site-packages" in filepath or "dist-packages" in filepath
+
+
+def _track_bundled_package(bundled_packages: dict[str, int], module_name: str):
+    """Increment the module count for the top-level package of *module_name*."""
+    top_level = module_name.split(".")[0]
+    bundled_packages[top_level] = bundled_packages.get(top_level, 0) + 1
+
+
+def _check_native_extensions(finder: modulefinder.ModuleFinder):
+    """Error out if any pip-installed package contains native (C) extensions.
+
+    Stdlib native extensions (e.g. _json.so in lib-dynload) are ignored —
+    the WASI canister template provides its own stubs for those.
+    Only third-party packages in site-packages/dist-packages are checked.
+    """
+    import importlib.machinery
+    native_suffixes = tuple(importlib.machinery.EXTENSION_SUFFIXES)  # e.g. ('.so',)
+
+    # Collect native modules grouped by top-level pip package
+    native_packages: dict[str, list[str]] = {}  # top_pkg -> [module_names]
+    for name, mod in finder.modules.items():
+        if mod.__file__ is None:
+            continue
+        if not mod.__file__.endswith(native_suffixes):
+            continue
+        if not _is_from_site_packages(mod.__file__):
+            continue  # stdlib / lib-dynload — handled by WASI stubs
+        top_pkg = name.split(".")[0]
+        native_packages.setdefault(top_pkg, []).append(name)
+
+    if native_packages:
+        lines = []
+        for pkg, modules in sorted(native_packages.items()):
+            ext = os.path.splitext(finder.modules[modules[0]].__file__)[1]
+            lines.append(
+                f"  - {pkg} contains native code ({ext}), not supported on IC"
+            )
+        msg = (
+            red("\n\U0001f4a3 Basilisk error: native extensions detected\n\n")
+            + "\n".join(lines)
+            + "\n\nOnly pure Python packages can run inside an IC canister.\n"
+            "Remove these packages or replace them with pure Python alternatives.\n"
+        )
+        print(msg)
+        sys.exit(1)
+
+
+def _warn_unresolved_imports(finder: modulefinder.ModuleFinder):
+    """Print warnings for imports that modulefinder could not resolve.
+
+    Excludes known false positives from stdlib and basilisk internals.
+    """
+    IGNORE_PREFIXES = (
+        "_",          # private C accelerators (_pickle, _io, etc.)
+        "win32",      # Windows-only modules
+        "org.python", # Jython
+        "java",       # Jython
+    )
+    IGNORE_EXACT = {
+        "nt", "posix", "msvcrt", "winreg", "_winapi",
+        "vms_lib", "EasyDialogs", "Carbon",
+        "org", "java",
+        "test", "tests",
+    }
+
+    unresolved = []
+    for name in sorted(finder.badmodules):
+        if name in IGNORE_EXACT:
+            continue
+        if any(name.startswith(p) for p in IGNORE_PREFIXES):
+            continue
+        unresolved.append(name)
+
+    if unresolved:
+        print(yellow(f"\n\u26a0\ufe0f  {len(unresolved)} unresolved import(s) (may be fine if unused at runtime):"))
+        for name in unresolved[:10]:
+            print(f"  - {name}")
+        if len(unresolved) > 10:
+            print(f"  ... and {len(unresolved) - 10} more")
+        print()
+
+
+def _print_bundle_summary(bundled_packages: dict[str, int]):
+    """Print a summary of pip packages that were bundled into the canister."""
+    if not bundled_packages:
+        return
+    print(f"\n\U0001f4e6 Bundled {len(bundled_packages)} pip package(s):")
+    for pkg in sorted(bundled_packages):
+        count = bundled_packages[pkg]
+        suffix = "module" if count == 1 else "modules"
+        print(f"  - {pkg} ({count} {suffix})")
+    print()
 
 
 def should_skip_package(node_identifier: str, node_packagepath: str) -> bool:
@@ -427,4 +540,5 @@ def inline_timed(
     return end_time - start_time
 
 
-main()
+if __name__ == "__main__":
+    main()
