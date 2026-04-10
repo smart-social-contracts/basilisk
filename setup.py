@@ -46,7 +46,7 @@ setup(
         "*.js",
     ]},
     include_package_data=True,
-    packages=["basilisk", "basilisk.os"],
+    packages=["basilisk", "basilisk.toolkit"],
     install_requires=[],
     extras_require={
         "db": ["ic-python-db>=0.7.7"],

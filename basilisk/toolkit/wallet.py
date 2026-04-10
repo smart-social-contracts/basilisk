@@ -11,7 +11,7 @@ Provides a high-level API for interacting with ICRC-1 tokens:
 All inter-canister operations (transfer, balance_of, fee, refresh) are
 async generators that must be driven with ``yield``::
 
-    from basilisk.os.wallet import Wallet
+    from basilisk.toolkit.wallet import Wallet
 
     wallet = Wallet(storage)
     wallet.register_token("ckBTC", ledger="mxzaz-hqaaa-aaaar-qaada-cai",
@@ -36,7 +36,7 @@ from basilisk.logging import get_logger
 
 from .entities import Token, WalletBalance, WalletSubaccount, WalletTransfer
 
-logger = get_logger("basilisk.os.wallet")
+logger = get_logger("basilisk.toolkit.wallet")
 
 # Re-export from standalone module (no canister-side dependencies)
 from .tokens import WELL_KNOWN_TOKENS  # noqa: F401

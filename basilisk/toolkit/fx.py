@@ -11,7 +11,7 @@ rates from the IC Exchange Rate Canister (XRC):
 All inter-canister operations (refresh, fetch_rate) are async generators
 that must be driven with ``yield``::
 
-    from basilisk.os.fx import FXService
+    from basilisk.toolkit.fx import FXService
 
     fx = FXService()
     fx.register_pair("BTC", "USD")
@@ -35,7 +35,7 @@ from basilisk.logging import get_logger
 
 from .entities import FXPair
 
-logger = get_logger("basilisk.os.fx")
+logger = get_logger("basilisk.toolkit.fx")
 
 # Cycles to attach per XRC call (1B required, per XRC spec)
 XRC_CYCLES_PER_CALL = 1_000_000_000

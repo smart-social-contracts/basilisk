@@ -30,7 +30,7 @@ from .status import TaskExecutionStatus, TaskStatus
 from basilisk import Async, Duration, ic, void
 from basilisk.logging import get_logger
 
-logger = get_logger("basilisk.os.task_manager")
+logger = get_logger("basilisk.toolkit.task_manager")
 
 
 def get_now() -> int:

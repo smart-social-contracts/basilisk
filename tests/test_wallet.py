@@ -338,7 +338,7 @@ class TestTokenRegistry:
 
     def test_register_token(self, wallet_reachable, wallet_canister, wallet_network):
         """Register a new token and verify it's persisted."""
-        from basilisk.os.wallet import WELL_KNOWN_TOKENS
+        from basilisk.toolkit.wallet import WELL_KNOWN_TOKENS
         ckbtc = WELL_KNOWN_TOKENS["ckBTC"]
         result = _exec(
             f"t = Token(name='test_ckBTC', ledger='{ckbtc['ledger']}', "
@@ -350,7 +350,7 @@ class TestTokenRegistry:
 
     def test_get_token_by_alias(self, wallet_reachable, wallet_canister, wallet_network):
         """Retrieve token by name alias."""
-        from basilisk.os.wallet import WELL_KNOWN_TOKENS
+        from basilisk.toolkit.wallet import WELL_KNOWN_TOKENS
         result = _exec(
             "t = Token['test_ckBTC']\n"
             "print(t.ledger if t else 'NOT_FOUND')",
@@ -371,7 +371,7 @@ class TestTokenRegistry:
 
     def test_register_second_token(self, wallet_reachable, wallet_canister, wallet_network):
         """Register a second token."""
-        from basilisk.os.wallet import WELL_KNOWN_TOKENS
+        from basilisk.toolkit.wallet import WELL_KNOWN_TOKENS
         cketh = WELL_KNOWN_TOKENS["ckETH"]
         result = _exec(
             f"t = Token(name='test_ckETH', ledger='{cketh['ledger']}', "

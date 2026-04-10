@@ -8,7 +8,7 @@ Derivation) protocol.
 All inter-canister operations (public_key, derive_key) are async
 generators that must be driven with ``yield``::
 
-    from basilisk.os.vetkeys import VetKeyService
+    from basilisk.toolkit.vetkeys import VetKeyService
 
     vks = VetKeyService()
 
@@ -52,7 +52,7 @@ except ImportError:
     import logging
     get_logger = logging.getLogger
 
-logger = get_logger("basilisk.os.vetkeys")
+logger = get_logger("basilisk.toolkit.vetkeys")
 
 # Well-known key names
 VETKD_KEY_PRODUCTION = "key_1"

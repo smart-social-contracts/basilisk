@@ -41,7 +41,7 @@ from basilisk.logging import get_logger, get_logs
 if TYPE_CHECKING:
     from .entities import TaskExecution, Task
 
-logger = get_logger("basilisk.os.execution")
+logger = get_logger("basilisk.toolkit.execution")
 
 _codex_lazy_loading_installed = False
 

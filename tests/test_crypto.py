@@ -1,6 +1,6 @@
 """
 Integration and unit tests for %group and %crypto shell commands,
-and basilisk.os.crypto format helpers.
+and basilisk.toolkit.crypto format helpers.
 
 Unit tests (TestFormatHelpers, TestGroupCodeGeneration, TestCryptoCodeGeneration,
 TestHandleGroupDispatch, TestHandleCryptoDispatch) run without a canister.
@@ -43,7 +43,7 @@ from basilisk.shell import (
     canister_exec,
 )
 try:
-    from basilisk.os.crypto import (
+    from basilisk.toolkit.crypto import (
         encode_envelope,
         decode_envelope,
         encode_ciphertext,
@@ -59,7 +59,7 @@ from tests.conftest import exec_on_canister, magic_on_canister
 
 _skip_no_crypto = pytest.mark.skipif(
     not _HAS_CRYPTO,
-    reason="basilisk.os.crypto not importable (basilisk.db not installed)",
+    reason="basilisk.toolkit.crypto not importable (basilisk.db not installed)",
 )
 
 
@@ -70,7 +70,7 @@ _skip_no_crypto = pytest.mark.skipif(
 _CRYPTO_RESOLVE = (
     "if 'KeyEnvelope' not in dir():\n"
     "    try:\n"
-    "        from basilisk.os.crypto import (\n"
+    "        from basilisk.toolkit.crypto import (\n"
     "            KeyEnvelope, CryptoGroup, CryptoGroupMember,\n"
     "            encode_envelope, decode_envelope,\n"
     "            encode_ciphertext, decode_ciphertext,\n"
@@ -465,12 +465,12 @@ def _resolve_crypto(_ensure_canister):
     """
     # First, probe whether the module is available at all.
     probe = exec_on_canister(
-        "from basilisk.os.crypto import KeyEnvelope\n"
+        "from basilisk.toolkit.crypto import KeyEnvelope\n"
         "print('crypto_available')\n"
     )
     if "ImportError" in probe or "cannot import" in probe or "crypto_available" not in probe:
         pytest.skip(
-            "Canister does not have basilisk.os.crypto yet — "
+            "Canister does not have basilisk.toolkit.crypto yet — "
             "redeploy canister with updated code first"
         )
     # Now do the full resolve (with try/except for safety on the canister side).

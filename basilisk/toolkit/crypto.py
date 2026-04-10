@@ -30,8 +30,8 @@ Storage formats:
 
 Usage (canister-side)::
 
-    from basilisk.os.crypto import CryptoService, KeyEnvelope, CryptoGroup
-    from basilisk.os.vetkeys import VetKeyService
+    from basilisk.toolkit.crypto import CryptoService, KeyEnvelope, CryptoGroup
+    from basilisk.toolkit.vetkeys import VetKeyService
 
     vks = VetKeyService()
     crypto = CryptoService(vks)
@@ -53,7 +53,7 @@ except ImportError:
     import logging
     get_logger = logging.getLogger
 
-logger = get_logger("basilisk.os.crypto")
+logger = get_logger("basilisk.toolkit.crypto")
 
 # ---------------------------------------------------------------------------
 # Entities

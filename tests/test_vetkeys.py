@@ -466,26 +466,26 @@ class TestUnitShellDispatch:
 
 
 class TestUnitOSExports:
-    """Verify VetKeyService is exported from basilisk.os."""
+    """Verify VetKeyService is exported from basilisk.toolkit."""
 
     def test_vetkey_service_in_all(self):
-        import basilisk.os
-        assert "VetKeyService" in basilisk.os.__all__
+        import basilisk.toolkit
+        assert "VetKeyService" in basilisk.toolkit.__all__
 
 
 class TestUnitKeyConstants:
     """Verify the key name constants are defined."""
 
     def test_production_key(self):
-        from basilisk.os.vetkeys import VETKD_KEY_PRODUCTION
+        from basilisk.toolkit.vetkeys import VETKD_KEY_PRODUCTION
         assert VETKD_KEY_PRODUCTION == "key_1"
 
     def test_test_key(self):
-        from basilisk.os.vetkeys import VETKD_KEY_TEST
+        from basilisk.toolkit.vetkeys import VETKD_KEY_TEST
         assert VETKD_KEY_TEST == "test_key_1"
 
     def test_local_key(self):
-        from basilisk.os.vetkeys import VETKD_KEY_LOCAL
+        from basilisk.toolkit.vetkeys import VETKD_KEY_LOCAL
         assert VETKD_KEY_LOCAL == "dfx_test_key"
 
 
