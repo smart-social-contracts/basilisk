@@ -149,6 +149,7 @@ jobs:
                 sleep 10
               done
               basilisk --version | grep -q "${VERSION}" || { echo "::error::Version mismatch"; exit 1; }
+              pip install ic-python-db
 
               # Scaffold, build, deploy locally, and test
               basilisk new smoke_test && cd smoke_test
