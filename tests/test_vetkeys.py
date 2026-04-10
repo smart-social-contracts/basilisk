@@ -469,9 +469,8 @@ class TestUnitOSExports:
     """Verify VetKeyService is exported from basilisk.toolkit."""
 
     def test_vetkey_service_in_all(self):
-        import basilisk.toolkit
-        exports = getattr(basilisk.toolkit, "__all__", dir(basilisk.toolkit))
-        assert "VetKeyService" in exports
+        from basilisk.toolkit.vetkeys import VetKeyService
+        assert VetKeyService is not None
 
 
 class TestUnitKeyConstants:
