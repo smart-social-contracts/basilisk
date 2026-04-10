@@ -155,7 +155,7 @@ jobs:
               dfx start --background
               dfx deploy
 
-              RESULT=$(dfx canister call smoke_test_backend status "()")
+              RESULT=$(dfx canister call smoke_test status "()")
               echo "status: ${RESULT}"
               echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
 
