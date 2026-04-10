@@ -1,7 +1,7 @@
 """
 Basilisk OS — Core entities for task/process management.
 
-These entity definitions run inside the canister and depend on ic-python-db.
+These entity definitions run inside the canister and depend on the database layer.
 They are the canonical Basilisk OS definitions; realms imports from here.
 
 Entities:

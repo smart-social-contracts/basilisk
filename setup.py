@@ -49,8 +49,6 @@ setup(
     packages=["basilisk", "basilisk.toolkit"],
     install_requires=[],
     extras_require={
-        "db": ["ic-python-db>=0.7.7"],
-        "logging": ["ic-python-logging>=0.3.1"],
         "test": ["pytest"],
     },
     entry_points={

@@ -21,29 +21,20 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 
 **Built-in Application Framework:**
 
-- **Persistent ORM** — [ic-python-db](https://github.com/smart-social-contracts/ic-python-db) with typed fields, relationships, validation, and audit logging — stored in stable memory, survives canister upgrades
+- **Persistent storage** — `StableBTreeMap` for key-value data that survives canister upgrades
 - **Filesystem** — standard `open()` and `os` calls, with optional persistence across upgrades
-- **Interactive shell** — Python REPL running inside the canister, accessible via an SSH/SFTP proxy
-- **Task management** — multi-step task execution that overcomes per-call cycle limits, with one-shot and recurring scheduling
-- **File transfer** — upload/download files to and from the canister; fetch from the internet with `wget`-like command.
-- **Encryption** — per-principal key envelopes, encrypted fields, and crypto groups
-- **Wallet** — ckBTC/ckETH and ICRC-1 token balances, transfers, and transaction history
 - **IC system APIs** — `ic.caller()`, `ic.time()`, `ic.canister_balance()`, inter-canister calls, timers, and Candid types (`Principal`, `Record`, `Variant`, etc.)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│              Basilisk Application Framework              │
-├─────────────┬────────────┬────────────┬─────────────────┤
-│ Task Mgr    │ Filesystem │ Database   │ Shell           │
-│  Tasks      │ POSIX-like │ Entity ORM │ Python REPL     │
-│  Scheduling │ os/open()  │ Stable Mem │ SSH / SFTP      │
-│  Codex/Call │ Persistence│            │                 │
-├─────────────┼────────────┼────────────┼─────────────────┤
-│ Wallet      │ Encryption │ File Xfer  │ IC System APIs  │
-│ ICRC-1      │ Key Envlps │ Upload/DL  │ Timers, Calls   │
-│ ckBTC/ckETH │ Crypto Grps│ wget       │ Candid Types    │
-├─────────────┴────────────┴────────────┴─────────────────┤
-│             Basilisk CDK (Python → WASM)                │
+│                    Basilisk CDK                          │
+├─────────────┬────────────┬──────────────────────────────┤
+│ Filesystem  │ Storage    │ IC System APIs               │
+│ POSIX-like  │ StableBTree│ Timers, Inter-canister calls │
+│ os/open()   │ Map        │ Candid types, Lifecycle      │
+│ Persistence │            │                              │
+├─────────────┴────────────┴──────────────────────────────┤
+│           CPython 3.13 (compiled to WASM)               │
 ├─────────────────────────────────────────────────────────┤
 │              Internet Computer (ICP)                    │
 └─────────────────────────────────────────────────────────┘
@@ -104,48 +95,6 @@ basilisk>>> %task create heartbeat every 60s --code "print('alive at', ic.time()
 basilisk>>> %task info 1
 basilisk>>> %task list
 ```
-
-## Database
-
-Basilisk includes [ic-python-db](https://github.com/smart-social-contracts/ic-python-db), an Entity ORM with typed fields, relationships, validation, and audit logging — all persisted to stable memory across canister upgrades:
-
-```python
-from basilisk import query, update, text
-from basilisk.db import Entity, String, Integer, TimestampedMixin
-
-class User(Entity, TimestampedMixin):
-    __alias__ = "name"
-    name = String(min_length=2, max_length=50)
-    age = Integer(min_value=0)
-
-@update
-def add_user(name: text, age: text) -> text:
-    user = User(name=name, age=int(age))
-    return f"Created user {user.name} with id {user._id}"
-
-@query
-def get_user(name: text) -> text:
-    user = User[name]  # Lookup by alias
-    return f"{user.name}, age {user.age}"
-
-@query
-def list_users() -> text:
-    return str([(u.name, u.age) for u in User.instances()])
-```
-
-```bash
-dfx canister call my_project add_user '("Alice", "30")'
-# ("Created user Alice with id 1")
-dfx canister call my_project get_user '("Alice")'
-# ("Alice, age 30")
-
-# Data survives upgrades:
-dfx deploy my_project --upgrade-unchanged
-dfx canister call my_project get_user '("Alice")'
-# ("Alice, age 30")  ← still there!
-```
-
-See the [ic-python-db documentation](https://github.com/smart-social-contracts/ic-python-db) for relationships (`OneToMany`, `ManyToOne`, etc.), access control, entity hooks, and more.
 
 ### CPython vs RustPython
 

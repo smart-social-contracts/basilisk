@@ -6,20 +6,15 @@ Provides:
   - status: Health check
 
 The frozen_stdlib_preamble automatically provides the in-memory filesystem (memfs).
-ic-python-db provides the entity ORM for task/entity tests.
 """
 
 from basilisk import query, update, text, ic, Async, Tuple, match, CallResult, Principal, StableBTreeMap, GuardResult
 from basilisk.canisters.management import management_canister, HttpResponse, HttpTransformArgs
-import ic_python_db  # noqa: kept for module bundler dependency tracing
-from basilisk.db import Database
-
 # ---------------------------------------------------------------------------
-# Persistent database storage (survives canister upgrades)
+# Persistent key-value storage (survives canister upgrades)
 # ---------------------------------------------------------------------------
 
 storage = StableBTreeMap[str, str](memory_id=1, max_key_size=100, max_value_size=10000)
-Database.init(db_storage=storage, audit_enabled=True)
 
 # ---------------------------------------------------------------------------
 # Persistent shell namespace (per principal)

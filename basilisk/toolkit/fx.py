@@ -48,7 +48,7 @@ class FXService:
     """
     FX rate service for Basilisk OS canisters.
 
-    Manages a registry of FX pairs (persisted via ic-python-db) and provides
+    Manages a registry of FX pairs (persisted via the database layer) and provides
     async helpers for querying the IC Exchange Rate Canister.
 
     Rates are cached in ``FXPair`` entities and can be read synchronously

@@ -75,26 +75,26 @@ class TestIsFromSitePackages(unittest.TestCase):
 class TestTrackBundledPackage(unittest.TestCase):
     def test_top_level(self):
         pkgs = {}
-        _track_bundled_package(pkgs, "ic_python_db")
-        self.assertEqual(pkgs, {"ic_python_db": 1})
+        _track_bundled_package(pkgs, "some_pkg")
+        self.assertEqual(pkgs, {"some_pkg": 1})
 
     def test_submodule(self):
         pkgs = {}
-        _track_bundled_package(pkgs, "ic_python_db.fields")
-        self.assertEqual(pkgs, {"ic_python_db": 1})
+        _track_bundled_package(pkgs, "some_pkg.fields")
+        self.assertEqual(pkgs, {"some_pkg": 1})
 
     def test_accumulates(self):
         pkgs = {}
-        _track_bundled_package(pkgs, "ic_python_db")
-        _track_bundled_package(pkgs, "ic_python_db.fields")
-        _track_bundled_package(pkgs, "ic_python_db.entity")
-        self.assertEqual(pkgs, {"ic_python_db": 3})
+        _track_bundled_package(pkgs, "some_pkg")
+        _track_bundled_package(pkgs, "some_pkg.fields")
+        _track_bundled_package(pkgs, "some_pkg.entity")
+        self.assertEqual(pkgs, {"some_pkg": 3})
 
     def test_multiple_packages(self):
         pkgs = {}
-        _track_bundled_package(pkgs, "ic_python_db")
-        _track_bundled_package(pkgs, "ic_python_logging.handler")
-        self.assertEqual(pkgs, {"ic_python_db": 1, "ic_python_logging": 1})
+        _track_bundled_package(pkgs, "pkg_a")
+        _track_bundled_package(pkgs, "pkg_b.handler")
+        self.assertEqual(pkgs, {"pkg_a": 1, "pkg_b": 1})
 
 
 # ── _check_native_extensions ────────────────────────────────────────
@@ -104,10 +104,10 @@ class TestCheckNativeExtensions(unittest.TestCase):
     def test_pure_python_passes(self):
         """Pure Python packages should pass without error."""
         finder = _FakeFinder(modules={
-            "ic_python_db": _FakeModule(
-                "ic_python_db",
-                file="/home/user/.local/lib/python3.10/site-packages/ic_python_db/__init__.py",
-                path=["/home/user/.local/lib/python3.10/site-packages/ic_python_db"],
+            "some_pkg": _FakeModule(
+                "some_pkg",
+                file="/home/user/.local/lib/python3.10/site-packages/some_pkg/__init__.py",
+                path=["/home/user/.local/lib/python3.10/site-packages/some_pkg"],
             ),
         })
         # Should not raise or exit
@@ -240,10 +240,10 @@ class TestPrintBundleSummary(unittest.TestCase):
     def test_single_package(self):
         buf = io.StringIO()
         with patch("sys.stdout", buf):
-            _print_bundle_summary({"ic_python_db": 5})
+            _print_bundle_summary({"some_pkg": 5})
         output = buf.getvalue()
         self.assertIn("1 pip package", output)
-        self.assertIn("ic_python_db", output)
+        self.assertIn("some_pkg", output)
         self.assertIn("5 modules", output)
 
     def test_multiple_packages_sorted(self):

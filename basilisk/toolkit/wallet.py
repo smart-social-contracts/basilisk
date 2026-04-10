@@ -46,11 +46,11 @@ class Wallet:
     """
     Native ICRC-1 wallet for Basilisk OS canisters.
 
-    Manages a token registry (persisted via ic-python-db) and provides
+    Manages a token registry (persisted via the database layer) and provides
     async helpers for ledger and indexer interactions.
 
     Args:
-        storage: The StableBTreeMap instance used by ic-python-db.
+        storage: The StableBTreeMap instance used by the database layer.
                  Must be the same storage passed to ``Database.init()``.
     """
 

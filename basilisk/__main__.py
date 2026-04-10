@@ -289,25 +289,6 @@ def bundle_python_code(paths: Paths):
                 if _is_from_site_packages(mod.__file__):
                     _track_bundled_package(bundled_packages, name)
 
-    # Always include packages required by basilisk.db / basilisk.logging aliases.
-    # modulefinder can't trace these because the aliases only exist at canister
-    # runtime, so we force-copy the real packages if they aren't already bundled.
-    for pkg_name in ("ic_python_db", "ic_python_logging"):
-        dest_dir = os.path.join(python_source_path, pkg_name)
-        if not os.path.exists(dest_dir):
-            try:
-                import importlib
-                pkg = importlib.import_module(pkg_name)
-                pkg_path = os.path.dirname(pkg.__file__)
-                shutil.copytree(
-                    pkg_path, dest_dir,
-                    dirs_exist_ok=True,
-                    ignore=ignore_specific_dir,
-                )
-                bundled_packages.setdefault(pkg_name, 0)
-            except ImportError:
-                pass  # not installed — alias will be a no-op at runtime
-
     # ── Print bundled packages summary ──
     _print_bundle_summary(bundled_packages)
 
