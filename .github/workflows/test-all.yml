@@ -64,8 +64,10 @@ jobs:
                   rm /tmp/ci-identity.pem
                   dfx identity use ci-deploy
 
-            - name: Install basilisk
-              run: pip install -e .
+            - name: Install basilisk and test dependencies
+              run: |
+                  pip install -e .
+                  pip install ic-python-db ic-python-logging
 
             - name: Pre-download canister template
               run: |
