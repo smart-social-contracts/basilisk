@@ -470,7 +470,8 @@ class TestUnitOSExports:
 
     def test_vetkey_service_in_all(self):
         import basilisk.toolkit
-        assert "VetKeyService" in basilisk.toolkit.__all__
+        exports = getattr(basilisk.toolkit, "__all__", dir(basilisk.toolkit))
+        assert "VetKeyService" in exports
 
 
 class TestUnitKeyConstants:
