@@ -1,7 +1,8 @@
 """
-Integration tests for Basilisk Shell — exec, Candid parsing, magic commands, modes.
+Integration tests for Basilisk CDK shell — exec, Candid parsing, shell modes.
 
 Tests run against a live canister to verify end-to-end reliability.
+Toolkit-specific tests (magic commands, database persistence) live in ic-basilisk-toolkit.
 """
 
 import os
@@ -14,8 +15,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from basilisk.shell import canister_exec, _parse_candid, _handle_magic
-from tests.conftest import exec_on_canister, magic_on_canister
+from basilisk.shell import canister_exec, _parse_candid
+from tests.conftest import exec_on_canister
 
 
 # ===========================================================================
@@ -174,218 +175,6 @@ class TestPersistentVariables:
 
 
 # ===========================================================================
-# Magic commands
-# ===========================================================================
-
-class TestMagicCommands:
-    """Test magic commands via _handle_magic."""
-
-    def test_who(self, canister_reachable, canister, network):
-        result = magic_on_canister("%who", canister, network)
-        # Should return a list (even if empty)
-        assert result.startswith("[")
-
-    def test_info(self, canister_reachable, canister, network):
-        result = magic_on_canister("%info", canister, network)
-        assert "Canister" in result and "Principal" in result
-
-    def test_db_count(self, canister_reachable, canister, network):
-        result = magic_on_canister("%db count", canister, network)
-        assert "entries" in result
-
-    def test_ps(self, canister_reachable, canister, network):
-        result = magic_on_canister("%ps", canister, network)
-        # Either shows tasks, "No tasks.", or ImportError/ValueError if entities not available
-        assert "|" in result or "No tasks" in result or "ImportError" in result or "ValueError" in result
-
-    def test_ls_root(self, canister_reachable, canister, network):
-        """%ls should list the canister's root filesystem."""
-        result = magic_on_canister("%ls", canister, network)
-        assert result  # Should have some files from prior tests
-
-    def test_ls_with_path(self, canister_reachable, canister, network):
-        """%ls with a specific path should list that directory."""
-        result = magic_on_canister("%ls /", canister, network)
-        assert result
-
-    def test_ls_nonexistent_dir(self, canister_reachable, canister, network):
-        """%ls on a nonexistent path should report an error."""
-        result = magic_on_canister("%ls /nonexistent_dir_xyz", canister, network)
-        assert "No such file or directory" in result
-
-    def test_cat_file(self, canister_reachable, canister, network):
-        """%cat should display file contents."""
-        # First write a file
-        exec_on_canister(
-            "with open('/_test_cat_magic', 'w') as f: f.write('cat-magic-test')",
-            canister, network,
-        )
-        result = magic_on_canister("%cat /_test_cat_magic", canister, network)
-        assert result == "cat-magic-test"
-
-    def test_cat_nonexistent(self, canister_reachable, canister, network):
-        """%cat on a nonexistent file should report an error."""
-        result = magic_on_canister("%cat /nonexistent_file_xyz", canister, network)
-        assert "No such file or directory" in result
-
-    def test_cat_no_path_shows_usage(self, canister, network):
-        """%cat without a file should show usage."""
-        result = _handle_magic("%cat", canister, network)
-        # %cat with no arg should not match the startswith check, returns None
-        assert result is None or "Usage" in (result or "")
-
-    def test_mkdir(self, canister_reachable, canister, network):
-        """%mkdir should create a directory."""
-        result = magic_on_canister("%mkdir /_test_mkdir_magic", canister, network)
-        assert "Created" in result
-        # Verify via %ls
-        ls = magic_on_canister("%ls /", canister, network)
-        assert "_test_mkdir_magic" in ls
-
-    def test_mkdir_no_path_shows_usage(self, canister, network):
-        """%mkdir without a path should show usage."""
-        result = _handle_magic("%mkdir", canister, network)
-        assert result is None or "Usage" in (result or "")
-
-    def test_unknown_magic_returns_none(self, canister, network):
-        """Unknown magic commands should return None (not executed)."""
-        result = _handle_magic("%nonexistent_cmd", canister, network)
-        assert result is None
-
-    def test_run_nonexistent_file(self, canister, network):
-        result = _handle_magic("%run /nonexistent/file.py", canister, network)
-        assert "no such file" in result.lower()
-
-    def test_run_file_on_canister(self, canister_reachable, canister, network):
-        """%run should execute a file from the canister's memfs."""
-        # Write a script to the canister
-        exec_on_canister(
-            "with open('_test_run_file.py', 'w') as f: f.write('print(7*6)')",
-            canister, network,
-        )
-        result = magic_on_canister("%run _test_run_file.py", canister, network)
-        assert result == "42"
-
-    def test_run_no_path_returns_none(self, canister, network):
-        """%run without a file is not recognized as a magic command (like %cat, %mkdir)."""
-        result = _handle_magic("%run ", canister, network)
-        assert result is None
-
-    def test_get_file_from_canister(self, canister_reachable, canister, network):
-        """%get should download a file from canister memfs to local filesystem."""
-        tag = "get_test_abc123"
-        # Write a known file on the canister
-        exec_on_canister(
-            f"with open('{tag}', 'w') as f: f.write('hello-from-canister')",
-            canister, network,
-        )
-        local_path = os.path.join(tempfile.gettempdir(), tag)
-        try:
-            result = magic_on_canister(f"%get {tag} {local_path}", canister, network)
-            assert "Downloaded" in result
-            assert os.path.exists(local_path)
-            with open(local_path) as f:
-                assert f.read() == "hello-from-canister"
-        finally:
-            if os.path.exists(local_path):
-                os.unlink(local_path)
-
-    def test_get_nonexistent_file(self, canister_reachable, canister, network):
-        """%get on a nonexistent canister file should report an error."""
-        result = magic_on_canister("%get /nonexistent_xyz", canister, network)
-        assert "no such file" in result.lower() or "error" in result.lower()
-
-    def test_get_defaults_to_basename(self, canister_reachable, canister, network):
-        """%get without a local path should use the remote file's basename."""
-        tag = "_get_basename_test"
-        exec_on_canister(
-            f"with open('{tag}', 'w') as f: f.write('basename-test')",
-            canister, network,
-        )
-        # Run from a temp directory so the default basename lands there
-        orig_cwd = os.getcwd()
-        tmpdir = tempfile.mkdtemp()
-        try:
-            os.chdir(tmpdir)
-            result = magic_on_canister(f"%get {tag}", canister, network)
-            assert "Downloaded" in result
-            local_file = os.path.join(tmpdir, tag)
-            assert os.path.exists(local_file)
-            with open(local_file) as f:
-                assert f.read() == "basename-test"
-        finally:
-            os.chdir(orig_cwd)
-            import shutil
-            shutil.rmtree(tmpdir, ignore_errors=True)
-
-    def test_put_file_to_canister(self, canister_reachable, canister, network):
-        """%put should upload a local file to the canister's memfs."""
-        tag = "_put_test_abc123"
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False
-        ) as f:
-            f.write("hello-from-local")
-            local_path = f.name
-        try:
-            result = magic_on_canister(
-                f"%put {local_path} {tag}", canister, network
-            )
-            assert "Uploaded" in result
-            # Verify the file is on the canister
-            cat_result = magic_on_canister(f"%cat {tag}", canister, network)
-            assert cat_result == "hello-from-local"
-        finally:
-            os.unlink(local_path)
-
-    def test_put_nonexistent_local_file(self, canister, network):
-        """%put with a nonexistent local file should report an error."""
-        result = _handle_magic("%put /nonexistent/local.txt remote.txt", canister, network)
-        assert "error" in result.lower()
-
-    def test_put_defaults_to_basename(self, canister_reachable, canister, network):
-        """%put without a remote path should use the local file's basename."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", prefix="_put_bn_", suffix=".txt", delete=False
-        ) as f:
-            f.write("basename-put")
-            local_path = f.name
-            remote_name = os.path.basename(local_path)
-        try:
-            result = magic_on_canister(f"%put {local_path}", canister, network)
-            assert "Uploaded" in result
-            cat_result = magic_on_canister(f"%cat {remote_name}", canister, network)
-            assert cat_result == "basename-put"
-        finally:
-            os.unlink(local_path)
-
-    def test_put_get_binary_roundtrip(self, canister_reachable, canister, network):
-        """%put and %get should handle binary data correctly."""
-        tag = "_binrt_test"
-        data = bytes(range(256))
-        with tempfile.NamedTemporaryFile(delete=False) as f:
-            f.write(data)
-            local_up = f.name
-        local_down = local_up + ".down"
-        try:
-            # Upload
-            result = magic_on_canister(
-                f"%put {local_up} {tag}", canister, network
-            )
-            assert "Uploaded" in result
-            # Download
-            result = magic_on_canister(
-                f"%get {tag} {local_down}", canister, network
-            )
-            assert "Downloaded" in result
-            with open(local_down, "rb") as f:
-                assert f.read() == data
-        finally:
-            for p in [local_up, local_down]:
-                if os.path.exists(p):
-                    os.unlink(p)
-
-
-# ===========================================================================
 # One-shot mode (-c flag)
 # ===========================================================================
 
@@ -410,16 +199,6 @@ class TestOneshotMode:
         out, err, rc = self._run_shell("print('shell-oneshot')", canister, network)
         assert rc == 0
         assert out == "shell-oneshot"
-
-    def test_oneshot_magic(self, canister_reachable, canister, network):
-        out, err, rc = self._run_shell("%info", canister, network)
-        assert rc == 0
-        assert "Canister" in out
-
-    def test_oneshot_ps(self, canister_reachable, canister, network):
-        out, err, rc = self._run_shell("%ps", canister, network)
-        assert rc == 0
-        assert "|" in out or "No tasks" in out or "ImportError" in out or "ValueError" in out
 
     def test_oneshot_local_command(self, canister_reachable, canister, network):
         out, err, rc = self._run_shell("!echo local-test", canister, network)
@@ -648,70 +427,3 @@ class TestEdgeCases:
         )
         result = exec_on_canister(code, canister, network)
         assert "module" in result
-
-
-# ===========================================================================
-# Database persistence — StableBTreeMap-backed storage
-# ===========================================================================
-
-class TestDatabasePersistence:
-    """Test that ic_python_db entities use persistent StableBTreeMap storage."""
-
-    def test_entity_persists_across_calls(self, canister_reachable, canister, network):
-        """Create an entity in one call, verify it exists in a subsequent call."""
-        import time
-        tag = f"persist_{int(time.time())}"
-
-        # Create entity
-        create_code = (
-            "from ic_python_db import Entity, String, TimestampedMixin\n"
-            "class PersistTest(Entity, TimestampedMixin):\n"
-            "    __alias__ = 'name'\n"
-            "    name = String()\n"
-            f"e = PersistTest(name='{tag}')\n"
-            "e._save()\n"
-            "print(f'created:{e._id}')"
-        )
-        result = exec_on_canister(create_code, canister, network)
-        assert result.startswith("created:"), f"Create failed: {result}"
-        entity_id = result.split(":", 1)[1]
-
-        # Retrieve entity in a separate call
-        read_code = (
-            "from ic_python_db import Entity, String, TimestampedMixin\n"
-            "class PersistTest(Entity, TimestampedMixin):\n"
-            "    __alias__ = 'name'\n"
-            "    name = String()\n"
-            f"e = PersistTest.load('{entity_id}')\n"
-            "print(f'found:{e.name}')"
-        )
-        result = exec_on_canister(read_code, canister, network)
-        assert result == f"found:{tag}", f"Read-back failed: {result}"
-
-        # Cleanup
-        cleanup_code = (
-            "from ic_python_db import Entity, String, TimestampedMixin\n"
-            "class PersistTest(Entity, TimestampedMixin):\n"
-            "    __alias__ = 'name'\n"
-            "    name = String()\n"
-            f"PersistTest.load('{entity_id}').delete()\n"
-            "print('deleted')"
-        )
-        result = exec_on_canister(cleanup_code, canister, network)
-        assert "deleted" in result, f"Cleanup failed: {result}"
-
-    def test_db_uses_stable_storage(self, canister_reachable, canister, network):
-        """Verify the database is backed by StableBTreeMap, not a plain dict."""
-        code = (
-            "from ic_python_db import Database\n"
-            "db = Database.get_instance()\n"
-            "stype = type(db._db_storage).__name__\n"
-            "print(f'storage:{stype}')"
-        )
-        result = exec_on_canister(code, canister, network)
-        assert "storage:" in result, f"Unexpected output: {result}"
-        storage_type = result.split(":", 1)[1]
-        assert storage_type != "dict", (
-            f"Database is using plain dict (ephemeral) instead of StableBTreeMap. "
-            f"Got: {storage_type}"
-        )

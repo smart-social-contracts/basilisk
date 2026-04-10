@@ -6,21 +6,10 @@ Provides:
   - status: Health check
 
 The frozen_stdlib_preamble automatically provides the in-memory filesystem (memfs).
-ic-python-db is explicitly imported so the bundler includes it for toolkit IC tests.
 """
 
 from basilisk import query, update, text, ic, Async, Tuple, match, CallResult, Principal, StableBTreeMap, GuardResult
 from basilisk.canisters.management import management_canister, HttpResponse, HttpTransformArgs
-import ic_python_db  # noqa: F401 — bundler hint: toolkit IC tests need the db ORM
-from ic_python_db import Database
-
-# ---------------------------------------------------------------------------
-# Persistent storage (survives canister upgrades)
-# ---------------------------------------------------------------------------
-
-storage = StableBTreeMap[str, str](memory_id=1, max_key_size=100, max_value_size=10000)
-Database.init(db_storage=storage, audit_enabled=True)
-
 # ---------------------------------------------------------------------------
 # Persistent shell namespace (per principal)
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
-# IC Tests — Basilisk OS runtime features (tasks, wallet, crypto, filesystem, etc.)
+# IC Tests — Basilisk CDK runtime features (shell exec, filesystem, guards).
 # These run against a live canister on IC mainnet. The canister must already be deployed.
-# The test conftest.py handles health checks and state cleanup.
+# Toolkit-specific IC tests (tasks, wallet, fx, crypto, vetkeys) live in ic-basilisk-toolkit.
 
 name: IC Tests
 
@@ -43,39 +43,10 @@ jobs:
             fail-fast: false
             matrix:
                 include:
-                    - shard: tasks-1
-                      pytest_args: >-
-                          tests/test_tasks.py -k
-                          "TaskList or TaskCreate or TaskInfo or TaskLog
-                          or TaskLifecycle or TaskDelete or ShortcutAliases
-                          or TaskUsage or TaskEntities"
-                    - shard: tasks-2
-                      pytest_args: >-
-                          tests/test_tasks.py -k
-                          "TaskExecution or TaskTimerExecution"
-                    - shard: tasks-3
-                      pytest_args: >-
-                          tests/test_tasks.py -k
-                          "TaskNameLookup or TaskCreateFile or TaskTimestamps
-                          or TaskLogFeatures or TaskAddStep"
-                    - shard: tasks-4
-                      pytest_args: >-
-                          tests/test_tasks.py -k
-                          "MultiStepExecution or Wget or TaskRetryResume
-                          or E2EWriteAndRun or E2EDownloadAndRun
-                          or PersistentFileStorage or UsageStrings"
+                    - shard: shell
+                      pytest_args: tests/test_shell.py
                     - shard: filesystem
                       pytest_args: tests/test_filesystem.py tests/test_sftp.py
-                    - shard: fx
-                      pytest_args: tests/test_fx.py
-                    - shard: shell-db
-                      pytest_args: tests/test_db_shell.py tests/test_shell.py
-                    - shard: vetkeys-wallet
-                      pytest_args: >-
-                          tests/test_vetkeys.py tests/test_wallet.py
-                          tests/test_wallet_shell.py tests/test_wallet_hook.py
-                    - shard: crypto
-                      pytest_args: tests/test_crypto.py
                     - shard: guards
                       pytest_args: tests/test_guards.py
         env:
@@ -111,8 +82,7 @@ jobs:
             - name: Install dependencies
               run: |
                   pip install -e ".[test]"
-                  pip install ic-python-db ic-python-logging asyncssh
-                  pip install "ic-basilisk-toolkit @ git+https://github.com/smart-social-contracts/ic-basilisk-toolkit.git@main"
+                  pip install asyncssh
 
             - name: Run tests (${{ matrix.shard }})
               run: |

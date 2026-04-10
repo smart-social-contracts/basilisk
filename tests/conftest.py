@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures for Basilisk OS integration tests.
+Shared pytest fixtures for Basilisk CDK integration tests.
 
 These tests run against a LIVE canister — they are integration tests,
 not unit tests. This is intentional: mocks won't catch real issues with
@@ -26,7 +26,7 @@ import pytest
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from basilisk.shell import canister_exec, _parse_candid, _handle_magic, _TASK_RESOLVE
+from basilisk.shell import canister_exec
 
 
 # ---------------------------------------------------------------------------
@@ -79,18 +79,6 @@ def canister_reachable(canister, network, dfx_available):
     if "error" in result.lower() or "Error" in result:
         pytest.skip(f"Canister {canister} not reachable on {network}: {result}")
     assert result.strip() == "ping", f"Unexpected ping response: {result!r}"
-    # Warm up the task entity classes in this principal's namespace.
-    canister_exec(
-        _TASK_RESOLVE +
-        # Fix stale Task_count counter if it diverged from actual instances.
-        "if 'Task' in dir():\n"
-        "    _actual = len(Task.instances())\n"
-        "    _stored = Task.count()\n"
-        "    if _actual != _stored:\n"
-        "        Task.db().save('_system', Task.get_full_type_name() + '_count', str(_actual))\n"
-        "print('task_entities_ready')\n",
-        canister, network,
-    )
     return True
 
 
@@ -100,10 +88,3 @@ def exec_on_canister(code, canister=None, network=None):
     n = network or _get_network()
     return canister_exec(code, c, n).strip()
 
-
-def magic_on_canister(cmd, canister=None, network=None):
-    """Helper: execute a magic command and return stripped output."""
-    c = canister or _get_canister()
-    n = network or _get_network()
-    result = _handle_magic(cmd, c, n)
-    return result.strip() if result else ""
