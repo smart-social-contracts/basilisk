@@ -26,7 +26,7 @@ on:
                 description: "Canister ID to test against"
                 required: false
                 type: string
-                default: "ru4ga-siaaa-aaaai-q7f3a-cai"
+                default: "2i66l-saaaa-aaaas-qe3sq-cai"
             network:
                 description: "IC network"
                 required: false
@@ -51,7 +51,7 @@ jobs:
                       pytest_args: tests/test_guards.py
         env:
             DFX_WARNING: -mainnet_plaintext_identity
-            BASILISK_TEST_CANISTER: ${{ inputs.canister || 'ru4ga-siaaa-aaaai-q7f3a-cai' }}
+            BASILISK_TEST_CANISTER: ${{ inputs.canister || '2i66l-saaaa-aaaas-qe3sq-cai' }}
             BASILISK_TEST_NETWORK: ${{ inputs.network || 'ic' }}
         name: ic-tests (${{ matrix.shard }})
         timeout-minutes: 20

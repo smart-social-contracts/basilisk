@@ -934,7 +934,7 @@ Once the enhanced posix stub is implemented:
 
 ### Problem
 
-HTTP outcalls from the test canister (`ru4ga-siaaa-aaaai-q7f3a-cai`) always failed with:
+HTTP outcalls from the test canister (`2i66l-saaaa-aaaas-qe3sq-cai`) always failed with:
 
 ```
 No consensus could be reached. Replicas had different responses.

@@ -7,7 +7,7 @@ Candid encoding, memfs edge cases, or timer callbacks.
 
 Configuration:
     Set environment variables or use defaults:
-        BASILISK_TEST_CANISTER  — canister ID (default: ru4ga-siaaa-aaaai-q7f3a-cai)
+        BASILISK_TEST_CANISTER  — canister ID (default: 2i66l-saaaa-aaaas-qe3sq-cai)
         BASILISK_TEST_NETWORK   — network (default: ic)
 
 Usage:
@@ -33,7 +33,7 @@ from basilisk.shell import canister_exec
 # Configuration
 # ---------------------------------------------------------------------------
 
-DEFAULT_CANISTER = "ru4ga-siaaa-aaaai-q7f3a-cai"  # Dedicated Basilisk OS test canister
+DEFAULT_CANISTER = "2i66l-saaaa-aaaas-qe3sq-cai"  # Dedicated Basilisk OS test canister
 DEFAULT_NETWORK = "ic"
 
 

@@ -14,22 +14,17 @@ On push to main, `test-all.yml` orchestrates all three (plus the CPython WASM te
 
 ## IC Tests (`test-shell.yml`)
 
-Tests Basilisk OS runtime features against a live canister on IC mainnet (`ru4ga-siaaa-aaaai-q7f3a-cai`).
+Tests Basilisk CDK runtime features against a live canister on IC mainnet (`2i66l-saaaa-aaaas-qe3sq-cai`).
+
+Toolkit-specific IC tests (tasks, wallet, fx, crypto, vetkeys) live in [ic-basilisk-toolkit](https://github.com/smart-social-contracts/ic-basilisk-toolkit).
 
 **Test files** (in `tests/`):
 
 | Shard | Files | What it covers |
 |---|---|---|
-| tasks-1 | `test_tasks.py` | Task CRUD, lifecycle, entities |
-| tasks-2 | `test_tasks.py` | Task execution, timer-based execution |
-| tasks-3 | `test_tasks.py` | Name lookup, timestamps, log features, add-step |
-| tasks-4 | `test_tasks.py` | Multi-step, wget, retry/resume, file persistence |
-| filesystem | `test_filesystem.py`, `test_sftp.py` | memfs operations, SFTP virtual filesystem |
-| fx | `test_fx.py` | FX rate service, XRC canister integration |
-| shell-db | `test_db_shell.py`, `test_shell.py` | `%db` commands, shell REPL, Candid parsing |
-| vetkeys-wallet | `test_vetkeys.py`, `test_wallet.py`, `test_wallet_shell.py`, `test_wallet_hook.py` | vetKD crypto, ICRC-1 wallet |
-| crypto | `test_crypto.py` | `%group` and `%crypto` commands, encryption |
-| guards | `test_guards.py` | Controller-only access guards |
+| shell | `test_shell.py` | Shell exec, Candid parsing, one-shot/file/pipe/watch modes |
+| filesystem | `test_filesystem.py`, `test_sftp.py` | memfs operations, file persistence, SFTP |
+| guards | `test_guards.py` | Guard metadata extraction, controller-only access |
 
 **Requirements:**
 - `IC_IDENTITY_PEM` secret (CI identity for mainnet calls)
@@ -40,9 +35,9 @@ Tests Basilisk OS runtime features against a live canister on IC mainnet (`ru4ga
 **Running locally:**
 ```bash
 pip install -e ".[shell,test]"
-BASILISK_TEST_CANISTER=ru4ga-siaaa-aaaai-q7f3a-cai \
+BASILISK_TEST_CANISTER=2i66l-saaaa-aaaas-qe3sq-cai \
 BASILISK_TEST_NETWORK=ic \
-PYTHONPATH=. python -m pytest tests/test_tasks.py -v
+PYTHONPATH=. python -m pytest tests/test_shell.py -v
 ```
 
 ## Local Tests (`test-integration.yml`)
@@ -108,7 +103,7 @@ Tests decentralized canister upgrades using the IC chunked code upload API (`upl
 ```
 tests/
   conftest.py              # Shared fixtures for IC tests
-  test_*.py                # IC test files (10 shards)
+  test_*.py                # IC test files (3 shards)
   test_canister/           # Shell test canister source + dfx.json
   integration/
     conftest.py            # Shared fixtures for local tests
