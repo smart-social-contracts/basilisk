@@ -111,7 +111,8 @@ jobs:
             - name: Install dependencies
               run: |
                   pip install -e ".[test]"
-                  pip install ic-python-db ic-python-logging ic-basilisk-toolkit
+                  pip install ic-python-db ic-python-logging
+                  pip install "ic-basilisk-toolkit @ git+https://github.com/smart-social-contracts/ic-basilisk-toolkit.git@main"
 
             - name: Run tests (${{ matrix.shard }})
               run: |
