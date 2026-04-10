@@ -1,16 +1,8 @@
 """
-Basilisk OS — Backward-compatibility re-export layer.
+Basilisk OS — canister-side services bundled by the compiler.
 
-This module re-exports everything from ``ic_basilisk_toolkit`` so that
-existing code using ``from basilisk.os import ...`` continues to work.
-
-Install the standalone package::
-
-    pip install ic-basilisk-toolkit
+This namespace is populated at compile time when the basilisk build system
+bundles the toolkit modules (entities, wallet, task_manager, etc.) into
+the canister WASM.  It is intentionally empty in the pip-installable
+ic-basilisk package.
 """
-
-try:
-    from ic_basilisk_toolkit import *          # noqa: F401,F403
-    from ic_basilisk_toolkit import __all__    # noqa: F401
-except ImportError:
-    pass

@@ -42,7 +42,6 @@ setup(
         "compiler/**/LICENSE*",
         "canisters/**",
         "py.typed",
-        "templates/**/*",
         "*.wasm",
         "*.js",
     ]},
@@ -50,8 +49,6 @@ setup(
     packages=["basilisk", "basilisk.os"],
     install_requires=[],
     extras_require={
-        "os": ["ic-basilisk-toolkit>=0.1.0"],
-        "shell": ["ic-basilisk-toolkit[shell]>=0.1.0"],
         "db": ["ic-python-db>=0.7.7"],
         "logging": ["ic-python-logging>=0.3.1"],
         "test": ["pytest"],

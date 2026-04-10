@@ -6,14 +6,6 @@ Usage: basilisk <command> [options]
 Commands:
   new <name>       Scaffold a new canister project
   build            Build the canister(s) in the current directory
-  exec <code>      Execute Python code on a deployed canister
-  shell            Interactive Python shell on a deployed canister
-  sshd             Start an SSH/SFTP server proxy to a canister
-
-Options (exec, shell, sshd):
-  --canister <id>   Canister name or principal ID  [auto-detect from dfx.json]
-  --network <net>   Network: local, ic, or URL     [default: local]
-  --identity <name> dfx identity to use            [default: current identity]
 
 Other:
   --version        Print version info
@@ -22,9 +14,7 @@ Other:
 Run basilisk <command> --help for command-specific options and examples.
 """
 
-import ast
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -33,17 +23,14 @@ from pathlib import Path
 _HELP_NEW = """\
 basilisk new — Scaffold a new canister project.
 
-Usage: basilisk new [--template simple|tip_jar] [--backend cpython|rustpython] <project_name>
+Usage: basilisk new [--backend cpython|rustpython] <project_name>
 
 Options:
-  --template <t>   Project template: tip_jar (full-stack) or simple (minimal)
-                   [default: tip_jar]
   --backend <be>   Python backend: cpython or rustpython  [default: cpython]
                    (rustpython is deprecated and will be removed in a future release)
 
 Examples:
-  basilisk new my_app                          Full-stack tip jar template
-  basilisk new --template simple my_app        Minimal single-file template
+  basilisk new my_app
   cd my_app && dfx start --background && dfx deploy
 """
 
@@ -60,28 +47,8 @@ Examples:
   basilisk build && dfx deploy
 """
 
-_HELP_EXEC = """\
-basilisk exec — Execute Python code on a deployed canister.
 
-Usage: basilisk exec [options] <code>
-       basilisk exec [options] -f <file>
-       echo "code" | basilisk exec [options]
-
-Options:
-  --canister <id>  Canister name or principal ID  [auto-detect from dfx.json]
-  --network <net>  Network: local, ic, or URL     [default: local]
-  -f <file>        Execute a local Python file instead of inline code
-
-Examples:
-  basilisk exec 'print("hello")'                         Inline code
-  basilisk exec --canister my_app 'print(1+1)'           Explicit canister
-  basilisk exec --network ic 'print(ic.time())'          On mainnet
-  basilisk exec -f script.py                             Run a local file
-  echo "import sys; print(sys.version)" | basilisk exec  Pipe from stdin
-"""
-
-
-def cmd_new(project_name: str, backend: str = "cpython", template: str = "tip_jar"):
+def cmd_new(project_name: str, backend: str = "cpython"):
     """Scaffold a new basilisk canister project."""
     project_dir = Path(project_name)
 
@@ -98,21 +65,13 @@ def cmd_new(project_name: str, backend: str = "cpython", template: str = "tip_ja
         print(f"Error: unknown backend '{backend}'. Use 'cpython' or 'rustpython'.", file=sys.stderr)
         sys.exit(1)
 
-    if template not in ("simple", "tip_jar"):
-        print(f"Error: unknown template '{template}'. Use 'simple' or 'tip_jar'.", file=sys.stderr)
-        sys.exit(1)
-
     if backend == "rustpython":
         print("Warning: rustpython is deprecated and will be removed in a future release. Use cpython instead.", file=sys.stderr)
 
-    print(f"Creating new basilisk project: {project_name} (template: {template}, backend: {backend})")
+    print(f"Creating new basilisk project: {project_name} (backend: {backend})")
 
     template_dir = Path(__file__).parent / "templates"
-
-    if template == "tip_jar":
-        _scaffold_tip_jar(project_dir, project_name, backend, template_dir)
-    else:
-        _scaffold_simple(project_dir, project_name, backend, template_dir)
+    _scaffold_simple(project_dir, project_name, backend, template_dir)
 
 
 def _scaffold_simple(project_dir: Path, project_name: str, backend: str, template_dir: Path):
@@ -164,89 +123,7 @@ Next steps:
   dfx canister call {project_name} greet '("World")'
   dfx canister call {project_name} increment
   dfx canister call {project_name} get_counter
-  basilisk shell --canister {project_name}          # interactive shell
-  basilisk exec --canister {project_name} 'print(1)'  # one-shot exec
 """)
-
-
-def _scaffold_tip_jar(project_dir: Path, project_name: str, backend: str, template_dir: Path):
-    """Scaffold the full-stack Tip Jar template with frontend."""
-    tip_jar_template = template_dir / "tip_jar"
-
-    # Copy the entire template tree (exclude build artifacts and production canister IDs)
-    shutil.copytree(
-        tip_jar_template, project_dir,
-        ignore=shutil.ignore_patterns('.basilisk', '.dfx', '__pycache__', 'canister_ids.json'),
-    )
-
-    # Rename canister references from "tip_jar" to <project_name>
-    _replace_in_project(project_dir, project_name, backend)
-
-    backend_name = f"{project_name}_backend"
-    build_note = "⚡ fast template build" if backend == "cpython" else "🔨 full Rust build (~5-10 min first time)"
-    print(f"""
-Done! Created {project_name}/ ({build_note})
-  src/backend/     — canister code (models, services, endpoints)
-  src/frontend/    — web UI (HTML, JS, CSS)
-  dfx.json         — IC project config (backend + frontend canisters)
-  README.md        — quick-start guide
-
-Next steps:
-  cd {project_name}
-  dfx start --background
-  dfx deploy
-  dfx canister call {backend_name} status
-  dfx canister call {backend_name} register_donor '("Alice")'
-  dfx canister call {backend_name} get_leaderboard
-  basilisk shell --canister {backend_name}
-
-  # Open frontend:
-  echo "http://$(dfx canister id {project_name}_frontend).localhost:4943"
-""")
-
-
-def _replace_in_project(project_dir: Path, project_name: str, backend: str):
-    """Replace 'tip_jar' with the actual project name in scaffolded files."""
-    backend_prefix = "BASILISK_PYTHON_BACKEND=rustpython " if backend == "rustpython" else ""
-    replacements = {
-        "tip_jar_backend": f"{project_name}_backend",
-        "tip_jar_frontend": f"{project_name}_frontend",
-        "Tip Jar": project_name.replace("_", " ").title(),
-        "tip_jar": project_name,
-    }
-
-    # Also patch the build command for rustpython if needed
-    if backend == "rustpython":
-        replacements[
-            f"CANISTER_CANDID_PATH=./{project_name}_backend.did python -m basilisk"
-        ] = f"{backend_prefix}CANISTER_CANDID_PATH=./{project_name}_backend.did python -m basilisk"
-
-    text_extensions = {".py", ".json", ".html", ".js", ".css", ".md", ".gitignore", ".yaml", ".did"}
-
-    for filepath in project_dir.rglob("*"):
-        if not filepath.is_file():
-            continue
-        if filepath.suffix not in text_extensions and filepath.name != ".gitignore":
-            continue
-        try:
-            content = filepath.read_text()
-        except UnicodeDecodeError:
-            continue
-        original = content
-        for old, new in replacements.items():
-            content = content.replace(old, new)
-        if content != original:
-            filepath.write_text(content)
-
-    # Rename files that contain "tip_jar" in their name (e.g. .did files)
-    for filepath in sorted(project_dir.rglob("*"), reverse=True):
-        if not filepath.is_file():
-            continue
-        new_name = filepath.name
-        for old, new in replacements.items():
-            new_name = new_name.replace(old, new)
-        if new_name != filepath.name:
-            filepath.rename(filepath.with_name(new_name))
 
 
 def cmd_build():
@@ -292,105 +169,6 @@ def cmd_build():
                 sys.exit(1)
 
 
-def _parse_candid_string(output: str) -> str:
-    """Parse a Candid-encoded string response from dfx into plain text."""
-    output = output.strip()
-    # General tuple pattern: (  "content"  ) or (  "content",  )
-    m = re.search(r'\(\s*"(.*)"\s*,?\s*\)', output, re.DOTALL)
-    if m:
-        try:
-            return ast.literal_eval(f'"{m.group(1)}"')
-        except (SyntaxError, ValueError):
-            return m.group(1).replace("\\n", "\n").replace('\\"', '"')
-    return output
-
-
-def _detect_canister_from_dfx() -> str | None:
-    """Try to find the first basilisk canister name from dfx.json."""
-    import json
-    if not Path("dfx.json").exists():
-        return None
-    try:
-        with open("dfx.json") as f:
-            dfx = json.load(f)
-        for name, config in dfx.get("canisters", {}).items():
-            if "basilisk" in config.get("build", ""):
-                return name
-    except Exception:
-        pass
-    return None
-
-
-def cmd_exec(args: list[str]):
-    """Execute Python code on a deployed basilisk canister."""
-    canister = None
-    network = None
-    identity = None
-    file_path = None
-    code_parts = []
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--canister" and i + 1 < len(args):
-            canister = args[i + 1]; i += 2
-        elif args[i] == "--network" and i + 1 < len(args):
-            network = args[i + 1]; i += 2
-        elif args[i] == "--identity" and i + 1 < len(args):
-            identity = args[i + 1]; i += 2
-        elif args[i] == "-f" and i + 1 < len(args):
-            file_path = args[i + 1]; i += 2
-        else:
-            code_parts.append(args[i]); i += 1
-
-    # Get code from file or args
-    if file_path:
-        try:
-            code = Path(file_path).read_text()
-        except FileNotFoundError:
-            print(f"Error: file not found: {file_path}", file=sys.stderr)
-            sys.exit(1)
-    elif code_parts:
-        code = " ".join(code_parts)
-    else:
-        # Read from stdin
-        code = sys.stdin.read()
-
-    if not code.strip():
-        print("Error: no code provided. Usage: basilisk exec [--canister <c>] [--network <n>] [-f <file>] <code>", file=sys.stderr)
-        sys.exit(1)
-
-    # Auto-detect canister if not specified
-    if not canister:
-        canister = _detect_canister_from_dfx()
-        if not canister:
-            print("Error: --canister required (could not auto-detect from dfx.json)", file=sys.stderr)
-            sys.exit(1)
-
-    # Build dfx command
-    escaped_code = code.replace('"', '\\"').replace("\n", "\\n")
-    cmd = ["dfx", "canister", "call"]
-    if identity:
-        cmd.extend(["--identity", identity])
-    if network:
-        cmd.extend(["--network", network])
-    cmd.extend([canister, "execute_code_shell", f'("{escaped_code}")'])
-
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-        if result.returncode != 0:
-            print(result.stderr.strip(), file=sys.stderr)
-            sys.exit(1)
-        output = _parse_candid_string(result.stdout)
-        if output:
-            print(output, end="" if output.endswith("\n") else "\n")
-    except subprocess.TimeoutExpired:
-        print("Error: canister call timed out (120s)", file=sys.stderr)
-        sys.exit(1)
-    except FileNotFoundError:
-        print("Error: dfx not found. Install the DFINITY SDK.", file=sys.stderr)
-        sys.exit(1)
-
-
 def main():
     if len(sys.argv) < 2:
         print(__doc__.strip())
@@ -399,13 +177,12 @@ def main():
     command = sys.argv[1]
 
     if command == "new":
-        # Parse --backend and --template flags
+        # Parse --backend flag
         args = sys.argv[2:]
         if "--help" in args or "-h" in args:
             print(_HELP_NEW, end="")
             return
         backend = "cpython"  # default
-        template = "tip_jar"  # default
         if "--backend" in args:
             idx = args.index("--backend")
             if idx + 1 >= len(args):
@@ -413,53 +190,17 @@ def main():
                 sys.exit(1)
             backend = args[idx + 1]
             args = args[:idx] + args[idx + 2:]
-        if "--template" in args:
-            idx = args.index("--template")
-            if idx + 1 >= len(args):
-                print("Error: --template requires a value (simple or tip_jar)", file=sys.stderr)
-                sys.exit(1)
-            template = args[idx + 1]
-            args = args[:idx] + args[idx + 2:]
 
         if len(args) < 1:
             print(_HELP_NEW, end="")
             sys.exit(1)
-        cmd_new(args[0], backend, template)
+        cmd_new(args[0], backend)
 
     elif command == "build":
         if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
             print(_HELP_BUILD, end="")
             return
         cmd_build()
-
-    elif command == "exec":
-        try:
-            from ic_basilisk_toolkit.cli import cmd_exec
-        except ImportError:
-            print("Error: 'exec' requires ic-basilisk-toolkit. Install: pip install ic-basilisk-toolkit", file=sys.stderr)
-            sys.exit(1)
-        if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
-            print(_HELP_EXEC, end="")
-            return
-        cmd_exec(sys.argv[2:])
-
-    elif command == "shell":
-        try:
-            from ic_basilisk_toolkit.shell import main as shell_main
-        except ImportError:
-            print("Error: 'shell' requires ic-basilisk-toolkit. Install: pip install ic-basilisk-toolkit[shell]", file=sys.stderr)
-            sys.exit(1)
-        sys.argv = ["basilisk-shell"] + sys.argv[2:]
-        shell_main()
-
-    elif command == "sshd":
-        try:
-            from ic_basilisk_toolkit.sshd import main as sshd_main
-        except ImportError:
-            print("Error: 'sshd' requires ic-basilisk-toolkit. Install: pip install ic-basilisk-toolkit[shell]", file=sys.stderr)
-            sys.exit(1)
-        sys.argv = ["basilisk-sshd"] + sys.argv[2:]
-        sshd_main()
 
     elif command in ("-h", "--help", "help"):
         print(__doc__.strip())
