@@ -20,6 +20,41 @@ import subprocess
 import sys
 from pathlib import Path
 
+_TOOLKIT_COMMANDS = {"shell", "exec", "sshd"}
+
+_HELP_TOOLKIT = """
+Toolkit commands (provided by ic-basilisk-toolkit):
+  shell            Interactive Python shell on a deployed canister
+  exec <code>      Execute Python code on a deployed canister
+  sshd             Start an SSH/SFTP server proxy to a canister
+"""
+
+
+def _toolkit_available() -> bool:
+    """Check if ic-basilisk-toolkit is installed."""
+    try:
+        import ic_basilisk_toolkit.cli  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _help_text() -> str:
+    """Return help text, including toolkit commands if available."""
+    base = __doc__.strip()
+    if _toolkit_available():
+        # Insert toolkit commands before the "Other:" section
+        lines = base.split("\n")
+        result = []
+        for line in lines:
+            if line.startswith("Other:"):
+                result.append(_HELP_TOOLKIT.strip())
+                result.append("")
+            result.append(line)
+        return "\n".join(result)
+    return base
+
+
 _HELP_NEW = """\
 basilisk new — Scaffold a new canister project.
 
@@ -171,7 +206,7 @@ def cmd_build():
 
 def main():
     if len(sys.argv) < 2:
-        print(__doc__.strip())
+        print(_help_text())
         sys.exit(1)
 
     command = sys.argv[1]
@@ -203,7 +238,7 @@ def main():
         cmd_build()
 
     elif command in ("-h", "--help", "help"):
-        print(__doc__.strip())
+        print(_help_text())
 
     elif command == "--version":
         from basilisk import __version__
@@ -235,9 +270,18 @@ def main():
         if commit:
             print(commit)
 
+    elif command in _TOOLKIT_COMMANDS:
+        try:
+            from ic_basilisk_toolkit.cli import main as toolkit_main
+            toolkit_main()
+        except ImportError:
+            print(f"The '{command}' command requires ic-basilisk-toolkit.", file=sys.stderr)
+            print("Install it with: pip install ic-basilisk-toolkit", file=sys.stderr)
+            sys.exit(1)
+
     else:
         print(f"Unknown command: {command}", file=sys.stderr)
-        print(__doc__.strip())
+        print(_help_text())
         sys.exit(1)
 
 
