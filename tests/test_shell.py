@@ -1,15 +1,13 @@
 """
-Integration tests for Basilisk CDK shell — exec, Candid parsing, shell modes.
+Integration tests for Basilisk CDK shell — exec, Candid parsing, edge cases.
 
 Tests run against a live canister to verify end-to-end reliability.
-Toolkit-specific tests (magic commands, database persistence) live in ic-basilisk-toolkit.
+Toolkit-specific tests (magic commands, database persistence) and shell modes
+(one-shot, file, pipe, watch) live in ic-basilisk-toolkit.
 """
 
 import os
-import subprocess
 import sys
-import tempfile
-import time
 
 import pytest
 
@@ -172,174 +170,6 @@ class TestPersistentVariables:
         exec_on_canister("shelltestpersist = 42", canister, network)
         result = exec_on_canister("print(shelltestpersist)", canister, network)
         assert result == "42"
-
-
-# ===========================================================================
-# One-shot mode (-c flag)
-# ===========================================================================
-
-class TestOneshotMode:
-    """Test basilisk shell invocation via subprocess (one-shot mode)."""
-
-    def _run_shell(self, code, canister, network):
-        """Run basilisk shell -c and return stdout."""
-        cmd = [
-            sys.executable, "-m", "basilisk.shell",
-            "--canister", canister,
-            "--network", network,
-            "-c", code,
-        ]
-        r = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=120,
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
-        )
-        return r.stdout.strip(), r.stderr.strip(), r.returncode
-
-    def test_oneshot_print(self, canister_reachable, canister, network):
-        out, err, rc = self._run_shell("print('shell-oneshot')", canister, network)
-        assert rc == 0
-        assert out == "shell-oneshot"
-
-    def test_oneshot_local_command(self, canister_reachable, canister, network):
-        out, err, rc = self._run_shell("!echo local-test", canister, network)
-        assert rc == 0
-        assert "local-test" in out
-
-
-# ===========================================================================
-# File mode
-# ===========================================================================
-
-class TestFileMode:
-    """Test basilisk shell with a script file argument."""
-
-    def test_file_execution(self, canister_reachable, canister, network):
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False
-        ) as f:
-            f.write("print('from-file')\n")
-            f.flush()
-            tmppath = f.name
-
-        try:
-            cmd = [
-                sys.executable, "-m", "basilisk.shell",
-                "--canister", canister,
-                "--network", network,
-                tmppath,
-            ]
-            r = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=120,
-                cwd=os.path.join(os.path.dirname(__file__), ".."),
-            )
-            assert r.returncode == 0
-            assert "from-file" in r.stdout
-        finally:
-            os.unlink(tmppath)
-
-    def test_file_not_found(self, canister, network):
-        cmd = [
-            sys.executable, "-m", "basilisk.shell",
-            "--canister", canister,
-            "--network", network,
-            "/nonexistent/script.py",
-        ]
-        r = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=10,
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
-        )
-        assert r.returncode != 0
-        assert "No such file" in r.stderr
-
-
-# ===========================================================================
-# Pipe mode
-# ===========================================================================
-
-class TestPipeMode:
-    """Test basilisk shell reading from stdin pipe."""
-
-    def test_pipe_execution(self, canister_reachable, canister, network):
-        cmd = [
-            sys.executable, "-m", "basilisk.shell",
-            "--canister", canister,
-            "--network", network,
-        ]
-        r = subprocess.run(
-            cmd,
-            input="print('from-pipe')\n",
-            capture_output=True, text=True, timeout=120,
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
-        )
-        assert r.returncode == 0
-        assert "from-pipe" in r.stdout
-
-
-# ===========================================================================
-# Watch mode
-# ===========================================================================
-
-class TestWatchMode:
-    """Test basilisk shell --watch mode (file-based session)."""
-
-    def test_watch_round_trip(self, canister_reachable, canister, network):
-        inbox = tempfile.mktemp(suffix="_inbox")
-        outbox = tempfile.mktemp(suffix="_outbox")
-
-        cmd = [
-            sys.executable, "-m", "basilisk.shell",
-            "--canister", canister,
-            "--network", network,
-            "--watch", inbox,
-            "--outbox", outbox,
-        ]
-
-        # Start basilisk shell in watch mode
-        proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            cwd=os.path.join(os.path.dirname(__file__), ".."),
-        )
-
-        try:
-            # Wait for initialization
-            for _ in range(20):
-                time.sleep(0.5)
-                if os.path.exists(outbox):
-                    with open(outbox) as f:
-                        if "---READY---" in f.read():
-                            break
-
-            # Send a command
-            with open(inbox, "w") as f:
-                f.write("print('watch-test')\n")
-
-            # Wait for response
-            result = ""
-            for _ in range(40):
-                time.sleep(0.5)
-                if os.path.exists(outbox):
-                    with open(outbox) as f:
-                        content = f.read()
-                    if "---READY---" in content and "watch-test" in content:
-                        result = content
-                        break
-
-            assert "watch-test" in result
-
-            # Send quit
-            with open(inbox, "w") as f:
-                f.write(":q\n")
-            proc.wait(timeout=10)
-
-        finally:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-            for p in [inbox, outbox]:
-                if os.path.exists(p):
-                    os.unlink(p)
 
 
 # ===========================================================================
