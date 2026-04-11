@@ -12,7 +12,7 @@ and indexer canisters on the Internet Computer:
 Usage inside a canister::
 
     from basilisk.canisters.icrc import ICRCLedger, Account
-    from basilisk.toolkit.wallet import WELL_KNOWN_TOKENS
+    from ic_basilisk_toolkit.tokens import WELL_KNOWN_TOKENS
     from basilisk import Principal
 
     ckbtc = WELL_KNOWN_TOKENS["ckBTC"]
@@ -208,7 +208,7 @@ class ICRCLedger(Service):
     Usage::
 
         from basilisk.canisters.icrc import ICRCLedger, Account
-        from basilisk.toolkit.wallet import WELL_KNOWN_TOKENS
+        from ic_basilisk_toolkit.tokens import WELL_KNOWN_TOKENS
         ckbtc = WELL_KNOWN_TOKENS["ckBTC"]
         ledger = ICRCLedger(Principal.from_str(ckbtc["ledger"]))
         balance = yield ledger.icrc1_balance_of(

@@ -113,7 +113,7 @@ node_modules/
     build_note = "⚡ fast template build" if backend == "cpython" else "🔨 full Rust build (~5-10 min first time)"
     print(f"""
 Done! Created {project_name}/ ({build_note})
-  src/main.py    — your canister code (shell, DB, counter, HTTP outcalls)
+  src/main.py    — your canister code (counter, greet, status)
   dfx.json       — IC project config (backend: {backend})
 
 Next steps:

@@ -46,7 +46,7 @@ jobs:
                     - shard: shell
                       pytest_args: tests/test_shell.py
                     - shard: filesystem
-                      pytest_args: tests/test_filesystem.py tests/test_sftp.py
+                      pytest_args: tests/test_filesystem.py
                     - shard: guards
                       pytest_args: tests/test_guards.py
         env:
@@ -82,7 +82,6 @@ jobs:
             - name: Install dependencies
               run: |
                   pip install -e ".[test]"
-                  pip install asyncssh
 
             - name: Run tests (${{ matrix.shard }})
               run: |

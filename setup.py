@@ -7,7 +7,7 @@ setup(
     version=__version__,
     author="Smart Social Contracts",
     author_email="contact@smartsocialcontracts.org",
-    description="An ICP Python Canister Development Kit and Application Framework for the Internet Computer",
+    description="An ICP Python Canister Development Kit for the Internet Computer",
     url="https://github.com/smart-social-contracts/basilisk",
     project_urls={
         "Documentation": "https://github.com/smart-social-contracts/basilisk#readme",
@@ -46,7 +46,7 @@ setup(
         "*.js",
     ]},
     include_package_data=True,
-    packages=["basilisk", "basilisk.toolkit"],
+    packages=["basilisk"],
     install_requires=[],
     extras_require={
         "test": ["pytest"],

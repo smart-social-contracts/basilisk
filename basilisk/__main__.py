@@ -411,7 +411,7 @@ def _print_bundle_summary(bundled_packages: dict[str, int]):
 
 def should_skip_package(node_identifier: str, node_packagepath: str) -> bool:
     """Skip the top-level basilisk package (compiler, shell, templates, etc.)
-    but allow canister-side subpackages like basilisk.toolkit through.
+    but allow canister-side subpackages through.
     Works for both pip-installed and editable (pip install -e) installs."""
     # Skip the top-level basilisk package but not its subpackages
     if node_identifier == "basilisk":
@@ -422,8 +422,8 @@ def should_skip_package(node_identifier: str, node_packagepath: str) -> bool:
 def _ensure_parent_inits(python_source_path: str, dest_dir: str):
     """Create empty __init__.py in parent directories for nested packages.
 
-    E.g. for dest_dir='basilisk/os', ensures basilisk/__init__.py exists
-    so that 'from basilisk.toolkit import ...' works at runtime.
+    E.g. for dest_dir='basilisk/canisters', ensures basilisk/__init__.py exists
+    so that nested imports work at runtime.
     """
     parts = dest_dir.split(os.sep)
     for i in range(1, len(parts)):

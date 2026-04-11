@@ -401,7 +401,7 @@ def _bundle_all_modules(source_dir: str, entry_module: str) -> str:
                 continue
 
             # Skip the top-level basilisk __init__ - provided by the Rust
-            # BASILISK_PYTHON_SHIM.  Subpackages like basilisk.toolkit are pure-Python
+            # BASILISK_PYTHON_SHIM.  Subpackages like basilisk.canisters are pure-Python
             # and must be bundled so canister code can import them.
             if mod_name == "basilisk":
                 continue

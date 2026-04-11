@@ -23,7 +23,7 @@ Toolkit-specific IC tests (tasks, wallet, fx, crypto, vetkeys) live in [ic-basil
 | Shard | Files | What it covers |
 |---|---|---|
 | shell | `test_shell.py` | Shell exec, Candid parsing, one-shot/file/pipe/watch modes |
-| filesystem | `test_filesystem.py`, `test_sftp.py` | memfs operations, file persistence, SFTP |
+| filesystem | `test_filesystem.py` | memfs operations, file persistence |
 | guards | `test_guards.py` | Guard metadata extraction, controller-only access |
 
 **Requirements:**
