@@ -3052,7 +3052,9 @@ _builtins.__import__ = _wasi_safe_import
 
 # --- Add memfs CWD to sys.path so user-uploaded .py files are importable ---
 # Without this, `import my_module` fails even though the file exists on memfs.
-if '.' not in _sys.path:
-    _sys.path.append('.')
-if '/' not in _sys.path:
-    _sys.path.append('/')
+# Guard: sys.path may not exist in minimal WASI CPython environments.
+if hasattr(_sys, 'path'):
+    if '.' not in _sys.path:
+        _sys.path.append('.')
+    if '/' not in _sys.path:
+        _sys.path.append('/')
