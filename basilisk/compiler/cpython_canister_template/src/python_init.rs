@@ -660,11 +660,19 @@ def _memfs_walk(root):
     return result
 
 def _basilisk_save_files():
-    """Serialize memfs files to stable memory (after maps region)."""
+    """Serialize memfs files to stable memory (after maps region).
+
+    Files already in the direct file store are skipped — their content
+    is already in stable memory.  Only files NOT in the store are saved
+    here as a safety net (backward compat / edge cases).
+    """
     import os, os.path
     import base64 as _b64
     files = {}
     for fpath in _memfs_walk('/'):
+        # Skip files already managed by the direct file store
+        if _basilisk_file_store.contains_key(fpath):
+            continue
         full_dir = os.path.dirname(fpath)
         full_dir = full_dir if full_dir.endswith('/') else full_dir + '/'
         if any(full_dir.startswith(p) for p in _VOLATILE_PREFIXES):
@@ -718,29 +726,55 @@ def _basilisk_load_files():
                             pass
     # 2. Primary: restore from StableBTreeMap file store (overwrites legacy)
     _basilisk_restore_files_from_map()
+    # 3. One-time migration: convert any old base64 entries to direct storage
+    _migrate_legacy_to_direct()
 
-# === Immediate file persistence via StableBTreeMap ===
-# Files written to non-volatile paths are automatically persisted to a
-# dedicated StableBTreeMap so they survive upgrades by default.
+# === Immediate file persistence via StableBTreeMap + direct stable memory ===
+# Files written to non-volatile paths are automatically persisted so they
+# survive canister upgrades.  File CONTENTS are written directly to stable
+# memory (at high offsets) on each close(), and only a small metadata index
+# {path: {"o": offset, "n": length}} is kept in the Python dict.  This
+# eliminates the pre_upgrade serialization bottleneck (#35).
 
 _BASILISK_FS_MEM_ID = 255
 _basilisk_file_store = StableBTreeMap(memory_id=_BASILISK_FS_MEM_ID, max_key_size=500, max_value_size=0)
+
+# Direct stable memory region for file content (starts at 16 MB).
+# The maps serialization region (offset 0) will never approach 16 MB,
+# so the two regions cannot overlap.
+_FS_CONTENT_BASE = 256 * 65536   # page 256 = 16 MB
+_fs_content_next = _FS_CONTENT_BASE
 
 import builtins as _builtins
 _original_open = _builtins.open
 
 def _persist_file(path):
-    """Read file from memfs and store in the file store map."""
-    import base64 as _b64
+    """Read file from memfs and store content directly in stable memory."""
+    global _fs_content_next
     try:
         with _original_open(path, 'rb') as _f:
             _content = _f.read()
-        _basilisk_file_store.insert(path, _b64.b64encode(_content).decode('ascii'))
+        _nbytes = len(_content)
+        if _nbytes == 0:
+            # Empty file — store metadata only, no stable write needed
+            _basilisk_file_store.insert(path, _json.dumps({"o": 0, "n": 0}))
+            return
+        # Grow stable memory if needed
+        _end = _fs_content_next + _nbytes
+        _pages_needed = (_end + 65535) // 65536
+        _current = _basilisk_ic.stable64_size()
+        if _pages_needed > _current:
+            _basilisk_ic.stable64_grow(_pages_needed - _current)
+        # Write raw content directly to stable memory
+        _basilisk_ic.stable64_write(_fs_content_next, _content)
+        # Store only metadata (not content!) in the file store dict
+        _basilisk_file_store.insert(path, _json.dumps({"o": _fs_content_next, "n": _nbytes}))
+        _fs_content_next = _end
     except Exception:
         pass
 
 class _PersistentFile:
-    """Wrapper that auto-persists file content to StableBTreeMap on close."""
+    """Wrapper that auto-persists file content to stable memory on close."""
     __slots__ = ('_pf_file', '_pf_path', '_pf_done')
     def __init__(self, file_obj, path):
         self._pf_file = file_obj
@@ -801,19 +835,46 @@ _os.unlink = _persistent_os_remove
 _os.rename = _persistent_os_rename
 
 def _basilisk_restore_files_from_map():
-    """Restore files from the StableBTreeMap file store to memfs."""
+    """Restore files from the file store to memfs (handles both formats)."""
+    global _fs_content_next
     import os as _ros
-    import base64 as _rb64
-    for _path, _b64_data in _basilisk_file_store.items():
+    _max_end = _FS_CONTENT_BASE
+    for _path, _data in _basilisk_file_store.items():
         try:
             _parent = _ros.path.dirname(_path)
             if _parent and _parent != '/':
                 _ros.makedirs(_parent, exist_ok=True)
-            _content = _rb64.b64decode(_b64_data)
+            # New format: JSON metadata {"o": offset, "n": length}
+            if _data.startswith('{'):
+                _meta = _json.loads(_data)
+                _off = _meta["o"]
+                _nbytes = _meta["n"]
+                if _nbytes == 0:
+                    _content = b""
+                else:
+                    _content = _basilisk_ic.stable64_read(_off, _nbytes)
+                    _end = _off + _nbytes
+                    if _end > _max_end:
+                        _max_end = _end
+            else:
+                # Old format: base64-encoded content (backward compat)
+                import base64 as _rb64
+                _content = _rb64.b64decode(_data)
             with _original_open(_path, 'wb') as _f:
                 _f.write(_content)
         except Exception:
             pass
+    # Set the append pointer past all existing content
+    _fs_content_next = _max_end
+
+def _migrate_legacy_to_direct():
+    """One-time migration: convert base64 file store entries to direct storage."""
+    _keys = []
+    for _path, _data in _basilisk_file_store.items():
+        if not _data.startswith('{'):
+            _keys.append(_path)
+    for _path in _keys:
+        _persist_file(_path)
 
 # === Func/Service/Query/Update type stubs ===
 class _FuncType:
