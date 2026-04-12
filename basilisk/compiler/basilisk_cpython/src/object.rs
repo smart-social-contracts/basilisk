@@ -1,8 +1,7 @@
 //! Safe wrapper around CPython's PyObject*.
 //!
 //! PyObjectRef provides RAII-based reference counting and safe access
-//! to CPython object operations. It mirrors the role of
-//! `rustpython::vm::PyObjectRef` in the current codebase.
+//! to CPython object operations.
 
 use crate::ffi;
 use core::ffi::c_char;
@@ -11,7 +10,7 @@ use core::ptr;
 
 /// A reference-counted wrapper around a CPython `PyObject*`.
 ///
-/// Automatically calls `Py_DecRef` on drop. Equivalent to RustPython's `PyObjectRef`.
+/// Automatically calls `Py_DecRef` on drop.
 pub struct PyObjectRef {
     ptr: *mut ffi::PyObject,
 }
@@ -438,7 +437,6 @@ impl fmt::Debug for PyObjectRef {
 // === Error type ===
 
 /// Python exception captured from CPython.
-/// Equivalent to RustPython's `PyBaseExceptionRef`.
 #[derive(Debug)]
 pub struct PyError {
     pub type_name: String,
@@ -540,7 +538,7 @@ impl PyError {
         }
     }
 
-    /// Format as "TypeName: message" (matching RustPython's error string format).
+    /// Format as "TypeName: message".
     pub fn to_rust_err_string(&self) -> String {
         if self.message.is_empty() {
             self.type_name.clone()

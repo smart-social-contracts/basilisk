@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Benchmark runner for Basilisk (CPython) vs RustPython
+# Benchmark runner for Basilisk
 #
 # Usage:
 #   ./run_benchmark.sh <backend> [--network <local|ic>] [--skip-build] [--skip-deploy]
 #
 # Examples:
 #   ./run_benchmark.sh cpython                     # Build + deploy + bench locally
-#   ./run_benchmark.sh rustpython                  # Build + deploy + bench locally
 #   ./run_benchmark.sh cpython --network ic        # Build + deploy + bench on IC mainnet
 #   ./run_benchmark.sh cpython --skip-build        # Skip build, just deploy + bench
 #
@@ -48,24 +47,12 @@ if [ "$SKIP_BUILD" = false ]; then
     echo "--- Building canister ($BACKEND) ---"
     BUILD_START=$(date +%s%N)
 
-    if [ "$BACKEND" = "cpython" ]; then
-        export BASILISK_PYTHON_BACKEND=cpython
-        CANISTER_CANDID_PATH=benchmark_counter.did python -m basilisk benchmark_counter src/main.py
-        cp .basilisk/benchmark_counter/benchmark_counter.wasm benchmark_counter.wasm
-        cp .basilisk/benchmark_counter/benchmark_counter.did benchmark_counter.did 2>/dev/null || true
-        # Convert WASI imports to IC-compatible imports (needed for local dev template)
-        if command -v wasi2ic &>/dev/null; then
-            wasi2ic benchmark_counter.wasm benchmark_counter.wasm
-        fi
-    else
-        # RustPython build via basilisk
-        export BASILISK_PYTHON_BACKEND=rustpython
-        CANISTER_CANDID_PATH=benchmark_counter.did python -m basilisk benchmark_counter src/main.py
-        cp .basilisk/benchmark_counter/benchmark_counter.wasm benchmark_counter.wasm
-        # Generate .did from the build output if available
-        if [ -f benchmark_counter.did ]; then
-            echo "Using existing benchmark_counter.did"
-        fi
+    CANISTER_CANDID_PATH=benchmark_counter.did python -m basilisk benchmark_counter src/main.py
+    cp .basilisk/benchmark_counter/benchmark_counter.wasm benchmark_counter.wasm
+    cp .basilisk/benchmark_counter/benchmark_counter.did benchmark_counter.did 2>/dev/null || true
+    # Convert WASI imports to IC-compatible imports (needed for local dev template)
+    if command -v wasi2ic &>/dev/null; then
+        wasi2ic benchmark_counter.wasm benchmark_counter.wasm
     fi
 
     BUILD_END=$(date +%s%N)

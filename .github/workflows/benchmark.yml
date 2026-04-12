@@ -9,8 +9,6 @@ on:
                 type: choice
                 options:
                     - cpython
-                    - rustpython
-                    - both
             network:
                 description: "Network to run benchmarks on"
                 required: true
@@ -31,7 +29,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                backend: ${{ github.event.inputs.backend == 'both' && fromJSON('["cpython","rustpython"]') || fromJSON(format('["{0}"]', github.event.inputs.backend)) }}
+                backend: ${{ fromJSON(format('["{0}"]', github.event.inputs.backend)) }}
         env:
             PYTHON_VERSION: "3.13"
             DFX_VERSION: "0.30.2"
@@ -100,18 +98,6 @@ jobs:
               working-directory: benchmarks/counter
               run: source venv/bin/activate && python -m basilisk install-dfx-extension
 
-            # ─── RustPython-specific setup ───────────────────────────────
-            - name: Install Basilisk (RustPython)
-              if: matrix.backend == 'rustpython'
-              shell: bash -l {0}
-              working-directory: benchmarks/counter
-              run: source venv/bin/activate && pip install ../..
-
-            - name: Install dfx extension (RustPython)
-              if: matrix.backend == 'rustpython'
-              working-directory: benchmarks/counter
-              run: source venv/bin/activate && python -m basilisk install-dfx-extension
-
             # ─── Network setup ───────────────────────────────────────────
             - name: Configure system subnet (local)
               if: github.event.inputs.network == 'local'
@@ -156,25 +142,3 @@ jobs:
                   path: benchmarks/counter/benchmark_results_*.txt
                   if-no-files-found: ignore
 
-    # ─── Summary job (when running both backends) ────────────────────────
-    compare:
-        needs: benchmark
-        if: github.event.inputs.backend == 'both'
-        runs-on: ubuntu-latest
-        steps:
-            - name: Download all results
-              uses: actions/download-artifact@v4
-              with:
-                  path: results/
-
-            - name: Compare results
-              run: |
-                  echo "╔══════════════════════════════════════════════════════════════╗"
-                  echo "║  Benchmark Comparison: CPython vs RustPython                ║"
-                  echo "╚══════════════════════════════════════════════════════════════╝"
-                  echo ""
-                  for f in results/benchmark-*/benchmark_results_*.txt; do
-                    echo "=== $(basename "$f") ==="
-                    cat "$f"
-                    echo ""
-                  done

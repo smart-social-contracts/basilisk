@@ -1,9 +1,6 @@
 //! CPython interpreter lifecycle management.
 //!
-//! Provides `Interpreter` and `Scope` types that mirror the RustPython equivalents:
-//! - `rustpython_vm::Interpreter` → `basilisk_cpython::Interpreter`
-//! - `rustpython_vm::scope::Scope` → `basilisk_cpython::Scope`
-//!
+//! Provides `Interpreter` and `Scope` types.
 //! The Interpreter manages CPython initialization and provides access to the VM.
 //! The Scope holds the globals/locals dict for executing user Python code.
 
@@ -33,7 +30,6 @@ fn python_repr(s: &str) -> String {
 
 /// Manages the CPython interpreter lifecycle.
 ///
-/// Equivalent to `rustpython_vm::Interpreter` in the current codebase.
 /// On the IC, there is exactly one interpreter per canister.
 pub struct Interpreter {
     /// The __main__ module's global dict. All user code executes in this namespace.
@@ -46,8 +42,6 @@ unsafe impl Send for Interpreter {}
 unsafe impl Sync for Interpreter {}
 
 /// Holds the execution scope (globals dict) for Python code.
-///
-/// Equivalent to `rustpython_vm::scope::Scope` in the current codebase.
 pub struct Scope {
     pub globals: PyObjectRef,
 }
@@ -56,16 +50,6 @@ unsafe impl Send for Scope {}
 unsafe impl Sync for Scope {}
 
 impl Interpreter {
-    /// Initialize CPython and create a new interpreter.
-    ///
-    /// This is the equivalent of:
-    /// ```ignore
-    /// let interpreter = rustpython_vm::Interpreter::with_init(Default::default(), |vm| {
-    ///     vm.add_native_modules(rustpython_stdlib::get_module_inits());
-    ///     vm.add_frozen(rustpython_vm::py_freeze!(dir = "python_source"));
-    ///     vm.add_frozen(rustpython_compiler_core::frozen_lib::FrozenLib::from_ref(PYTHON_STDLIB));
-    /// });
-    /// ```
     /// Get current init phase (-1=not started, 1=fully initialized).
     pub fn get_init_phase() -> i32 {
         unsafe {

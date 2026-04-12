@@ -1,14 +1,7 @@
 //! Type conversion traits between Rust/Candid types and CPython PyObject.
 //!
-//! These traits mirror the RustPython-based `CdkActTryIntoVmValue` and
-//! `CdkActTryFromVmValue` traits from `basilisk_vm_value_derive`.
-//!
-//! In the RustPython codebase:
-//! - `CdkActTryIntoVmValue<&VirtualMachine, PyObjectRef>` converts Rust → Python
-//! - `CdkActTryFromVmValue<T, PyBaseExceptionRef, &VirtualMachine>` converts Python → Rust
-//!
-//! Here we provide equivalent traits that work with CPython's C API through
-//! our `PyObjectRef` wrapper.
+//! - `TryIntoPyObject` converts Rust → Python
+//! - `TryFromPyObject` converts Python → Rust
 
 use crate::object::{PyError, PyObjectRef};
 
@@ -230,14 +223,14 @@ pub fn try_from_vm_value<T: TryFromPyObject>(obj: PyObjectRef) -> Result<T, PyEr
     T::try_from_py_object(obj)
 }
 
-/// Generic array conversion helper (mirrors `try_into_vm_value_generic_array` in RustPython code).
+/// Generic array conversion helper (mirrors `try_into_vm_value_generic_array` in generated canister code).
 pub fn try_into_vm_value_generic_array<T: TryIntoPyObject>(
     items: Vec<T>,
 ) -> Result<PyObjectRef, TryIntoVmValueError> {
     items.try_into_py_object()
 }
 
-/// Generic array extraction helper (mirrors `try_from_vm_value_generic_array` in RustPython code).
+/// Generic array extraction helper (mirrors `try_from_vm_value_generic_array` in generated canister code).
 pub fn try_from_vm_value_generic_array<T: TryFromPyObject>(
     obj: PyObjectRef,
 ) -> Result<Vec<T>, PyError> {

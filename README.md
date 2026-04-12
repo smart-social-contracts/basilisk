@@ -135,7 +135,7 @@ The benchmark source is in [`benchmarks/counter/`](benchmarks/counter/).
 <!-- ## CLI Reference
 
 ```
-basilisk new [--backend cpython|rustpython] <name>   Create a new project
+basilisk new <name>                                  Create a new project
 basilisk build                                       Build the canister
 basilisk exec [--canister <c>] [--network <n>] <code> Execute code on a deployed canister
 basilisk shell [--canister <c>] [--network <n>]      Interactive shell

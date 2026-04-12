@@ -3,37 +3,24 @@
 //! CPython FFI bridge for Basilisk IC canisters.
 //!
 //! This crate provides a safe Rust API over CPython's C API, specifically designed
-//! for use inside IC canisters compiled to `wasm32-wasip1`. It replaces the
-//! RustPython interpreter (`rustpython`, `rustpython-vm`, etc.) with CPython 3.13,
-//! providing a **7-20x performance improvement** for Python execution on the IC.
+//! for use inside IC canisters compiled to `wasm32-wasip1`.
 //!
 //! ## Architecture
 //!
-//! The crate mirrors the RustPython API surface used by Basilisk's generated canister code:
-//!
-//! | RustPython type | basilisk_cpython equivalent |
+//! | Type | Description |
 //! |---|---|
-//! | `rustpython_vm::Interpreter` | [`Interpreter`] |
-//! | `rustpython_vm::scope::Scope` | [`Scope`] |
-//! | `rustpython::vm::PyObjectRef` | [`PyObjectRef`] |
-//! | `rustpython_vm::builtins::PyBaseExceptionRef` | [`PyError`] |
-//! | `vm.ctx.new_dict()` | [`PyDict::new()`] |
-//! | `vm.ctx.new_tuple(vec![...])` | [`PyTuple::new(vec![...])`] |
-//! | `CdkActTryIntoVmValue` | [`TryIntoPyObject`] |
-//! | `CdkActTryFromVmValue` | [`TryFromPyObject`] |
+//! | [`Interpreter`] | Manages CPython lifecycle and global namespace |
+//! | [`Scope`] | Holds globals/locals dict for executing user Python code |
+//! | [`PyObjectRef`] | RAII wrapper around `PyObject*` with automatic ref counting |
+//! | [`PyError`] | Captured Python exception |
+//! | [`PyDict::new()`] | Python dict wrapper |
+//! | [`PyTuple::new(vec![...])`] | Python tuple wrapper |
+//! | [`TryIntoPyObject`] | Convert Rust → Python |
+//! | [`TryFromPyObject`] | Convert Python → Rust |
 //!
-//! ## Usage in generated code
-//!
-//! The code generator (`basilisk_generate`) will emit Rust code that uses this crate
-//! instead of RustPython. For example, the current generated init code:
+//! ## Usage
 //!
 //! ```ignore
-//! // Current (RustPython):
-//! let interpreter = rustpython_vm::Interpreter::with_init(Default::default(), |vm| { ... });
-//! let scope = interpreter.enter(|vm| vm.new_scope_with_builtins());
-//! let vm = &interpreter.vm;
-//!
-//! // New (CPython):
 //! let interpreter = basilisk_cpython::Interpreter::initialize()?;
 //! let scope = interpreter.new_scope();
 //! ```
@@ -58,7 +45,7 @@ pub use convert::{
     try_into_vm_value_generic_array, try_from_vm_value_generic_array,
 };
 
-/// Trait for panicking on error (mirrors `unwrap_or_trap` in RustPython code).
+/// Trait for panicking on error.
 ///
 /// On the IC, panics result in the canister trapping the message.
 pub trait UnwrapOrTrap {

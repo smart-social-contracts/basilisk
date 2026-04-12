@@ -1,18 +1,11 @@
 # CPython Backend for Basilisk
 
-This directory contains the infrastructure for building and using CPython 3.13 as Basilisk's Python interpreter, replacing RustPython.
+This directory contains the infrastructure for building CPython 3.13 as Basilisk's Python interpreter.
 
-## Motivation
-
-RustPython is **7-20x slower** than CPython (see `the_basilisk_book/src/caveats.md`). On the IC, this directly translates to:
-- Higher cycle costs per message
-- Hitting instruction limits sooner
-- Reduced capability for compute-intensive operations
-
-CPython also provides:
+CPython provides:
 - Full Python 3.13 compatibility
 - C extension support (enabling PyPI packages like numpy, etc.)
-- Better-tested, more mature interpreter
+- Mature, optimized interpreter
 
 ## Architecture
 
@@ -42,14 +35,9 @@ basilisk/compiler/
 
 ## Usage
 
-Set the environment variable before building a canister:
-
 ```bash
-export BASILISK_PYTHON_BACKEND=cpython
 python -m basilisk <canister_name>
 ```
-
-Without the env var, the default `rustpython` backend is used (backward compatible).
 
 ## Prerequisites
 
@@ -82,5 +70,4 @@ Pre-built artifacts will be downloaded automatically when available.
 - [ ] Determinism patches validation
 - [ ] Pre-built CPython wasm artifacts in CI
 - [ ] Run existing test suite with CPython backend
-- [ ] Performance benchmarking (RustPython vs CPython)
 - [ ] Update `basilisk_vm_value_derive` for CPython compatibility

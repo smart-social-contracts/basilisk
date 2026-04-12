@@ -1,16 +1,13 @@
 //! Python tuple operations.
 //!
 //! Provides a `PyTuple` type that wraps CPython's tuple C API.
-//! Mirrors the role of `vm.ctx.new_tuple(vec![...])` in the current RustPython-based code.
 
 use crate::ffi;
 use crate::object::{PyError, PyObjectRef};
 
 /// A Python tuple wrapper.
 ///
-/// In the current RustPython code, tuples are used for:
-/// - Unnamed struct fields: `vm.ctx.new_tuple(vec![field_0, field_1, ...])`
-/// - Function call arguments: args are packed into tuples
+/// Used for unnamed struct fields and function call arguments.
 pub struct PyTuple {
     inner: PyObjectRef,
 }
@@ -18,7 +15,7 @@ pub struct PyTuple {
 impl PyTuple {
     /// Create a new tuple from a vector of PyObjectRef.
     ///
-    /// Equivalent to `vm.ctx.new_tuple(vec![...])` in RustPython.
+    /// Equivalent to `vm.ctx.new_tuple(vec![...])` in CPython.
     pub fn new(items: Vec<PyObjectRef>) -> Result<Self, PyError> {
         unsafe {
             let len = items.len() as ffi::Py_ssize_t;
@@ -59,7 +56,7 @@ impl PyTuple {
 
     /// Get an item by index (returns a borrowed reference).
     ///
-    /// Equivalent to `tuple_ref.get(index)` in RustPython.
+    /// Equivalent to `tuple_ref.get(index)` in CPython.
     pub fn get(&self, index: usize) -> Option<PyObjectRef> {
         if index >= self.len() {
             return None;

@@ -1,8 +1,6 @@
 //! Python dict operations.
 //!
 //! Provides a `PyDict` type that wraps CPython's dict C API.
-//! Mirrors the role of `vm.ctx.new_dict()` and dict operations in the
-//! current RustPython-based generated code.
 
 use crate::ffi;
 use crate::object::{make_cstring, PyError, PyObjectRef};
@@ -10,10 +8,7 @@ use core::ffi::c_char;
 
 /// A Python dict wrapper.
 ///
-/// In the current RustPython code, dicts are used for:
-/// - Record types (named structs): `let py_data_structure = vm.ctx.new_dict();`
-/// - Variant types (enums): `let dict = vm.ctx.new_dict();`
-/// - Scope globals
+/// Used for Record types, Variant types, and scope globals.
 pub struct PyDict {
     inner: PyObjectRef,
 }
@@ -21,7 +16,7 @@ pub struct PyDict {
 impl PyDict {
     /// Create a new empty dict.
     ///
-    /// Equivalent to `vm.ctx.new_dict()` in RustPython.
+    /// Equivalent to `vm.ctx.new_dict()` in CPython.
     pub fn new() -> Result<Self, PyError> {
         unsafe {
             let ptr = ffi::PyDict_New();
@@ -37,7 +32,7 @@ impl PyDict {
 
     /// Set an item by string key.
     ///
-    /// Equivalent to `dict.set_item(key, value, vm)` in RustPython.
+    /// Equivalent to `dict.set_item(key, value, vm)` in CPython.
     pub fn set_item_str(&self, key: &str, value: &PyObjectRef) -> Result<(), PyError> {
         let c_key = make_cstring(key);
         unsafe {
@@ -68,7 +63,7 @@ impl PyDict {
 
     /// Get an item by string key. Returns None if not found.
     ///
-    /// Equivalent to `dict.get_item(key, vm)` in RustPython.
+    /// Equivalent to `dict.get_item(key, vm)` in CPython.
     pub fn get_item_str(&self, key: &str) -> Option<PyObjectRef> {
         let c_key = make_cstring(key);
         unsafe {
