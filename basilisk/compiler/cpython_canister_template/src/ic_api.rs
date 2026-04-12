@@ -1301,7 +1301,7 @@ unsafe extern "C" fn ic_smap_insert(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("smap_insert: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let key = t.get_item(1).unwrap().extract_bytes().expect("smap_insert: key bytes");
     let val = t.get_item(2).unwrap().extract_bytes().expect("smap_insert: val bytes");
     match crate::stable_structures::smap_insert(id, key, val) {
@@ -1314,7 +1314,7 @@ unsafe extern "C" fn ic_smap_get(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("smap_get: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let key = t.get_item(1).unwrap().extract_bytes().expect("smap_get: key bytes");
     match crate::stable_structures::smap_get(id, &key) {
         Some(val) => PyObjectRef::from_bytes(&val).unwrap().into_ptr(),
@@ -1326,7 +1326,7 @@ unsafe extern "C" fn ic_smap_remove(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("smap_remove: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let key = t.get_item(1).unwrap().extract_bytes().expect("smap_remove: key bytes");
     match crate::stable_structures::smap_remove(id, &key) {
         Some(prev) => PyObjectRef::from_bytes(&prev).unwrap().into_ptr(),
@@ -1338,7 +1338,7 @@ unsafe extern "C" fn ic_smap_contains_key(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("smap_contains_key: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let key = t.get_item(1).unwrap().extract_bytes().expect("smap_contains_key: key bytes");
     PyObjectRef::from_bool(crate::stable_structures::smap_contains_key(id, &key)).into_ptr()
 }
@@ -1382,7 +1382,7 @@ unsafe extern "C" fn ic_sset_insert(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("sset_insert: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let key = t.get_item(1).unwrap().extract_bytes().expect("sset_insert: key bytes");
     PyObjectRef::from_bool(crate::stable_structures::sset_insert(id, key)).into_ptr()
 }
@@ -1391,7 +1391,7 @@ unsafe extern "C" fn ic_sset_remove(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("sset_remove: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let key = t.get_item(1).unwrap().extract_bytes().expect("sset_remove: key bytes");
     PyObjectRef::from_bool(crate::stable_structures::sset_remove(id, &key)).into_ptr()
 }
@@ -1400,7 +1400,7 @@ unsafe extern "C" fn ic_sset_contains(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("sset_contains: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let key = t.get_item(1).unwrap().extract_bytes().expect("sset_contains: key bytes");
     PyObjectRef::from_bool(crate::stable_structures::sset_contains(id, &key)).into_ptr()
 }
@@ -1430,7 +1430,7 @@ unsafe extern "C" fn ic_svec_get(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("svec_get: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let idx = t.get_item(1).unwrap().extract_u64().expect("svec_get: index");
     match crate::stable_structures::svec_get(id, idx) {
         Some(val) => PyObjectRef::from_bytes(&val).unwrap().into_ptr(),
@@ -1442,7 +1442,7 @@ unsafe extern "C" fn ic_svec_push(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("svec_push: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let val = t.get_item(1).unwrap().extract_bytes().expect("svec_push: val bytes");
     crate::stable_structures::svec_push(id, val);
     PyObjectRef::none().into_ptr()
@@ -1461,7 +1461,7 @@ unsafe extern "C" fn ic_svec_set(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("svec_set: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let idx = t.get_item(1).unwrap().extract_u64().expect("svec_set: index");
     let val = t.get_item(2).unwrap().extract_bytes().expect("svec_set: val bytes");
     crate::stable_structures::svec_set(id, idx, val);
@@ -1480,8 +1480,8 @@ unsafe extern "C" fn ic_slog_init(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("slog_init: tuple");
-    let id_index = extract_mem_id(t.get_item(0).unwrap().ptr());
-    let id_data = extract_mem_id(t.get_item(1).unwrap().ptr());
+    let id_index = extract_mem_id(t.get_item(0).unwrap().as_ptr());
+    let id_data = extract_mem_id(t.get_item(1).unwrap().as_ptr());
     crate::stable_structures::slog_init(id_index, id_data);
     PyObjectRef::none().into_ptr()
 }
@@ -1490,7 +1490,7 @@ unsafe extern "C" fn ic_slog_append(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("slog_append: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let val = t.get_item(1).unwrap().extract_bytes().expect("slog_append: val bytes");
     PyObjectRef::from_u64(crate::stable_structures::slog_append(id, val)).unwrap().into_ptr()
 }
@@ -1499,7 +1499,7 @@ unsafe extern "C" fn ic_slog_get(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("slog_get: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let idx = t.get_item(1).unwrap().extract_u64().expect("slog_get: index");
     match crate::stable_structures::slog_get(id, idx) {
         Some(val) => PyObjectRef::from_bytes(&val).unwrap().into_ptr(),
@@ -1519,7 +1519,7 @@ unsafe extern "C" fn ic_scell_init(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("scell_init: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let default = t.get_item(1).unwrap().extract_bytes().expect("scell_init: default bytes");
     crate::stable_structures::scell_init(id, default);
     PyObjectRef::none().into_ptr()
@@ -1535,7 +1535,7 @@ unsafe extern "C" fn ic_scell_set(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("scell_set: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let val = t.get_item(1).unwrap().extract_bytes().expect("scell_set: val bytes");
     crate::stable_structures::scell_set(id, val);
     PyObjectRef::none().into_ptr()
@@ -1554,7 +1554,7 @@ unsafe extern "C" fn ic_sheap_push(
     _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
     let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("sheap_push: tuple");
-    let id = extract_mem_id(t.get_item(0).unwrap().ptr());
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
     let val = t.get_item(1).unwrap().extract_bytes().expect("sheap_push: val bytes");
     crate::stable_structures::sheap_push(id, val);
     PyObjectRef::none().into_ptr()
