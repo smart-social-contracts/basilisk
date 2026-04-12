@@ -1,4 +1,4 @@
-use cdk_framework::traits::ToIdent;
+use crate::keyword::{self, ToIdent};
 use proc_macro2::Ident;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -49,7 +49,7 @@ fn derive_item_initializers_for_unnamed_fields(
     enum_name: &Ident,
     variant_name: &Ident,
 ) -> TokenStream {
-    let restored_variant_name = cdk_framework::keyword::restore_for_vm(
+    let restored_variant_name = keyword::restore_for_vm(
         &variant_name.to_string(),
         &crate::get_python_keywords(),
     )
@@ -68,7 +68,7 @@ fn derive_item_initializers_for_unnamed_fields(
 }
 
 fn derive_item_initializers_for_unit(enum_name: &Ident, variant_name: &Ident) -> TokenStream {
-    let restored_variant_name = cdk_framework::keyword::restore_for_vm(
+    let restored_variant_name = keyword::restore_for_vm(
         &variant_name.to_string(),
         &crate::get_python_keywords(),
     )

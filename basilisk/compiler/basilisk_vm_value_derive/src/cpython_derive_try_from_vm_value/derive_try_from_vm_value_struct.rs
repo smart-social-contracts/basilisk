@@ -1,4 +1,4 @@
-use cdk_framework::traits::ToIdent;
+use crate::keyword::{self, ToIdent};
 use proc_macro2::Ident;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -43,7 +43,7 @@ fn generate_field_variable_definitions(data_struct: &DataStruct) -> Vec<TokenStr
                 );
                 let restored_field_name = match field_name {
                     Some(field_name) => Some(
-                        cdk_framework::keyword::restore_for_vm(
+                        keyword::restore_for_vm(
                             &field_name.to_string(),
                             &crate::get_python_keywords(),
                         )

@@ -1,4 +1,4 @@
-use cdk_framework::traits::ToIdent;
+use crate::keyword::{self, ToIdent};
 use proc_macro2::Ident;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -51,7 +51,7 @@ fn derive_variant_branches_unnamed_fields(
     variant_name: &Ident,
     unnamed_fields: Vec<&Field>,
 ) -> TokenStream {
-    let restored_variant_name = cdk_framework::keyword::restore_for_vm(
+    let restored_variant_name = keyword::restore_for_vm(
         &variant_name.to_string(),
         &crate::get_python_keywords(),
     )

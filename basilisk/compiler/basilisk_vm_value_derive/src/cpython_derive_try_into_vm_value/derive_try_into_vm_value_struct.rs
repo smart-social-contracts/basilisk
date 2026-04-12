@@ -1,4 +1,4 @@
-use cdk_framework::traits::ToIdent;
+use crate::keyword::{self, ToIdent};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::{DataStruct, Fields, Index};
@@ -98,7 +98,7 @@ fn derive_struct_fields_property_definitions(data_struct: &DataStruct) -> Vec<To
                 let field_name = field.ident.as_ref().expect("Named field must have a name");
                 let variable_name = format_ident!("{}_js_value", field_name);
 
-                let restored_field_name = cdk_framework::keyword::restore_for_vm(
+                let restored_field_name = keyword::restore_for_vm(
                     &field_name.to_string(),
                     &crate::get_python_keywords(),
                 )
