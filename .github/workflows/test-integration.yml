@@ -121,7 +121,7 @@ jobs:
                     - name: "simple-c"
                       tests: "tests/integration/test_manual_reply.py tests/integration/test_simple_erc20.py tests/integration/test_simple_user_accounts.py tests/integration/test_audio_recorder.py tests/integration/test_principal.py tests/integration/test_call_raw.py tests/integration/test_init.py tests/integration/test_optional_types.py tests/integration/test_list_of_lists.py tests/integration/test_tuple_types.py"
                     - name: "advanced"
-                      tests: "tests/integration/test_stable_memory.py tests/integration/test_stable_structures.py tests/integration/test_stdlib.py tests/integration/test_randomness.py tests/integration/test_rejections.py tests/integration/test_outgoing_http_requests.py tests/integration/test_init_and_post_upgrade_recovery.py"
+                      tests: "tests/integration/test_stable_memory.py tests/integration/test_stable_structures.py tests/integration/test_all_stable_structures.py tests/integration/test_stdlib.py tests/integration/test_randomness.py tests/integration/test_rejections.py tests/integration/test_outgoing_http_requests.py tests/integration/test_init_and_post_upgrade_recovery.py"
                     - name: "multi-canister"
                       tests: "tests/integration/test_cycles.py tests/integration/test_heartbeat.py tests/integration/test_management_canister.py tests/integration/test_notify_raw.py tests/integration/test_service.py"
                     - name: "motoko"

@@ -11,9 +11,7 @@ from typing import Any, Callable
 
 import basilisk
 from basilisk.build_wasm_binary_or_exit import build_wasm_binary_or_exit
-from basilisk.cargotoml import generate_cargo_toml, generate_cargo_lock
 from basilisk.colors import red, yellow, green, dim
-from basilisk.run_basilisk_generate_or_exit import run_basilisk_generate_or_exit
 from basilisk.timed import timed, timed_inline
 from basilisk.types import Args, Paths
 
@@ -51,65 +49,23 @@ def main():
 
     print(f"\nBuilding canister {green(canister_name)}{verbose_mode_qualifier}\n")
 
-    python_backend = os.environ.get("BASILISK_PYTHON_BACKEND", "cpython")
+    os.makedirs(paths["canister"], exist_ok=True)
 
-    # CPython template mode (default): skip Rust codegen entirely, just bundle Python + manipulate wasm
-    if python_backend == "cpython":
-        # Only need the canister staging dir (for output wasm) and Python source
-        os.makedirs(paths["canister"], exist_ok=True)
-
-        cargo_env = {
-            **os.environ.copy(),
-            "CARGO_TARGET_DIR": paths["global_basilisk_target_dir"],
-            "CARGO_HOME": paths["global_basilisk_rust_dir"],
-            "RUSTUP_HOME": paths["global_basilisk_rust_dir"],
-        }
-
-        # Bundle the user's Python code (no Rust codegen needed)
-        bundle_python_code(paths)
-
-        build_wasm_binary_or_exit(
-            paths,
-            canister_name,
-            cargo_env,
-            verbose=is_verbose,
-            label=f"[1/1] ⚡ Building Wasm from template...",
-        )
-
-        print(f"\n🎉 Built canister {green(canister_name)} at {dim(paths['wasm'])}")
-        return
-
-    # Standard mode: generate Rust code and compile
-    # Copy all of the Rust project structure from the pip package to an area designed for Rust compiling
-    if os.path.exists(paths["canister"]):
-        shutil.rmtree(paths["canister"])
-    shutil.copytree(paths["compiler"], paths["canister"], dirs_exist_ok=True)
-    create_file(f"{paths['canister']}/Cargo.toml", generate_cargo_toml(canister_name, python_backend))
-    create_file(f"{paths['canister']}/Cargo.lock", generate_cargo_lock())
-
-    # Add CARGO_TARGET_DIR to env for all cargo commands
     cargo_env = {
         **os.environ.copy(),
         "CARGO_TARGET_DIR": paths["global_basilisk_target_dir"],
         "CARGO_HOME": paths["global_basilisk_rust_dir"],
         "RUSTUP_HOME": paths["global_basilisk_rust_dir"],
     }
-    if not os.path.exists(paths["global_basilisk_bin_dir"]):
-        os.makedirs(paths["global_basilisk_bin_dir"])
 
-    compile_python_or_exit(
-        paths, cargo_env, verbose=is_verbose, label="[1/2] 🔨 Compiling Python..."
-    )
-
-    # Fix panic!(err) patterns in generated code (cdk_framework uses deprecated syntax)
-    fixup_generated_code(paths)
+    bundle_python_code(paths)
 
     build_wasm_binary_or_exit(
         paths,
         canister_name,
         cargo_env,
         verbose=is_verbose,
-        label=f"[2/2] 🚧 Building Wasm binary...",
+        label=f"[1/1] ⚡ Building Wasm from template...",
     )
 
     print(f"\n🎉 Built canister {green(canister_name)} at {dim(paths['wasm'])}")
@@ -152,9 +108,6 @@ def create_paths(args: Args) -> Paths:
     # This is the location of all code used to generate the final canister Rust code
     canister_path = f".basilisk/{canister_name}"
 
-    # We want to bundle/gather all Python files into the python_source directory for RustPython freezing
-    # The location that Basilisk will look to when running py_freeze!
-    # py_freeze! will compile all of the Python code in the directory recursively (modules must have an __init__.py to be included)
     python_source_path = f"{canister_path}/python_source"
 
     py_file_names_file_path = f"{canister_path}/py_file_names.csv"
@@ -207,15 +160,6 @@ def create_paths(args: Args) -> Paths:
         "global_basilisk_target_dir": global_basilisk_target_dir,
         "global_basilisk_bin_dir": global_basilisk_bin_dir,
     }
-
-
-@timed_inline
-def compile_python_or_exit(
-    paths: Paths, cargo_env: dict[str, str], verbose: bool = False
-):
-    bundle_python_code(paths)
-    run_basilisk_generate_or_exit(paths, cargo_env, verbose)
-    run_rustfmt_or_exit(paths, cargo_env, verbose)
 
 
 def bundle_python_code(paths: Paths):
@@ -457,40 +401,6 @@ def parse_basilisk_generate_error(stdout: bytes) -> str:
     err_lines[-1] = re.sub("', src/.*", "", err_lines[-1])
 
     return red("\n".join(err_lines))
-
-
-def run_rustfmt_or_exit(paths: Paths, cargo_env: dict[str, str], verbose: bool = False):
-    rustfmt_result = subprocess.run(
-        [
-            f"{paths['global_basilisk_rust_bin_dir']}/rustfmt",
-            "--edition=2018",
-            paths["lib"],
-        ],
-        capture_output=not verbose,
-        env=cargo_env,
-    )
-
-    if rustfmt_result.returncode != 0:
-        print(red("\n💣 Basilisk error: internal Rust formatting"))
-        print(
-            f'\nPlease open an issue at https://github.com/smart-social-contracts/basilisk/issues/new\nincluding this message and the following error:\n\n {red(rustfmt_result.stderr.decode("utf-8"))}'
-        )
-        print("💀 Build failed")
-        sys.exit(1)
-
-
-def fixup_generated_code(paths: Paths):
-    """Fix known issues in generated Rust code before compilation."""
-    lib_path = paths["lib"]
-    if not os.path.exists(lib_path):
-        return
-    with open(lib_path, "r") as f:
-        content = f.read()
-    # cdk_framework generates panic!(err) which is invalid in newer Rust editions;
-    # the err type is (RejectionCode, String) which only implements Debug, not Display
-    content = re.sub(r'panic!\(err\)', 'panic!("{:?}", err)', content)
-    with open(lib_path, "w") as f:
-        f.write(content)
 
 
 def create_file(file_path: str, contents: str):

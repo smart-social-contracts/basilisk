@@ -1,0 +1,12 @@
+{
+    "canisters": {
+        "all_stable": {
+            "type": "basilisk",
+            "main": "src/main.py",
+            "declarations": {
+                "output": "test/dfx_generated/all_stable",
+                "node_compatibility": true
+            }
+        }
+    }
+}
