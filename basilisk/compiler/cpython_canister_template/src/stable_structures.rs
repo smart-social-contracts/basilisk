@@ -61,7 +61,10 @@ impl Storable for SBytes {
     fn from_bytes(bytes: Cow<[u8]>) -> Self {
         SBytes(bytes.to_vec())
     }
-    const BOUND: Bound = Bound::Unbounded;
+    const BOUND: Bound = Bound::Bounded {
+        max_size: 2_000_000,
+        is_fixed_size: false,
+    };
 }
 
 // ---------------------------------------------------------------------------
