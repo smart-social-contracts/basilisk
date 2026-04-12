@@ -629,105 +629,15 @@ def _from_json_safe(obj):
 # Files on the canister memfs are persistent by default — they survive
 # canister upgrades.  Only files under /tmp/ are volatile.
 
-_STABLE_FS_MAGIC = b"BSLK_FS_"  # 8-byte magic
 _VOLATILE_PREFIXES = ["/tmp/", "/proc/", "/dev/"]
 
-def _stable_maps_end_offset():
-    """Return the byte offset where the maps region ends in stable memory."""
-    current_pages = _basilisk_ic.stable_size()
-    if current_pages == 0:
-        return 0
-    header = _basilisk_ic.stable_read(0, 16)
-    if header[:8] != _STABLE_MAP_MAGIC:
-        return 0
-    payload_len = int.from_bytes(header[8:16], 'little')
-    return 16 + payload_len
-
-def _memfs_walk(root):
-    """Recursive file listing using os.listdir (os.walk not in WASI polyfill)."""
-    import os, os.path
-    result = []
-    try:
-        entries = os.listdir(root)
-    except Exception:
-        return result
-    for name in entries:
-        full = os.path.join(root, name)
-        if os.path.isfile(full):
-            result.append(full)
-        elif os.path.isdir(full):
-            result.extend(_memfs_walk(full))
-    return result
-
 def _basilisk_save_files():
-    """Serialize memfs files to stable memory (after maps region).
-
-    Files already in the direct file store are skipped — their content
-    is already in stable memory.  Only files NOT in the store are saved
-    here as a safety net (backward compat / edge cases).
-    """
-    import os, os.path
-    import base64 as _b64
-    files = {}
-    for fpath in _memfs_walk('/'):
-        # Skip files already managed by the direct file store
-        if _basilisk_file_store.contains_key(fpath):
-            continue
-        full_dir = os.path.dirname(fpath)
-        full_dir = full_dir if full_dir.endswith('/') else full_dir + '/'
-        if any(full_dir.startswith(p) for p in _VOLATILE_PREFIXES):
-            continue
-        try:
-            with open(fpath, 'rb') as f:
-                content = f.read()
-            _st = os.stat(fpath)
-            files[fpath] = {"b64": _b64.b64encode(content).decode('ascii'), "mtime": _st.st_mtime}
-        except Exception:
-            pass
-    payload = _json.dumps(files).encode('utf-8') if files else b""
-    offset = _stable_maps_end_offset()
-    total_needed = offset + 16 + len(payload)
-    pages_needed = (total_needed + 65535) // 65536
-    current_pages = _basilisk_ic.stable_size()
-    if pages_needed > current_pages:
-        _basilisk_ic.stable_grow(pages_needed - current_pages)
-    header = _STABLE_FS_MAGIC + len(payload).to_bytes(8, 'little')
-    _basilisk_ic.stable_write(offset, header + payload)
+    """No-op — file contents are already in stable memory (written on close)."""
+    pass
 
 def _basilisk_load_files():
-    """Restore memfs files from stable memory and/or StableBTreeMap file store."""
-    import os
-    import base64 as _b64
-    # 1. Legacy: restore from stable memory region (backward compat)
-    offset = _stable_maps_end_offset()
-    current_pages = _basilisk_ic.stable_size()
-    if current_pages > 0:
-        total_bytes = current_pages * 65536
-        if offset + 16 <= total_bytes:
-            header = _basilisk_ic.stable_read(offset, 16)
-            if header[:8] == _STABLE_FS_MAGIC:
-                payload_len = int.from_bytes(header[8:16], 'little')
-                if payload_len > 0:
-                    payload = _basilisk_ic.stable_read(offset + 16, payload_len)
-                    files = _json.loads(payload.decode('utf-8'))
-                    for fpath, entry in files.items():
-                        try:
-                            parent = os.path.dirname(fpath)
-                            if parent and parent != '/':
-                                os.makedirs(parent, exist_ok=True)
-                            if isinstance(entry, str):
-                                b64_data = entry
-                            else:
-                                b64_data = entry.get('b64', '')
-                            content = _b64.b64decode(b64_data)
-                            with open(fpath, 'wb') as f:
-                                f.write(content)
-                        except Exception:
-                            pass
-    # 2. Primary: restore from StableBTreeMap file store (overwrites legacy)
+    """Restore memfs files from the direct stable memory file store."""
     _basilisk_restore_files_from_map()
-    # 3. One-time migration: convert any old base64 entries to direct storage
-    _migrate_legacy_to_direct()
 
 # === Immediate file persistence via StableBTreeMap + direct stable memory ===
 # Files written to non-volatile paths are automatically persisted so they
@@ -835,7 +745,7 @@ _os.unlink = _persistent_os_remove
 _os.rename = _persistent_os_rename
 
 def _basilisk_restore_files_from_map():
-    """Restore files from the file store to memfs (handles both formats)."""
+    """Restore files from the direct stable memory file store to memfs."""
     global _fs_content_next
     import os as _ros
     _max_end = _FS_CONTENT_BASE
@@ -844,37 +754,21 @@ def _basilisk_restore_files_from_map():
             _parent = _ros.path.dirname(_path)
             if _parent and _parent != '/':
                 _ros.makedirs(_parent, exist_ok=True)
-            # New format: JSON metadata {"o": offset, "n": length}
-            if _data.startswith('{'):
-                _meta = _json.loads(_data)
-                _off = _meta["o"]
-                _nbytes = _meta["n"]
-                if _nbytes == 0:
-                    _content = b""
-                else:
-                    _content = _basilisk_ic.stable64_read(_off, _nbytes)
-                    _end = _off + _nbytes
-                    if _end > _max_end:
-                        _max_end = _end
+            _meta = _json.loads(_data)
+            _off = _meta["o"]
+            _nbytes = _meta["n"]
+            if _nbytes == 0:
+                _content = b""
             else:
-                # Old format: base64-encoded content (backward compat)
-                import base64 as _rb64
-                _content = _rb64.b64decode(_data)
+                _content = _basilisk_ic.stable64_read(_off, _nbytes)
+                _end = _off + _nbytes
+                if _end > _max_end:
+                    _max_end = _end
             with _original_open(_path, 'wb') as _f:
                 _f.write(_content)
         except Exception:
             pass
-    # Set the append pointer past all existing content
     _fs_content_next = _max_end
-
-def _migrate_legacy_to_direct():
-    """One-time migration: convert base64 file store entries to direct storage."""
-    _keys = []
-    for _path, _data in _basilisk_file_store.items():
-        if not _data.startswith('{'):
-            _keys.append(_path)
-    for _path in _keys:
-        _persist_file(_path)
 
 # === Func/Service/Query/Update type stubs ===
 class _FuncType:
