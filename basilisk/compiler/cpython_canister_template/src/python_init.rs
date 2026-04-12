@@ -455,7 +455,7 @@ import json as _json
 def _to_json_safe(obj):
     """Convert Python object to JSON-safe representation for stable storage."""
     if isinstance(obj, Principal):
-        return {"__principal__": obj._text}
+        return {"__principal__": obj.to_str()}
     if isinstance(obj, tuple):
         return {"__tuple__": [_to_json_safe(x) for x in obj]}
     if isinstance(obj, dict):
