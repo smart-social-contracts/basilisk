@@ -563,7 +563,6 @@ Candid conversion** via `candid::IDLValue`:
 
 ```bash
 # Template mode (seconds instead of minutes)
-export BASILISK_PYTHON_BACKEND=cpython
 export BASILISK_USE_TEMPLATE=true
 python -m basilisk <canister_name>
 

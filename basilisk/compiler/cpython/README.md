@@ -58,7 +58,7 @@ Pre-built artifacts will be downloaded automatically when available.
 - [x] Rust FFI bridge crate (`basilisk_cpython`)
 - [x] Type conversion traits (TryIntoPyObject / TryFromPyObject)
 - [x] CPython-specific code generation modules
-- [x] Build pipeline integration (BASILISK_PYTHON_BACKEND env var)
+- [x] Build pipeline integration
 - [x] Cargo.toml generation for CPython backend
 
 ### TODO

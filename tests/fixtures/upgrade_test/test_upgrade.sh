@@ -14,7 +14,7 @@ echo "Creating canisters..."
 dfx canister create --all
 
 # 3. Build and deploy with per-canister backends
-# Controller uses CPython (previously used rustpython but had compatibility issues)
+# Controller uses CPython
 # Target canisters use CPython template mode (default) for StableBTreeMap persistence
 echo ""
 echo "=== Building controller (cpython backend) ==="

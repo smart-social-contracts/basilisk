@@ -41,7 +41,7 @@ async function timeit(
 }
 
 async function main() {
-    const backend = process.env.BASILISK_PYTHON_BACKEND || 'rustpython';
+    const backend = 'cpython';
     console.log(`\n=== Benchmark: ${backend} backend ===\n`);
 
     const host = process.env.DFX_HOST || 'http://127.0.0.1:8000';
@@ -53,7 +53,7 @@ async function main() {
     const results: BenchmarkResult[] = [];
 
     // --- Pure Python compute benchmarks ---
-    // Input sizes chosen to stay within 5B instruction limit on RustPython
+    // Input sizes chosen to stay within 5B instruction limit
     console.log('--- fibonacci (integer math) ---');
     for (const n of [100, 500, 1000]) {
         results.push(
