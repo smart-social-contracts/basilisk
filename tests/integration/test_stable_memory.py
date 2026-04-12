@@ -1,7 +1,7 @@
 """Integration tests for tests/fixtures/stable_memory — stable memory read/write/grow."""
 
 import pytest
-from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES_DIR
+from .conftest import deploy_example, call_canister, call_canister_expect_trap, parse_candid_text, EXAMPLES_DIR
 import os
 
 EXAMPLE = "stable_memory"
@@ -36,10 +36,10 @@ def test_stable64_grow(canister):
     assert "Ok" in raw
 
 
-@pytest.mark.skip(reason="MemoryManager pre-allocates ~129 pages; stable_bytes response exceeds 3MB reply limit")
-def test_stable_bytes(canister):
-    raw = call_canister(canister, "stable_bytes", example_dir=EXAMPLE_DIR)
-    assert "blob" in raw
+def test_stable_bytes_traps(canister):
+    """stable_bytes() traps because MemoryManager owns stable memory."""
+    err = call_canister_expect_trap(canister, "stable_bytes", example_dir=EXAMPLE_DIR)
+    assert "not available" in err
 
 
 def test_stable_write_read_no_offset(canister):

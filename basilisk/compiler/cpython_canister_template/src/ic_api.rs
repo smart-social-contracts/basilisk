@@ -369,11 +369,11 @@ unsafe extern "C" fn ic_stable_bytes(
     _self: *mut ffi::PyObject,
     _args: *mut ffi::PyObject,
 ) -> *mut ffi::PyObject {
-    let bytes = ic_cdk::api::stable::stable_bytes();
-    match PyObjectRef::from_bytes(&bytes) {
-        Ok(obj) => obj.into_ptr(),
-        Err(_) => core::ptr::null_mut(),
-    }
+    ic_cdk::trap(
+        "ic.stable_bytes() is not available: the MemoryManager owns stable memory. \
+         Use StableBTreeMap/StableVec/etc. for persistent storage, or ic.stable_read(offset, length) \
+         for raw access to specific regions."
+    );
 }
 
 unsafe extern "C" fn ic_stable_size(
