@@ -266,6 +266,15 @@ class TestEdgeCases:
             "    f.write('ANSWER = 42\\n')\n",
             canister, network,
         )
+        # Diagnostics: verify the file exists and check meta_path
+        diag = exec_on_canister(
+            "import os, sys\n"
+            "print('exists:', os.path.exists('/test_import_mod_34.py'))\n"
+            "print('meta_path:', [type(f).__name__ for f in sys.meta_path])\n"
+            "print('has_MemFSFinder:', any(type(f).__name__ == '_MemFSFinder' for f in sys.meta_path))\n",
+            canister, network,
+        )
+        print(f"DIAG: {diag!r}")
         # Import it and use the exported symbol
         result = exec_on_canister(
             "import importlib, sys\n"
@@ -275,7 +284,9 @@ class TestEdgeCases:
             "print(test_import_mod_34.ANSWER)\n",
             canister, network,
         )
-        assert result == "42", f"Expected '42', got: {result!r}"
+        assert result == "42", (
+            f"Expected '42', got: {result!r}\nDiagnostics: {diag!r}"
+        )
         # Cleanup
         exec_on_canister(
             "import os\nos.remove('/test_import_mod_34.py')\n",
