@@ -257,3 +257,27 @@ class TestEdgeCases:
         )
         result = exec_on_canister(code, canister, network)
         assert "module" in result
+
+    def test_import_user_uploaded_py_file(self, canister_reachable, canister, network):
+        """User-uploaded .py files on memfs should be importable (#34)."""
+        # Write a module to memfs
+        exec_on_canister(
+            "with open('/test_import_mod_34.py', 'w') as f:\n"
+            "    f.write('ANSWER = 42\\n')\n",
+            canister, network,
+        )
+        # Import it and use the exported symbol
+        result = exec_on_canister(
+            "import importlib, sys\n"
+            "if 'test_import_mod_34' in sys.modules:\n"
+            "    del sys.modules['test_import_mod_34']\n"
+            "import test_import_mod_34\n"
+            "print(test_import_mod_34.ANSWER)\n",
+            canister, network,
+        )
+        assert result == "42", f"Expected '42', got: {result!r}"
+        # Cleanup
+        exec_on_canister(
+            "import os\nos.remove('/test_import_mod_34.py')\n",
+            canister, network,
+        )
