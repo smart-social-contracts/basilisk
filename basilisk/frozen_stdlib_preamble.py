@@ -3049,3 +3049,10 @@ del _register_urllib_parse
 # This MUST be after all rich stdlib stubs above, so that try/except import
 # blocks use _orig_import and the rich stubs get registered properly.
 _builtins.__import__ = _wasi_safe_import
+
+# --- Add memfs CWD to sys.path so user-uploaded .py files are importable ---
+# Without this, `import my_module` fails even though the file exists on memfs.
+if '.' not in _sys.path:
+    _sys.path.append('.')
+if '/' not in _sys.path:
+    _sys.path.append('/')
