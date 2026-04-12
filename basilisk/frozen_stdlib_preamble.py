@@ -81,6 +81,15 @@ def _wasi_safe_import(name, globals=None, locals=None, fromlist=(), level=0):
         # module loading (e.g. a sub-import failed) - let it propagate.
         if name in _sys.modules:
             raise
+        # Try loading from memfs before giving up (#34).
+        # _orig_import doesn't consult sys.meta_path in WASI CPython
+        # (import system only partially initialized), so we check manually.
+        for _finder in getattr(_sys, 'meta_path', ()):
+            _find = getattr(_finder, 'find_module', None)
+            if _find:
+                _loader = _find(name)
+                if _loader:
+                    return _loader.load_module(name)
         # Only stub known stdlib and internal (_-prefixed) modules.
         # Unknown modules raise ModuleNotFoundError like normal Python.
         _top = name.split('.')[0]
