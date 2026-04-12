@@ -21,8 +21,8 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 
 **Built-in Application Framework:**
 
-- **Persistent storage** — `StableBTreeMap` for key-value data that survives canister upgrades
-- **Filesystem** — standard `open()` and `os` calls, with optional persistence across upgrades
+- **Persistent storage** — Rust-backed stable data structures (`StableBTreeMap`, `StableBTreeSet`, `StableVec`, `StableLog`, `StableCell`, `StableMinHeap`) powered by `ic-stable-structures` — data persists across canister upgrades with no serialization step
+- **Filesystem** — standard `open()` and `os` calls, automatically persisted to stable memory across upgrades
 - **IC system APIs** — `ic.caller()`, `ic.time()`, `ic.canister_balance()`, inter-canister calls, timers, and Candid types (`Principal`, `Record`, `Variant`, etc.)
 
 ```
@@ -30,10 +30,12 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 │                    Basilisk CDK                          │
 ├─────────────┬────────────┬──────────────────────────────┤
 │ Filesystem  │ Storage    │ IC System APIs               │
-│ POSIX-like  │ StableBTree│ Timers, Inter-canister calls │
-│ os/open()   │ Map        │ Candid types, Lifecycle      │
-│ Persistence │            │                              │
+│ POSIX-like  │ BTreeMap,  │ Timers, Inter-canister calls │
+│ os/open()   │ Vec, Log,  │ Candid types, Lifecycle      │
+│ auto-persist│ Cell, Heap │                              │
 ├─────────────┴────────────┴──────────────────────────────┤
+│        MemoryManager (ic-stable-structures)              │
+├─────────────────────────────────────────────────────────┤
 │           CPython 3.13 (compiled to WASM)               │
 ├─────────────────────────────────────────────────────────┤
 │              Internet Computer (ICP)                    │
