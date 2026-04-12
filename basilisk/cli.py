@@ -20,35 +20,34 @@ import subprocess
 import sys
 from pathlib import Path
 
-_TOOLKIT_COMMANDS = {"shell", "exec", "sshd"}
 
-_HELP_TOOLKIT = """
-Toolkit commands (provided by ic-basilisk-toolkit):
-  shell            Interactive Python shell on a deployed canister
-  exec <code>      Execute Python code on a deployed canister
-  sshd             Start an SSH/SFTP server proxy to a canister
-"""
+def _discover_plugin_commands() -> dict:
+    """Discover CLI commands from installed plugins via entry points."""
+    from importlib.metadata import entry_points
 
-
-def _toolkit_available() -> bool:
-    """Check if ic-basilisk-toolkit is installed."""
-    try:
-        import ic_basilisk_toolkit.cli  # noqa: F401
-        return True
-    except ImportError:
-        return False
+    eps = entry_points(group="basilisk.commands")
+    return {ep.name: ep for ep in eps}
 
 
 def _help_text() -> str:
-    """Return help text, including toolkit commands if available."""
+    """Return help text, including plugin commands if available."""
     base = __doc__.strip()
-    if _toolkit_available():
-        # Insert toolkit commands before the "Other:" section
+    plugins = _discover_plugin_commands()
+    if plugins:
         lines = base.split("\n")
         result = []
         for line in lines:
             if line.startswith("Other:"):
-                result.append(_HELP_TOOLKIT.strip())
+                result.append("Plugin commands:")
+                for name, ep in sorted(plugins.items()):
+                    fn = ep.load()
+                    desc = (fn.__doc__ or "").split("\n")[0].strip()
+                    # Strip "basilisk <cmd> — " prefix from docstring
+                    if "\u2014" in desc:
+                        desc = desc.split("\u2014", 1)[1].strip()
+                    elif "--" in desc:
+                        desc = desc.split("--", 1)[1].strip()
+                    result.append(f"  {name:<16s} {desc}")
                 result.append("")
             result.append(line)
         return "\n".join(result)
@@ -270,16 +269,15 @@ def main():
         if commit:
             print(commit)
 
-    elif command in _TOOLKIT_COMMANDS:
-        try:
-            from ic_basilisk_toolkit.cli import main as toolkit_main
-            toolkit_main()
-        except ImportError:
-            print(f"The '{command}' command requires ic-basilisk-toolkit.", file=sys.stderr)
-            print("Install it with: pip install ic-basilisk-toolkit", file=sys.stderr)
-            sys.exit(1)
-
     else:
+        # Check for plugin commands
+        plugins = _discover_plugin_commands()
+        if command in plugins:
+            handler = plugins[command].load()
+            handler()
+            return
+
+        # Unknown command
         print(f"Unknown command: {command}", file=sys.stderr)
         print(_help_text())
         sys.exit(1)
