@@ -260,33 +260,23 @@ class TestEdgeCases:
 
     def test_import_user_uploaded_py_file(self, canister_reachable, canister, network):
         """User-uploaded .py files on memfs should be importable (#34)."""
-        # Write a module to memfs
+        # Write a module to memfs (avoid backslash-n in content — Candid
+        # escaping in canister_exec makes \n indistinguishable from newlines)
         exec_on_canister(
             "with open('/test_import_mod_34.py', 'w') as f:\n"
-            "    f.write('ANSWER = 42\\n')\n",
+            "    f.write('ANSWER = 42')\n",
             canister, network,
         )
-        # Diagnostics: verify the file exists and check meta_path
-        diag = exec_on_canister(
-            "import os, sys\n"
-            "print('exists:', os.path.exists('/test_import_mod_34.py'))\n"
-            "print('meta_path:', [type(f).__name__ for f in sys.meta_path])\n"
-            "print('has_MemFSFinder:', any(type(f).__name__ == '_MemFSFinder' for f in sys.meta_path))\n",
-            canister, network,
-        )
-        print(f"DIAG: {diag!r}")
         # Import it and use the exported symbol
         result = exec_on_canister(
-            "import importlib, sys\n"
+            "import sys\n"
             "if 'test_import_mod_34' in sys.modules:\n"
             "    del sys.modules['test_import_mod_34']\n"
             "import test_import_mod_34\n"
             "print(test_import_mod_34.ANSWER)\n",
             canister, network,
         )
-        assert result == "42", (
-            f"Expected '42', got: {result!r}\nDiagnostics: {diag!r}"
-        )
+        assert result == "42", f"Expected '42', got: {result!r}"
         # Cleanup
         exec_on_canister(
             "import os\nos.remove('/test_import_mod_34.py')\n",
