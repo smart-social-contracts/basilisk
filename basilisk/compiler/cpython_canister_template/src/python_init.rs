@@ -446,157 +446,14 @@ class CallResult(dict):
         return cr
 _mod.CallResult = CallResult
 
-# === StableBTreeMap ===
+# === Stable structures (Rust-backed via _basilisk_ic) ===
+# All data structures persist directly in stable memory via ic-stable-structures.
+# No pre_upgrade/post_upgrade serialization needed.
+
 import json as _json
 
-_stable_btree_maps = {}  # memory_id -> StableBTreeMap instance
-
-class _StableBTreeMapMeta(type):
-    def __getitem__(cls, params):
-        # StableBTreeMap[K, V] — returns a callable class factory
-        if isinstance(params, tuple) and len(params) == 2:
-            key_type, val_type = params
-        else:
-            key_type, val_type = params, None
-        def factory(memory_id=0, max_key_size=100, max_value_size=100):
-            m = StableBTreeMap.__new__(StableBTreeMap)
-            m._data = {}
-            m._memory_id = memory_id
-            m._max_key_size = max_key_size
-            m._max_value_size = max_value_size
-            _stable_btree_maps[memory_id] = m
-            return m
-        return factory
-
-class StableBTreeMap(metaclass=_StableBTreeMapMeta):
-    def __init__(self, memory_id=0, max_key_size=100, max_value_size=100):
-        self._data = {}
-        self._memory_id = memory_id
-        self._max_key_size = max_key_size
-        self._max_value_size = max_value_size
-        _stable_btree_maps[memory_id] = self
-    def get(self, key):
-        k = self._normalize_key(key)
-        return self._data.get(k, None)
-    def _estimate_size(self, value):
-        if isinstance(value, bytes):
-            return len(value)
-        if isinstance(value, str):
-            return len(value.encode('utf-8'))
-        if isinstance(value, bool):
-            return 1
-        if isinstance(value, int):
-            return 8
-        if isinstance(value, float):
-            return 8
-        try:
-            return len(_json.dumps(value).encode('utf-8'))
-        except Exception:
-            return 0
-    def insert(self, key, value):
-        if self._max_key_size > 0:
-            ks = self._estimate_size(key)
-            if ks > self._max_key_size:
-                raise Exception(f"Key is too large. Expected <= {self._max_key_size} bytes, received {ks} bytes")
-        if self._max_value_size > 0:
-            vs = self._estimate_size(value)
-            if vs > self._max_value_size:
-                raise Exception(f"Value is too large. Expected <= {self._max_value_size} bytes, received {vs} bytes")
-        k = self._normalize_key(key)
-        prev = self._data.get(k, None)
-        self._data[k] = value
-        return prev
-    def remove(self, key):
-        k = self._normalize_key(key)
-        return self._data.pop(k, None)
-    def contains_key(self, key):
-        k = self._normalize_key(key)
-        return k in self._data
-    def is_empty(self):
-        return len(self._data) == 0
-    def keys(self):
-        return [self._denormalize_key(k) for k in self._data.keys()]
-    def values(self):
-        return list(self._data.values())
-    def items(self):
-        return [(self._denormalize_key(k), v) for k, v in self._data.items()]
-    def len(self):
-        return len(self._data)
-    def _normalize_key(self, key):
-        # Make keys hashable for dict storage
-        if isinstance(key, dict):
-            return _json.dumps(key, sort_keys=True)
-        if isinstance(key, list):
-            return tuple(key)
-        return key
-    def _denormalize_key(self, key):
-        if isinstance(key, str) and key.startswith('{'):
-            try:
-                return _json.loads(key)
-            except Exception:
-                pass
-        return key
-
-_mod.StableBTreeMap = StableBTreeMap
-
-# Auto-persistence for StableBTreeMap across upgrades
-_STABLE_MAP_MAGIC = b"BSLK_MAP"  # 8-byte magic
-
-def _basilisk_save_stable_maps():
-    """Serialize all StableBTreeMap instances to stable memory."""
-    # Build serializable data: { memory_id: { key: value, ... }, ... }
-    save_data = {}
-    for mem_id, m in _stable_btree_maps.items():
-        # Convert internal dict to list of [key, value] pairs for JSON
-        pairs = []
-        for k, v in m._data.items():
-            pairs.append([_to_json_safe(k), _to_json_safe(v)])
-        save_data[str(mem_id)] = {
-            "pairs": pairs,
-            "max_key_size": m._max_key_size,
-            "max_value_size": m._max_value_size,
-        }
-    payload = _json.dumps(save_data).encode("utf-8") if save_data else b""
-    total_size = 16 + len(payload)  # 8 magic + 8 length + payload
-    # Grow stable memory if needed (64KB pages)
-    pages_needed = (total_size + 65535) // 65536
-    current_pages = _basilisk_ic.stable_size()
-    if pages_needed > current_pages:
-        _basilisk_ic.stable_grow(pages_needed - current_pages)
-    # Always write header (even when empty) so file persistence can find its offset
-    header = _STABLE_MAP_MAGIC + len(payload).to_bytes(8, 'little')
-    _basilisk_ic.stable_write(0, header + payload)
-
-def _basilisk_load_stable_maps():
-    """Restore StableBTreeMap instances from stable memory."""
-    current_pages = _basilisk_ic.stable_size()
-    if current_pages == 0:
-        return
-    # Read header
-    header = _basilisk_ic.stable_read(0, 16)
-    if header[:8] != _STABLE_MAP_MAGIC:
-        return  # No saved maps
-    payload_len = int.from_bytes(header[8:16], 'little')
-    if payload_len == 0:
-        return
-    payload = _basilisk_ic.stable_read(16, payload_len)
-    save_data = _json.loads(payload.decode("utf-8"))
-    for mem_id_str, info in save_data.items():
-        mem_id = int(mem_id_str)
-        if mem_id in _stable_btree_maps:
-            m = _stable_btree_maps[mem_id]
-        else:
-            m = StableBTreeMap.__new__(StableBTreeMap)
-            m._data = {}
-            m._memory_id = mem_id
-            m._max_key_size = info.get("max_key_size", 100)
-            m._max_value_size = info.get("max_value_size", 100)
-            _stable_btree_maps[mem_id] = m
-        for k, v in info["pairs"]:
-            m._data[_from_json_safe(k)] = _from_json_safe(v)
-
 def _to_json_safe(obj):
-    """Convert Python object to JSON-safe representation."""
+    """Convert Python object to JSON-safe representation for stable storage."""
     if isinstance(obj, Principal):
         return {"__principal__": obj._text}
     if isinstance(obj, tuple):
@@ -625,61 +482,168 @@ def _from_json_safe(obj):
         return [_from_json_safe(x) for x in obj]
     return obj
 
+def _encode_key(key):
+    return _json.dumps(_to_json_safe(key)).encode('utf-8')
+
+def _encode_value(value):
+    return _json.dumps(_to_json_safe(value)).encode('utf-8')
+
+def _decode_value(raw):
+    if raw is None:
+        return None
+    return _from_json_safe(_json.loads(raw.decode('utf-8')))
+
+# --- StableBTreeMap ---
+
+class _StableBTreeMapMeta(type):
+    def __getitem__(cls, params):
+        if isinstance(params, tuple) and len(params) == 2:
+            key_type, val_type = params
+        else:
+            key_type, val_type = params, None
+        def factory(memory_id=0, max_key_size=100, max_value_size=100):
+            return StableBTreeMap(memory_id=memory_id, max_key_size=max_key_size, max_value_size=max_value_size)
+        return factory
+
+class StableBTreeMap(metaclass=_StableBTreeMapMeta):
+    def __init__(self, memory_id=0, max_key_size=100, max_value_size=100):
+        self._memory_id = memory_id
+        self._max_key_size = max_key_size
+        self._max_value_size = max_value_size
+        _basilisk_ic.smap_init(memory_id)
+    def get(self, key):
+        return _decode_value(_basilisk_ic.smap_get(self._memory_id, _encode_key(key)))
+    def insert(self, key, value):
+        prev = _basilisk_ic.smap_insert(self._memory_id, _encode_key(key), _encode_value(value))
+        return _decode_value(prev)
+    def remove(self, key):
+        prev = _basilisk_ic.smap_remove(self._memory_id, _encode_key(key))
+        return _decode_value(prev)
+    def contains_key(self, key):
+        return _basilisk_ic.smap_contains_key(self._memory_id, _encode_key(key))
+    def is_empty(self):
+        return _basilisk_ic.smap_len(self._memory_id) == 0
+    def keys(self):
+        return [_from_json_safe(_json.loads(k.decode('utf-8'))) for k in _basilisk_ic.smap_keys(self._memory_id)]
+    def values(self):
+        return [_from_json_safe(_json.loads(v.decode('utf-8'))) for _, v in _basilisk_ic.smap_items(self._memory_id)]
+    def items(self):
+        return [(_from_json_safe(_json.loads(k.decode('utf-8'))), _from_json_safe(_json.loads(v.decode('utf-8')))) for k, v in _basilisk_ic.smap_items(self._memory_id)]
+    def len(self):
+        return _basilisk_ic.smap_len(self._memory_id)
+
+_mod.StableBTreeMap = StableBTreeMap
+
+# --- StableBTreeSet ---
+
+class StableBTreeSet:
+    def __init__(self, memory_id=0):
+        self._memory_id = memory_id
+        _basilisk_ic.sset_init(memory_id)
+    def insert(self, key):
+        return _basilisk_ic.sset_insert(self._memory_id, _encode_key(key))
+    def remove(self, key):
+        return _basilisk_ic.sset_remove(self._memory_id, _encode_key(key))
+    def contains(self, key):
+        return _basilisk_ic.sset_contains(self._memory_id, _encode_key(key))
+    def is_empty(self):
+        return _basilisk_ic.sset_len(self._memory_id) == 0
+    def items(self):
+        return [_from_json_safe(_json.loads(k.decode('utf-8'))) for k in _basilisk_ic.sset_items(self._memory_id)]
+    def len(self):
+        return _basilisk_ic.sset_len(self._memory_id)
+
+_mod.StableBTreeSet = StableBTreeSet
+
+# --- StableVec ---
+
+class StableVec:
+    def __init__(self, memory_id=0):
+        self._memory_id = memory_id
+        _basilisk_ic.svec_init(memory_id)
+    def get(self, index):
+        return _decode_value(_basilisk_ic.svec_get(self._memory_id, index))
+    def push(self, value):
+        _basilisk_ic.svec_push(self._memory_id, _encode_value(value))
+    def pop(self):
+        return _decode_value(_basilisk_ic.svec_pop(self._memory_id))
+    def set(self, index, value):
+        _basilisk_ic.svec_set(self._memory_id, index, _encode_value(value))
+    def len(self):
+        return _basilisk_ic.svec_len(self._memory_id)
+    def is_empty(self):
+        return self.len() == 0
+
+_mod.StableVec = StableVec
+
+# --- StableLog ---
+
+class StableLog:
+    def __init__(self, memory_id_index=0, memory_id_data=1):
+        self._memory_id = memory_id_index
+        _basilisk_ic.slog_init(memory_id_index, memory_id_data)
+    def append(self, value):
+        return _basilisk_ic.slog_append(self._memory_id, _encode_value(value))
+    def get(self, index):
+        return _decode_value(_basilisk_ic.slog_get(self._memory_id, index))
+    def len(self):
+        return _basilisk_ic.slog_len(self._memory_id)
+    def is_empty(self):
+        return self.len() == 0
+
+_mod.StableLog = StableLog
+
+# --- StableCell ---
+
+class StableCell:
+    def __init__(self, memory_id=0, default_value=None):
+        self._memory_id = memory_id
+        _basilisk_ic.scell_init(memory_id, _encode_value(default_value))
+    def get(self):
+        return _decode_value(_basilisk_ic.scell_get(self._memory_id))
+    def set(self, value):
+        _basilisk_ic.scell_set(self._memory_id, _encode_value(value))
+
+_mod.StableCell = StableCell
+
+# --- StableMinHeap ---
+
+class StableMinHeap:
+    def __init__(self, memory_id=0):
+        self._memory_id = memory_id
+        _basilisk_ic.sheap_init(memory_id)
+    def push(self, value):
+        _basilisk_ic.sheap_push(self._memory_id, _encode_value(value))
+    def pop(self):
+        return _decode_value(_basilisk_ic.sheap_pop(self._memory_id))
+    def peek(self):
+        return _decode_value(_basilisk_ic.sheap_peek(self._memory_id))
+    def len(self):
+        return _basilisk_ic.sheap_len(self._memory_id)
+    def is_empty(self):
+        return self.len() == 0
+
+_mod.StableMinHeap = StableMinHeap
+
 # === Persistent file storage ===
 # Files on the canister memfs are persistent by default — they survive
 # canister upgrades.  Only files under /tmp/ are volatile.
+# File contents are stored in a dedicated StableBTreeMap (memory_id=254).
 
 _VOLATILE_PREFIXES = ["/tmp/", "/proc/", "/dev/"]
+_BASILISK_FS_MEM_ID = 254
 
-def _basilisk_save_files():
-    """No-op — file contents are already in stable memory (written on close)."""
-    pass
-
-def _basilisk_load_files():
-    """Restore memfs files from the direct stable memory file store."""
-    _basilisk_restore_files_from_map()
-
-# === Immediate file persistence via StableBTreeMap + direct stable memory ===
-# Files written to non-volatile paths are automatically persisted so they
-# survive canister upgrades.  File CONTENTS are written directly to stable
-# memory (at high offsets) on each close(), and only a small metadata index
-# {path: {"o": offset, "n": length}} is kept in the Python dict.  This
-# eliminates the pre_upgrade serialization bottleneck (#35).
-
-_BASILISK_FS_MEM_ID = 255
-_basilisk_file_store = StableBTreeMap(memory_id=_BASILISK_FS_MEM_ID, max_key_size=500, max_value_size=0)
-
-# Direct stable memory region for file content (starts at 16 MB).
-# The maps serialization region (offset 0) will never approach 16 MB,
-# so the two regions cannot overlap.
-_FS_CONTENT_BASE = 256 * 65536   # page 256 = 16 MB
-_fs_content_next = _FS_CONTENT_BASE
+_basilisk_ic.smap_init(_BASILISK_FS_MEM_ID)
 
 import builtins as _builtins
 _original_open = _builtins.open
 
 def _persist_file(path):
-    """Read file from memfs and store content directly in stable memory."""
-    global _fs_content_next
+    """Read file from memfs and store in the Rust-backed file store."""
     try:
         with _original_open(path, 'rb') as _f:
             _content = _f.read()
-        _nbytes = len(_content)
-        if _nbytes == 0:
-            # Empty file — store metadata only, no stable write needed
-            _basilisk_file_store.insert(path, _json.dumps({"o": 0, "n": 0}))
-            return
-        # Grow stable memory if needed
-        _end = _fs_content_next + _nbytes
-        _pages_needed = (_end + 65535) // 65536
-        _current = _basilisk_ic.stable64_size()
-        if _pages_needed > _current:
-            _basilisk_ic.stable64_grow(_pages_needed - _current)
-        # Write raw content directly to stable memory
-        _basilisk_ic.stable64_write(_fs_content_next, _content)
-        # Store only metadata (not content!) in the file store dict
-        _basilisk_file_store.insert(path, _json.dumps({"o": _fs_content_next, "n": _nbytes}))
-        _fs_content_next = _end
+        _basilisk_ic.smap_insert(_BASILISK_FS_MEM_ID, path.encode('utf-8'), _content)
     except Exception:
         pass
 
@@ -724,51 +688,38 @@ _original_os_remove = _os.remove
 _original_os_rename = _os.rename
 
 def _persistent_os_remove(path, *args, **kwargs):
-    """Remove file from memfs and from the file store map."""
+    """Remove file from memfs and from the file store."""
     _original_os_remove(path, *args, **kwargs)
-    _p = str(path)
-    if _basilisk_file_store.contains_key(_p):
-        _basilisk_file_store.remove(_p)
+    _p = str(path).encode('utf-8')
+    _basilisk_ic.smap_remove(_BASILISK_FS_MEM_ID, _p)
 
 def _persistent_os_rename(src, dst, *args, **kwargs):
-    """Rename file in memfs and update the file store map."""
+    """Rename file in memfs and update the file store."""
     _original_os_rename(src, dst, *args, **kwargs)
-    _s, _d = str(src), str(dst)
-    if _basilisk_file_store.contains_key(_s):
-        _data = _basilisk_file_store.get(_s)
-        _basilisk_file_store.remove(_s)
-        if _data is not None:
-            _basilisk_file_store.insert(_d, _data)
+    _sk = str(src).encode('utf-8')
+    _dk = str(dst).encode('utf-8')
+    _data = _basilisk_ic.smap_get(_BASILISK_FS_MEM_ID, _sk)
+    _basilisk_ic.smap_remove(_BASILISK_FS_MEM_ID, _sk)
+    if _data is not None:
+        _basilisk_ic.smap_insert(_BASILISK_FS_MEM_ID, _dk, _data)
 
 _os.remove = _persistent_os_remove
 _os.unlink = _persistent_os_remove
 _os.rename = _persistent_os_rename
 
-def _basilisk_restore_files_from_map():
-    """Restore files from the direct stable memory file store to memfs."""
-    global _fs_content_next
+def _basilisk_load_files():
+    """Restore files from the Rust-backed stable file store to memfs."""
     import os as _ros
-    _max_end = _FS_CONTENT_BASE
-    for _path, _data in _basilisk_file_store.items():
+    for _kbytes, _content in _basilisk_ic.smap_items(_BASILISK_FS_MEM_ID):
         try:
+            _path = _kbytes.decode('utf-8')
             _parent = _ros.path.dirname(_path)
             if _parent and _parent != '/':
                 _ros.makedirs(_parent, exist_ok=True)
-            _meta = _json.loads(_data)
-            _off = _meta["o"]
-            _nbytes = _meta["n"]
-            if _nbytes == 0:
-                _content = b""
-            else:
-                _content = _basilisk_ic.stable64_read(_off, _nbytes)
-                _end = _off + _nbytes
-                if _end > _max_end:
-                    _max_end = _end
             with _original_open(_path, 'wb') as _f:
                 _f.write(_content)
         except Exception:
             pass
-    _fs_content_next = _max_end
 
 # === Func/Service/Query/Update type stubs ===
 class _FuncType:

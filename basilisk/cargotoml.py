@@ -35,7 +35,7 @@ num-bigint = "0.4"
 
 serde = {{ version = "1.0.137", default-features = false, features = [] }}
 async-recursion = "1.0.0"
-ic-stable-structures = "0.5.2"
+ic-stable-structures = "0.6.5"
 slotmap = "1.0.6"
 
 ic-wasi-polyfill = {{ version = "0.6.1", features = [
@@ -82,7 +82,7 @@ rustpython-compiler-core = {{ git = "https://github.com/demergent-labs/RustPytho
 
 serde = {{ version = "1.0.137", default-features = false, features = [] }}
 async-recursion = "1.0.0"
-ic-stable-structures = "0.5.2"
+ic-stable-structures = "0.6.5"
 slotmap = "1.0.6"
 
 ic-wasi-polyfill = {{ version = "0.6.1", features = [

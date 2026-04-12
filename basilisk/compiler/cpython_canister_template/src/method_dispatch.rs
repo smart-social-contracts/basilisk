@@ -82,7 +82,7 @@ pub fn call_lifecycle_hook(hook_name: &str) {
 
 /// Call a Python function by name with no arguments.
 /// Silently returns if CPython is not initialized or the function doesn't exist.
-/// Used for internal hooks like _basilisk_save_stable_maps.
+/// Used for internal hooks like _basilisk_load_files.
 pub fn call_python_function(func_name: &str) {
     if !unsafe { crate::CPYTHON_INIT_DONE } {
         return;

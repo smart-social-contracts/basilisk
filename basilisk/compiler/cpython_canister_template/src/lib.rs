@@ -36,6 +36,7 @@ mod async_handler;
 mod python_init;
 mod method_dispatch;
 mod wasm_data;
+mod stable_structures;
 
 // Re-export from submodules
 use type_conversions::*;
@@ -88,9 +89,6 @@ fn init() {
 
     // Call user-defined @init function if present
     call_lifecycle_hook("init");
-
-    // Restore StableBTreeMap instances from stable memory (if upgrading with data)
-    call_python_function("_basilisk_load_stable_maps");
 }
 
 #[ic_cdk_macros::post_upgrade]
@@ -111,23 +109,14 @@ fn post_upgrade() {
     // Call user-defined @post_upgrade function if present
     call_lifecycle_hook("post_upgrade");
 
-    // Restore StableBTreeMap instances from stable memory
-    call_python_function("_basilisk_load_stable_maps");
-
-    // Restore memfs files from stable memory (after maps region)
+    // Restore memfs files from stable memory file store
     call_python_function("_basilisk_load_files");
 }
 
 #[ic_cdk_macros::pre_upgrade]
 fn pre_upgrade() {
-    // Save StableBTreeMap instances to stable memory before upgrade
-    call_python_function("_basilisk_save_stable_maps");
-
-    // Save memfs files to stable memory (after maps region)
-    call_python_function("_basilisk_save_files");
-
-    // Call user-defined @pre_upgrade function if present
-    // CPython is already initialized from the original init/post_upgrade
+    // Stable structures persist automatically — no serialization needed.
+    // Call user-defined @pre_upgrade function if present.
     call_lifecycle_hook("pre_upgrade");
 }
 
