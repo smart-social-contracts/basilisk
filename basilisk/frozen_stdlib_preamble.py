@@ -3050,11 +3050,56 @@ del _register_urllib_parse
 # blocks use _orig_import and the rich stubs get registered properly.
 _builtins.__import__ = _wasi_safe_import
 
-# --- Add memfs CWD to sys.path so user-uploaded .py files are importable ---
-# Without this, `import my_module` fails even though the file exists on memfs.
-# Guard: sys.path may not exist in minimal WASI CPython environments.
-if hasattr(_sys, 'path'):
-    if '.' not in _sys.path:
-        _sys.path.append('.')
-    if '/' not in _sys.path:
-        _sys.path.append('/')
+# --- MemFS import finder: let user-uploaded .py files be importable (#34) ---
+# In WASI CPython (without _Py_InitializeMain), sys.path and PathFinder are
+# absent, so standard filesystem-based imports don't work.  Install a custom
+# sys.meta_path finder that searches the memfs for .py files.
+class _MemFSFinder:
+    """Import finder that locates .py files on the in-memory filesystem."""
+    _search_dirs = ('/', '.')
+
+    @classmethod
+    def find_module(cls, fullname, path=None):
+        if '.' in fullname:
+            return None
+        _os = _sys.modules.get('os')
+        if not _os or not hasattr(_os.path, 'exists'):
+            return None
+        for _d in cls._search_dirs:
+            _fp = _d.rstrip('/') + '/' + fullname + '.py'
+            if _os.path.exists(_fp):
+                return _MemFSLoader(_fp)
+            _pkg = _d.rstrip('/') + '/' + fullname
+            _init = _pkg + '/__init__.py'
+            if _os.path.exists(_init):
+                return _MemFSLoader(_init, package=_pkg)
+        return None
+
+class _MemFSLoader:
+    """Import loader that reads .py source from the in-memory filesystem."""
+    def __init__(self, filepath, package=None):
+        self._filepath = filepath
+        self._package = package
+
+    def load_module(self, fullname):
+        if fullname in _sys.modules:
+            return _sys.modules[fullname]
+        with open(self._filepath, 'r') as _f:
+            _source = _f.read()
+        _mod = _ModuleType(fullname)
+        _mod.__file__ = self._filepath
+        _mod.__loader__ = self
+        if self._package:
+            _mod.__path__ = [self._package]
+            _mod.__package__ = fullname
+        else:
+            _mod.__package__ = fullname.rpartition('.')[0]
+        _sys.modules[fullname] = _mod
+        try:
+            exec(compile(_source, self._filepath, 'exec'), _mod.__dict__)
+        except Exception:
+            _sys.modules.pop(fullname, None)
+            raise
+        return _mod
+
+_sys.meta_path.append(_MemFSFinder)
