@@ -21,6 +21,7 @@ EXAMPLES_DIR = os.path.join(REPO_ROOT, "tests", "fixtures")
 
 # All examples in the CI matrix
 ALL_EXAMPLES = [
+    "all_stable_structures",
     "annotated_tests",
     "audio_recorder",
     "blob_array",

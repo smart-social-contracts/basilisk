@@ -12,7 +12,7 @@ from typing import Any, Callable
 import basilisk
 from basilisk.build_wasm_binary_or_exit import build_wasm_binary_or_exit
 from basilisk.colors import red, yellow, green, dim
-from basilisk.timed import timed, timed_inline
+from basilisk.timed import timed
 from basilisk.types import Args, Paths
 
 

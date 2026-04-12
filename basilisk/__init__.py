@@ -168,14 +168,6 @@ class CallResult(Generic[T]):
     def with_cycles128(self, cycles: nat) -> "CallResult[T]": ...
 
 
-# TODO Once RustPython supports Python 3.11, we can use the below and unify CallResult with the other Variants
-# TODO The problem is that you can't really use generics with TypedDict yet: https://github.com/python/cpython/issues/89026
-# TODO We could also consider a hack where we remove all references to CallResult before runtime, since this is really an analysis-time consideration
-# class CallResult(Variant, Generic[T], total=False):
-#     Ok: T
-#     Err: str
-
-
 class RejectionCode(Variant, total=False):
     NoError: null
     SysFatal: null

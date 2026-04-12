@@ -57,11 +57,7 @@ def _help_text() -> str:
 _HELP_NEW = """\
 basilisk new — Scaffold a new canister project.
 
-Usage: basilisk new [--backend cpython|rustpython] <project_name>
-
-Options:
-  --backend <be>   Python backend: cpython or rustpython  [default: cpython]
-                   (rustpython is deprecated and will be removed in a future release)
+Usage: basilisk new <project_name>
 
 Examples:
   basilisk new my_app
@@ -82,7 +78,7 @@ Examples:
 """
 
 
-def cmd_new(project_name: str, backend: str = "cpython"):
+def cmd_new(project_name: str):
     """Scaffold a new basilisk canister project."""
     project_dir = Path(project_name)
 
@@ -95,29 +91,18 @@ def cmd_new(project_name: str, backend: str = "cpython"):
         print(f"Error: '{project_name}' is not a valid project name. Use alphanumeric, dashes, and underscores.", file=sys.stderr)
         sys.exit(1)
 
-    if backend not in ("cpython", "rustpython"):
-        print(f"Error: unknown backend '{backend}'. Use 'cpython' or 'rustpython'.", file=sys.stderr)
-        sys.exit(1)
-
-    if backend == "rustpython":
-        print("Warning: rustpython is deprecated and will be removed in a future release. Use cpython instead.", file=sys.stderr)
-
-    print(f"Creating new basilisk project: {project_name} (backend: {backend})")
+    print(f"Creating new basilisk project: {project_name}")
 
     template_dir = Path(__file__).parent / "templates"
-    _scaffold_simple(project_dir, project_name, backend, template_dir)
+    _scaffold_simple(project_dir, project_name, template_dir)
 
 
-def _scaffold_simple(project_dir: Path, project_name: str, backend: str, template_dir: Path):
+def _scaffold_simple(project_dir: Path, project_name: str, template_dir: Path):
     """Scaffold the minimal single-file template."""
     src_dir = project_dir / "src"
     src_dir.mkdir(parents=True)
 
-    # Build command depends on backend
-    if backend == "rustpython":
-        build_cmd = f"BASILISK_PYTHON_BACKEND=rustpython CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
-    else:
-        build_cmd = f"CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
+    build_cmd = f"CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
 
     dfx_json = f"""\
 {{
@@ -144,11 +129,10 @@ node_modules/
 """
     (project_dir / ".gitignore").write_text(gitignore)
 
-    build_note = "⚡ fast template build" if backend == "cpython" else "🔨 full Rust build (~5-10 min first time)"
     print(f"""
-Done! Created {project_name}/ ({build_note})
+Done! Created {project_name}/ (⚡ fast template build)
   src/main.py    — your canister code (counter, greet, status)
-  dfx.json       — IC project config (backend: {backend})
+  dfx.json       — IC project config
 
 Next steps:
   cd {project_name}
@@ -211,24 +195,14 @@ def main():
     command = sys.argv[1]
 
     if command == "new":
-        # Parse --backend flag
         args = sys.argv[2:]
         if "--help" in args or "-h" in args:
             print(_HELP_NEW, end="")
             return
-        backend = "cpython"  # default
-        if "--backend" in args:
-            idx = args.index("--backend")
-            if idx + 1 >= len(args):
-                print("Error: --backend requires a value (cpython or rustpython)", file=sys.stderr)
-                sys.exit(1)
-            backend = args[idx + 1]
-            args = args[:idx] + args[idx + 2:]
-
         if len(args) < 1:
             print(_HELP_NEW, end="")
             sys.exit(1)
-        cmd_new(args[0], backend)
+        cmd_new(args[0])
 
     elif command == "build":
         if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
