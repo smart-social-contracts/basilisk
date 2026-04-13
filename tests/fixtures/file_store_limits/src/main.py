@@ -1,3 +1,4 @@
+import json
 import os
 
 from basilisk import (
@@ -6,11 +7,10 @@ from basilisk import (
 )
 
 
-@query
+@update
 def get_fs_stats() -> str:
-    """Return file store stats as a string for easy parsing."""
-    s = fs_stats()
-    return repr(s)
+    """Return file store stats as JSON."""
+    return json.dumps(fs_stats())
 
 
 @update
@@ -98,14 +98,12 @@ def cleanup_all_files() -> str:
     """Remove all files from the persistent store by iterating and deleting."""
     import _basilisk_ic
     _mem_id = 254
-    items = _basilisk_ic.smap_items(_mem_id)
-    count = 0
-    for k, v in items:
+    keys = [k for k, v in _basilisk_ic.smap_items(_mem_id)]
+    for k in keys:
         _basilisk_ic.smap_remove(_mem_id, k)
         path = k.decode('utf-8')
         try:
             os.remove(path)
         except Exception:
             pass
-        count += 1
-    return f"ok:{count}"
+    return f"ok:{len(keys)}"

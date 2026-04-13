@@ -10,7 +10,7 @@ Tests enforce:
   - Upgrade stress test near limits
 """
 
-import ast
+import json
 import os
 import subprocess
 
@@ -34,23 +34,6 @@ def _call(canister, method, args=None):
     return call_canister(canister, method, args, example_dir=EXAMPLE_DIR, update=True)
 
 
-def _call_query(canister, method, args=None):
-    return call_canister(canister, method, args, example_dir=EXAMPLE_DIR)
-
-
-def _parse_stats(raw):
-    """Parse fs_stats() string repr returned from canister."""
-    # raw looks like: '("{ ... }")' — extract inner string
-    inner = raw.strip()
-    if inner.startswith("(") and inner.endswith(")"):
-        inner = inner[1:-1].strip()
-    if inner.startswith('"') and inner.endswith('"'):
-        inner = inner[1:-1]
-    # Unescape any backslash-escaped quotes
-    inner = inner.replace('\\"', '"')
-    return ast.literal_eval(inner)
-
-
 def _extract_text(raw):
     """Extract text from Candid response like '("ok")'."""
     inner = raw.strip()
@@ -58,7 +41,16 @@ def _extract_text(raw):
         inner = inner[1:-1].strip()
     if inner.startswith('"') and inner.endswith('"'):
         inner = inner[1:-1]
+    # Unescape Candid backslash-escaped characters
+    inner = inner.replace('\\"', '"').replace('\\\\', '\\')
     return inner
+
+
+def _get_stats(canister):
+    """Call get_fs_stats and return parsed dict."""
+    raw = _call(canister, "get_fs_stats")
+    text = _extract_text(raw)
+    return json.loads(text)
 
 
 # ===========================================================================
@@ -70,10 +62,8 @@ class TestFsStats:
 
     def test_fs_stats_empty(self, canister):
         """Initially the file store should be empty."""
-        # Clean first
         _call(canister, "cleanup_all_files")
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 0
         assert stats["max_files"] == 500
         assert stats["total_bytes"] == 0
@@ -87,13 +77,11 @@ class TestFsStats:
         _call(canister, "cleanup_all_files")
         result = _extract_text(_call(canister, "write_file", '("/stats_test.dat", 1000)'))
         assert result == "ok"
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 1
         assert stats["total_bytes"] == 1000
         assert stats["largest_bytes"] == 1000
         assert stats["largest_path"] == "/stats_test.dat"
-        # Cleanup
         _call(canister, "delete_file", '("/stats_test.dat")')
 
     def test_fs_stats_tracks_largest(self, canister):
@@ -102,13 +90,11 @@ class TestFsStats:
         _call(canister, "write_file", '("/small.dat", 100)')
         _call(canister, "write_file", '("/big.dat", 5000)')
         _call(canister, "write_file", '("/medium.dat", 500)')
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 3
         assert stats["total_bytes"] == 5600
         assert stats["largest_bytes"] == 5000
         assert stats["largest_path"] == "/big.dat"
-        # Cleanup
         _call(canister, "cleanup_all_files")
 
 
@@ -124,8 +110,7 @@ class TestFileSizeLimit:
         _call(canister, "cleanup_all_files")
         result = _extract_text(_call(canister, "write_file", '("/ok_size.dat", 1000000)'))
         assert result == "ok"
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 1
         assert stats["total_bytes"] == 1_000_000
         _call(canister, "cleanup_all_files")
@@ -137,8 +122,7 @@ class TestFileSizeLimit:
         assert "FileTooLargeError" in result
         assert "2100000" in result
         # File should NOT be in the store
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 0
 
     def test_file_at_exact_limit(self, canister):
@@ -146,8 +130,7 @@ class TestFileSizeLimit:
         _call(canister, "cleanup_all_files")
         result = _extract_text(_call(canister, "write_file", '("/exact_2mb.dat", 2000000)'))
         assert result == "ok"
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 1
         assert stats["total_bytes"] == 2_000_000
         _call(canister, "cleanup_all_files")
@@ -155,15 +138,11 @@ class TestFileSizeLimit:
     def test_oversized_file_still_on_memfs(self, canister):
         """Even if persistence fails, the file should still be readable on memfs."""
         _call(canister, "cleanup_all_files")
-        # Write oversized file — should raise but file exists on memfs
         result = _extract_text(_call(canister, "write_file", '("/memfs_only.dat", 2100000)'))
         assert "FileTooLargeError" in result
-        # File should be readable on memfs
         check = _extract_text(_call(canister, "read_file_check", '("/memfs_only.dat")'))
         assert check == "ok:2100000"
-        # But NOT in stable store
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 0
 
 
@@ -179,8 +158,7 @@ class TestFileCountLimit:
         _call(canister, "cleanup_all_files")
         result = _extract_text(_call(canister, "write_many_files", '("/data/batch", 10, 100)'))
         assert result == "ok:10"
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 10
         _call(canister, "cleanup_all_files")
 
@@ -214,8 +192,7 @@ class TestTotalSizeLimit:
             )
             assert result == "ok", f"File {i} failed: {result}"
 
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 25
         assert stats["total_bytes"] == 25 * 1_900_000  # 47.5 MB
 
@@ -233,14 +210,11 @@ class TestTotalSizeLimit:
     def test_update_existing_file_within_total(self, canister):
         """Updating an existing file should account for replaced size."""
         _call(canister, "cleanup_all_files")
-        # Write a 1 MB file
         result = _extract_text(_call(canister, "write_file", '("/update_test.dat", 1000000)'))
         assert result == "ok"
-        # Overwrite with 1.5 MB — should succeed (net increase only 0.5 MB)
         result = _extract_text(_call(canister, "write_file", '("/update_test.dat", 1500000)'))
         assert result == "ok"
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 1
         assert stats["total_bytes"] == 1_500_000
         _call(canister, "cleanup_all_files")
@@ -317,8 +291,7 @@ class TestUpgradeStress:
         assert result.returncode == 0, f"Upgrade failed: {result.stderr}"
 
         # Verify files survived the upgrade
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 100, f"Expected 100 files after upgrade, got {stats['files']}"
         assert stats["total_bytes"] == 100 * 10_000
 
