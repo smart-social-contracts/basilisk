@@ -1,0 +1,12 @@
+{
+    "canisters": {
+        "file_store_limits": {
+            "type": "basilisk",
+            "main": "src/main.py",
+            "declarations": {
+                "output": "test/dfx_generated/file_store_limits",
+                "node_compatibility": true
+            }
+        }
+    }
+}

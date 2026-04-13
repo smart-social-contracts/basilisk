@@ -761,20 +761,94 @@ _mod.StableMinHeap = StableMinHeap
 
 _VOLATILE_PREFIXES = ["/tmp/", "/proc/", "/dev/"]
 _BASILISK_FS_MEM_ID = 254
+_BASILISK_FS_MAX_FILE_SIZE = 2_000_000      # 2 MB per file (SBytes hard limit)
+_BASILISK_FS_MAX_FILE_COUNT = 500           # max files in store
+_BASILISK_FS_MAX_TOTAL_SIZE = 50_000_000    # 50 MB total
+
+class FileStoreError(Exception):
+    """Base exception for file persistence errors."""
+
+class FileTooLargeError(FileStoreError):
+    """Single file exceeds the per-file size limit."""
+
+class FileStoreLimitError(FileStoreError):
+    """File count or total size limit reached."""
+
+_mod.FileStoreError = FileStoreError
+_mod.FileTooLargeError = FileTooLargeError
+_mod.FileStoreLimitError = FileStoreLimitError
 
 _basilisk_ic.smap_init(_BASILISK_FS_MEM_ID)
 
 import builtins as _builtins
 _original_open = _builtins.open
 
+def _fs_total_bytes():
+    """Calculate total bytes stored in the file store."""
+    _total = 0
+    for _kb, _vb in _basilisk_ic.smap_items(_BASILISK_FS_MEM_ID):
+        _total += len(_vb)
+    return _total
+
+def fs_stats():
+    """Return file store usage statistics."""
+    _count = _basilisk_ic.smap_len(_BASILISK_FS_MEM_ID)
+    _total = 0
+    _largest_size = 0
+    _largest_path = ""
+    for _kb, _vb in _basilisk_ic.smap_items(_BASILISK_FS_MEM_ID):
+        _sz = len(_vb)
+        _total += _sz
+        if _sz > _largest_size:
+            _largest_size = _sz
+            _largest_path = _kb.decode('utf-8')
+    return {
+        "files": _count,
+        "max_files": _BASILISK_FS_MAX_FILE_COUNT,
+        "total_bytes": _total,
+        "max_total_bytes": _BASILISK_FS_MAX_TOTAL_SIZE,
+        "max_file_bytes": _BASILISK_FS_MAX_FILE_SIZE,
+        "largest_bytes": _largest_size,
+        "largest_path": _largest_path,
+    }
+
+_mod.fs_stats = fs_stats
+
 def _persist_file(path):
     """Read file from memfs and store in the Rust-backed file store."""
-    try:
-        with _original_open(path, 'rb') as _f:
-            _content = _f.read()
-        _basilisk_ic.smap_insert(_BASILISK_FS_MEM_ID, path.encode('utf-8'), _content)
-    except Exception:
-        pass
+    with _original_open(path, 'rb') as _f:
+        _content = _f.read()
+    _key = path.encode('utf-8')
+    _sz = len(_content)
+    if _sz > _BASILISK_FS_MAX_FILE_SIZE:
+        raise FileTooLargeError(
+            f"File '{path}' ({_sz} bytes) exceeds {_BASILISK_FS_MAX_FILE_SIZE} byte limit "
+            f"- not persisted to stable memory"
+        )
+    _existing = _basilisk_ic.smap_get(_BASILISK_FS_MEM_ID, _key)
+    if _existing is None:
+        _count = _basilisk_ic.smap_len(_BASILISK_FS_MEM_ID)
+        if _count >= _BASILISK_FS_MAX_FILE_COUNT:
+            raise FileStoreLimitError(
+                f"File store full ({_count}/{_BASILISK_FS_MAX_FILE_COUNT} files) "
+                f"- '{path}' not persisted to stable memory"
+            )
+        _total = _fs_total_bytes()
+        if _total + _sz > _BASILISK_FS_MAX_TOTAL_SIZE:
+            raise FileStoreLimitError(
+                f"File store size limit ({_BASILISK_FS_MAX_TOTAL_SIZE} bytes) would be exceeded "
+                f"- '{path}' not persisted to stable memory"
+            )
+    else:
+        _old_sz = len(_existing)
+        if _sz > _old_sz:
+            _total = _fs_total_bytes()
+            if _total - _old_sz + _sz > _BASILISK_FS_MAX_TOTAL_SIZE:
+                raise FileStoreLimitError(
+                    f"File store size limit ({_BASILISK_FS_MAX_TOTAL_SIZE} bytes) would be exceeded "
+                    f"- '{path}' not persisted to stable memory"
+                )
+    _basilisk_ic.smap_insert(_BASILISK_FS_MEM_ID, _key, _content)
 
 class _PersistentFile:
     """Wrapper that auto-persists file content to stable memory on close."""

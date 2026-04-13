@@ -411,6 +411,57 @@ for (path_bytes, content) in smap_items(254):
 
 After this, all files are available on the memfs exactly as they were before the upgrade.
 
+### Limits
+
+The file store enforces hard limits to prevent `post_upgrade` instruction limit traps and `SBytes` panics:
+
+| Limit | Value | Constant |
+|-------|-------|----------|
+| Per-file size | 2 MB | `_BASILISK_FS_MAX_FILE_SIZE` |
+| File count | 500 files | `_BASILISK_FS_MAX_FILE_COUNT` |
+| Total size | 50 MB | `_BASILISK_FS_MAX_TOTAL_SIZE` |
+
+When a limit is violated, the file is **still written to memfs** (usable for the current execution) but is **not persisted** to stable memory. An exception is raised:
+
+```python
+from basilisk import FileTooLargeError, FileStoreLimitError, FileStoreError
+
+try:
+    with open("/data/big.bin", "wb") as f:
+        f.write(b"A" * 3_000_000)  # 3 MB — exceeds per-file limit
+except FileTooLargeError:
+    # File exists on memfs but won't survive upgrades
+    pass
+
+try:
+    with open("/data/new.dat", "w") as f:
+        f.write("data")
+except FileStoreLimitError:
+    # File count or total size limit reached
+    pass
+```
+
+Exception hierarchy: `FileStoreError` ← `FileTooLargeError`, `FileStoreLimitError`.
+
+### Monitoring usage
+
+```python
+from basilisk import fs_stats
+
+stats = fs_stats()
+# {
+#     "files": 12,
+#     "max_files": 500,
+#     "total_bytes": 1_887_232,
+#     "max_total_bytes": 50_000_000,
+#     "max_file_bytes": 2_000_000,
+#     "largest_bytes": 421_900,
+#     "largest_path": "data/users.json",
+# }
+```
+
+In the basilisk shell: `%df` displays a formatted usage summary.
+
 ## `stable_bytes()` and Raw Stable Memory
 
 The `ic.stable_bytes()` function is **disabled** when the MemoryManager is active. Calling it will trap with:
@@ -449,3 +500,6 @@ No serialization or deserialization step is needed. The structures are always "l
 | Max stable memory (IC limit) | 96 GB per canister |
 | IC reply size limit | 3 MB (affects `stable_bytes()`) |
 | Reserved memory IDs | 254 (file store) |
+| File store: max file size | 2 MB per file |
+| File store: max file count | 500 files |
+| File store: max total size | 50 MB |

@@ -758,3 +758,31 @@ class CandidError(Error):
     """Raised when converting to/from Candid values."""
 
     pass
+
+
+class FileStoreError(Error):
+    """Base exception for file persistence errors."""
+
+    pass
+
+
+class FileTooLargeError(FileStoreError):
+    """Single file exceeds the per-file size limit (2 MB)."""
+
+    pass
+
+
+class FileStoreLimitError(FileStoreError):
+    """File count or total size limit reached."""
+
+    pass
+
+
+def fs_stats() -> dict:
+    """Return file store usage statistics.
+
+    Returns a dict with keys:
+        files, max_files, total_bytes, max_total_bytes,
+        max_file_bytes, largest_bytes, largest_path
+    """
+    ...

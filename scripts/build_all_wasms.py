@@ -32,6 +32,7 @@ ALL_EXAMPLES = [
     "counter",
     "cycles",
     "date",
+    "file_store_limits",
     "filesystem",
     "generators",
     "guard_functions",
