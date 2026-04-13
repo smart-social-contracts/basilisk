@@ -54,7 +54,7 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 pip install ic-basilisk
 ```
 
-### Create, deploy, and connect
+### Create and deploy
 
 ```bash
 # 1. Scaffold a new project
@@ -68,35 +68,11 @@ dfx deploy
 # 3. Call your canister
 dfx canister call my_project greet '("World")'
 # ("Hello, World! The counter is at 0.")
-
-# 4. Open an interactive Python shell inside the canister
-basilisk shell --canister my_project
-
-# 5. Or connect via SSH and SFTP
-basilisk sshd --canister my_project
-ssh -p 2222 localhost              # Python shell over SSH
-sftp -P 2222 localhost             # browse the canister filesystem
 ```
 
-```
-basilisk>>> print("Hello from the IC!")
-Hello from the IC!
-basilisk>>> import os; os.listdir("/")
-['data', 'config.json']
-
-# Create a task with inline code
-basilisk>>> %task create my_report --code "print('Generating report...'); result = 42"
-
-# Run it immediately
-basilisk>>> %task run 1
-
-# Schedule a recurring task (every 60 seconds)
-basilisk>>> %task create heartbeat every 60s --code "print('alive at', ic.time())"
-
-# View task details and list all tasks
-basilisk>>> %task info 1
-basilisk>>> %task list
-```
+> **Interactive shell, file transfer, task management, wallet, and more** are provided by
+> [ic-basilisk-toolkit](https://github.com/smart-social-contracts/ic-basilisk-toolkit)
+> (`pip install ic-basilisk-toolkit`).
 
 ### CPython vs RustPython
 
@@ -132,15 +108,6 @@ Full CI logs: [CPython run](https://github.com/smart-social-contracts/basilisk/a
 
 The benchmark source is in [`benchmarks/counter/`](benchmarks/counter/).
 
-<!-- ## CLI Reference
-
-```
-basilisk new <name>                                  Create a new project
-basilisk build                                       Build the canister
-basilisk exec [--canister <c>] [--network <n>] <code> Execute code on a deployed canister
-basilisk shell [--canister <c>] [--network <n>]      Interactive shell
-basilisk sshd [--canister <c>] [--network <n>] [--port <p>]  SSH/SFTP server
-basilisk --version                                   Print version -->
 
 ## Why "Basilisk"?
 
