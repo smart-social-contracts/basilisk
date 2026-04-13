@@ -456,40 +456,45 @@ import _struct
 # These override the simple int/float aliases at module level so that
 # StableBTreeMap[nat8, int32](...) can distinguish encoding widths.
 
-class _StableTypeHint:
-    """Marker base for explicit stable encoding types."""
+class _StableIntHint(int):
+    """Marker base for explicit stable integer encoding types."""
     _stable_tag = None
     _stable_fmt = None
 
-class nat8(_StableTypeHint):
+class _StableFloatHint(float):
+    """Marker base for explicit stable float encoding types."""
+    _stable_tag = None
+    _stable_fmt = None
+
+class nat8(_StableIntHint):
     _stable_tag = 0x10
     _stable_fmt = '>B'
 
-class nat16(_StableTypeHint):
+class nat16(_StableIntHint):
     _stable_tag = 0x11
     _stable_fmt = '>H'
 
-class nat32(_StableTypeHint):
+class nat32(_StableIntHint):
     _stable_tag = 0x12
     _stable_fmt = '>I'
 
-class nat64(_StableTypeHint):
+class nat64(_StableIntHint):
     _stable_tag = 0x13
     _stable_fmt = '>Q'
 
-class int8(_StableTypeHint):
+class int8(_StableIntHint):
     _stable_tag = 0x14
     _stable_fmt = '>b'
 
-class int16(_StableTypeHint):
+class int16(_StableIntHint):
     _stable_tag = 0x15
     _stable_fmt = '>h'
 
-class int32(_StableTypeHint):
+class int32(_StableIntHint):
     _stable_tag = 0x16
     _stable_fmt = '>i'
 
-class float32(_StableTypeHint):
+class float32(_StableFloatHint):
     _stable_tag = 0x17
     _stable_fmt = '>f'
 

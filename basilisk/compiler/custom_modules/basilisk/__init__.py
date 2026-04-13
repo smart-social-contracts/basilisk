@@ -146,51 +146,56 @@ class AccountIdentifier:
 # Stable type hint classes — carry encoding metadata for stable structures.
 # Also serve as Candid type annotations in function signatures.
 
-class _StableTypeHint:
-    """Marker base for explicit stable encoding types."""
+class _StableIntHint(int):
+    """Marker base for explicit stable integer encoding types."""
     _stable_tag = None
     _stable_fmt = None
 
-class int64(_StableTypeHint):
+class _StableFloatHint(float):
+    """Marker base for explicit stable float encoding types."""
+    _stable_tag = None
+    _stable_fmt = None
+
+class int64(_StableIntHint):
     _stable_tag = 0x02
     _stable_fmt = '>q'
 
-class int32(_StableTypeHint):
+class int32(_StableIntHint):
     _stable_tag = 0x16
     _stable_fmt = '>i'
 
-class int16(_StableTypeHint):
+class int16(_StableIntHint):
     _stable_tag = 0x15
     _stable_fmt = '>h'
 
-class int8(_StableTypeHint):
+class int8(_StableIntHint):
     _stable_tag = 0x14
     _stable_fmt = '>b'
 
 class nat(int):
     pass
 
-class nat64(_StableTypeHint):
+class nat64(_StableIntHint):
     _stable_tag = 0x13
     _stable_fmt = '>Q'
 
-class nat32(_StableTypeHint):
+class nat32(_StableIntHint):
     _stable_tag = 0x12
     _stable_fmt = '>I'
 
-class nat16(_StableTypeHint):
+class nat16(_StableIntHint):
     _stable_tag = 0x11
     _stable_fmt = '>H'
 
-class nat8(_StableTypeHint):
+class nat8(_StableIntHint):
     _stable_tag = 0x10
     _stable_fmt = '>B'
 
-class float64(_StableTypeHint):
+class float64(_StableFloatHint):
     _stable_tag = 0x03
     _stable_fmt = '>d'
 
-class float32(_StableTypeHint):
+class float32(_StableFloatHint):
     _stable_tag = 0x17
     _stable_fmt = '>f'
 
