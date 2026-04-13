@@ -450,7 +450,7 @@ _mod.CallResult = CallResult
 # All data structures persist directly in stable memory via ic-stable-structures.
 # No pre_upgrade/post_upgrade serialization needed.
 
-import struct as _struct
+import _struct
 
 # --- Explicit stable type hints ---
 # These override the simple int/float aliases at module level so that
