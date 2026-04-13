@@ -35,10 +35,13 @@ def _call(canister, method, args=None):
 
 
 def _extract_text(raw):
-    """Extract text from Candid response like '("ok")'."""
+    """Extract text from Candid response like '("ok")' or '("ok" : text)'."""
+    import re
     inner = raw.strip()
     if inner.startswith("(") and inner.endswith(")"):
         inner = inner[1:-1].strip()
+    # Remove trailing Candid type annotation like ': text', ': nat64'
+    inner = re.sub(r'\s*:\s*\w+$', '', inner)
     if inner.startswith('"') and inner.endswith('"'):
         inner = inner[1:-1]
     # Unescape Candid backslash-escaped characters
@@ -268,8 +271,7 @@ class TestUpgradeStress:
         )
         assert result == "ok:100"
 
-        raw = _call_query(canister, "get_fs_stats")
-        stats = _parse_stats(raw)
+        stats = _get_stats(canister)
         assert stats["files"] == 100
         assert stats["total_bytes"] == 100 * 10_000
 
