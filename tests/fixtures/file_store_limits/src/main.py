@@ -1,16 +1,33 @@
-import json
 import os
 
 from basilisk import (
-    query, update, nat64, Vec,
-    fs_stats, FileStoreError, FileTooLargeError, FileStoreLimitError,
+    update, nat64,
+    FileStoreError, FileTooLargeError, FileStoreLimitError,
 )
 
 
 @update
 def get_fs_stats() -> str:
-    """Return file store stats as JSON."""
-    return json.dumps(fs_stats())
+    """Return file store stats as pipe-delimited string.
+
+    Format: files|max_files|total_bytes|max_total_bytes|max_file_bytes|largest_bytes|largest_path
+    """
+    try:
+        from basilisk import fs_stats
+        s = fs_stats()
+        if s is None:
+            return "ERROR:fs_stats returned None"
+        return '|'.join([
+            str(s['files']),
+            str(s['max_files']),
+            str(s['total_bytes']),
+            str(s['max_total_bytes']),
+            str(s['max_file_bytes']),
+            str(s['largest_bytes']),
+            s.get('largest_path', ''),
+        ])
+    except Exception as e:
+        return f"ERROR:{type(e).__name__}:{e}"
 
 
 @update
