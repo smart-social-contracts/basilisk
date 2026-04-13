@@ -78,7 +78,7 @@ def typed_map_len() -> nat64:
     return typed_map.len()
 
 @query
-def typed_map_keys() -> Vec[nat8]:
+def typed_map_keys() -> Vec[nat64]:
     return typed_map.keys()
 
 @query
