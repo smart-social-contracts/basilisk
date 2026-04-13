@@ -184,22 +184,17 @@ class TestTotalSizeLimit:
     def test_total_size_limit_new_file(self, canister):
         """Adding a new file that would exceed 50 MB total should fail."""
         _call(canister, "cleanup_all_files")
-        # Write 25 files of ~1.9 MB each = ~47.5 MB
-        for i in range(25):
+        # Write 26 files of ~1.9 MB each = ~49.4 MB (under 50 MB limit)
+        for i in range(26):
             result = _call(canister, "write_file", f'("/big/chunk_{i:02d}.dat", 1900000)')
             assert result == "ok", f"File {i} failed: {result}"
 
         stats = _get_stats(canister)
-        assert stats["files"] == 25
-        assert stats["total_bytes"] == 25 * 1_900_000  # 47.5 MB
+        assert stats["files"] == 26
+        assert stats["total_bytes"] == 26 * 1_900_000  # 49.4 MB
 
-        # This 3 MB file would push total to 50.5 MB — should fail
-        result = _call(canister, "write_file", '("/big/overflow.dat", 3000000)')
-        # Should fail with either FileTooLargeError (>2MB) or FileStoreLimitError (>50MB)
-        assert "Error" in result or "FileTooLargeError" in result
-
-        # Try a file that's under 2MB but would exceed 50MB total
-        result = _call(canister, "write_file", '("/big/overflow2.dat", 1900000)')
+        # A 1 MB file would push total to 50.4 MB — should fail
+        result = _call(canister, "write_file", '("/big/overflow.dat", 1000000)')
         assert "FileStoreLimitError" in result
 
         _call(canister, "cleanup_all_files")
