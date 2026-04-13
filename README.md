@@ -21,7 +21,7 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 
 **Built-in Application Framework:**
 
-- **Persistent storage** — Rust-backed stable data structures (`StableBTreeMap`, `StableBTreeSet`, `StableVec`, `StableLog`, `StableCell`, `StableMinHeap`) powered by `ic-stable-structures` — data persists across canister upgrades with no serialization step
+- **Persistent storage** — Rust-backed stable data structures (`StableBTreeMap`, `StableBTreeSet`, `StableVec`, `StableLog`, `StableCell`, `StableMinHeap`) powered by `ic-stable-structures` with tagged binary encoding — data persists across canister upgrades with no serialization step. Supports explicit type hints (`nat8`, `int32`, etc.) for compact, correctly-ordered keys and values
 - **Filesystem** — standard `open()` and `os` calls, automatically persisted to stable memory across upgrades
 - **IC system APIs** — `ic.caller()`, `ic.time()`, `ic.canister_balance()`, inter-canister calls, timers, and Candid types (`Principal`, `Record`, `Variant`, etc.)
 

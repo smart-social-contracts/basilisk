@@ -450,50 +450,174 @@ _mod.CallResult = CallResult
 # All data structures persist directly in stable memory via ic-stable-structures.
 # No pre_upgrade/post_upgrade serialization needed.
 
-import json as _json
+import struct as _struct
 
-def _to_json_safe(obj):
-    """Convert Python object to JSON-safe representation for stable storage."""
-    if isinstance(obj, Principal):
-        return {"__principal__": obj.to_str()}
-    if isinstance(obj, tuple):
-        return {"__tuple__": [_to_json_safe(x) for x in obj]}
-    if isinstance(obj, dict):
-        return {"__dict__": [[_to_json_safe(k), _to_json_safe(v)] for k, v in obj.items()]}
-    if isinstance(obj, list):
-        return [_to_json_safe(x) for x in obj]
-    if isinstance(obj, bytes):
-        return {"__bytes__": list(obj)}
-    return obj
+# --- Explicit stable type hints ---
+# These override the simple int/float aliases at module level so that
+# StableBTreeMap[nat8, int32](...) can distinguish encoding widths.
 
-def _from_json_safe(obj):
-    """Restore Python object from JSON-safe representation."""
-    if isinstance(obj, dict):
-        if "__principal__" in obj:
-            return Principal(obj["__principal__"])
-        if "__tuple__" in obj:
-            return tuple(_from_json_safe(x) for x in obj["__tuple__"])
-        if "__dict__" in obj:
-            return {_from_json_safe(k): _from_json_safe(v) for k, v in obj["__dict__"]}
-        if "__bytes__" in obj:
-            return bytes(obj["__bytes__"])
-        return {_from_json_safe(k): _from_json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_from_json_safe(x) for x in obj]
-    return obj
+class _StableTypeHint:
+    """Marker base for explicit stable encoding types."""
+    _stable_tag = None
+    _stable_fmt = None
 
-def _encode_key(key):
-    return _json.dumps(_to_json_safe(key)).encode('utf-8')
+class nat8(_StableTypeHint):
+    _stable_tag = 0x10
+    _stable_fmt = '>B'
 
-def _encode_value(value):
-    return _json.dumps(_to_json_safe(value)).encode('utf-8')
+class nat16(_StableTypeHint):
+    _stable_tag = 0x11
+    _stable_fmt = '>H'
 
-def _decode_value(raw):
+class nat32(_StableTypeHint):
+    _stable_tag = 0x12
+    _stable_fmt = '>I'
+
+class nat64(_StableTypeHint):
+    _stable_tag = 0x13
+    _stable_fmt = '>Q'
+
+class int8(_StableTypeHint):
+    _stable_tag = 0x14
+    _stable_fmt = '>b'
+
+class int16(_StableTypeHint):
+    _stable_tag = 0x15
+    _stable_fmt = '>h'
+
+class int32(_StableTypeHint):
+    _stable_tag = 0x16
+    _stable_fmt = '>i'
+
+class float32(_StableTypeHint):
+    _stable_tag = 0x17
+    _stable_fmt = '>f'
+
+_mod.nat8 = nat8
+_mod.nat16 = nat16
+_mod.nat32 = nat32
+_mod.nat64 = nat64
+_mod.int8 = int8
+_mod.int16 = int16
+_mod.int32 = int32
+_mod.float32 = float32
+
+# --- Tagged binary encoder/decoder ---
+# Format: [1-byte type tag] [payload]
+# All integers are big-endian for correct byte-level ordering.
+
+def _encode(value, type_hint=None):
+    """Encode a Python value to tagged binary bytes."""
+    if type_hint is not None and hasattr(type_hint, '_stable_tag') and type_hint._stable_tag is not None:
+        return bytes([type_hint._stable_tag]) + _struct.pack(type_hint._stable_fmt, value)
+    if value is None:
+        return b'\x00'
+    if isinstance(value, bool):
+        return b'\x01' + (b'\x01' if value else b'\x00')
+    if isinstance(value, int):
+        return b'\x02' + _struct.pack('>q', value)
+    if isinstance(value, float):
+        return b'\x03' + _struct.pack('>d', value)
+    if isinstance(value, str):
+        raw = value.encode('utf-8')
+        return b'\x04' + _struct.pack('>I', len(raw)) + raw
+    if isinstance(value, (bytes, bytearray)):
+        return b'\x05' + _struct.pack('>I', len(value)) + bytes(value)
+    if isinstance(value, Principal):
+        raw = value.to_str().encode('utf-8')
+        return b'\x06' + _struct.pack('>I', len(raw)) + raw
+    if isinstance(value, list):
+        parts = b''.join(_encode(x) for x in value)
+        return b'\x07' + _struct.pack('>I', len(value)) + parts
+    if isinstance(value, dict):
+        parts = b''.join(_encode(k) + _encode(v) for k, v in value.items())
+        return b'\x08' + _struct.pack('>I', len(value)) + parts
+    if isinstance(value, tuple):
+        parts = b''.join(_encode(x) for x in value)
+        return b'\x09' + _struct.pack('>I', len(value)) + parts
+    raise ValueError(f"Cannot encode {type(value).__name__} for stable storage")
+
+def _decode(data, offset=0):
+    """Decode a tagged binary value, returning (value, new_offset)."""
+    tag = data[offset]
+    offset += 1
+    if tag == 0x00:
+        return None, offset
+    if tag == 0x01:
+        return data[offset] != 0, offset + 1
+    if tag == 0x02:
+        return _struct.unpack_from('>q', data, offset)[0], offset + 8
+    if tag == 0x03:
+        return _struct.unpack_from('>d', data, offset)[0], offset + 8
+    if tag == 0x04:
+        length = _struct.unpack_from('>I', data, offset)[0]
+        offset += 4
+        return data[offset:offset + length].decode('utf-8'), offset + length
+    if tag == 0x05:
+        length = _struct.unpack_from('>I', data, offset)[0]
+        offset += 4
+        return bytes(data[offset:offset + length]), offset + length
+    if tag == 0x06:
+        length = _struct.unpack_from('>I', data, offset)[0]
+        offset += 4
+        return Principal(data[offset:offset + length].decode('utf-8')), offset + length
+    if tag == 0x07:
+        count = _struct.unpack_from('>I', data, offset)[0]
+        offset += 4
+        items = []
+        for _ in range(count):
+            item, offset = _decode(data, offset)
+            items.append(item)
+        return items, offset
+    if tag == 0x08:
+        count = _struct.unpack_from('>I', data, offset)[0]
+        offset += 4
+        d = {}
+        for _ in range(count):
+            k, offset = _decode(data, offset)
+            v, offset = _decode(data, offset)
+            d[k] = v
+        return d, offset
+    if tag == 0x09:
+        count = _struct.unpack_from('>I', data, offset)[0]
+        offset += 4
+        items = []
+        for _ in range(count):
+            item, offset = _decode(data, offset)
+            items.append(item)
+        return tuple(items), offset
+    if tag == 0x10:
+        return _struct.unpack_from('>B', data, offset)[0], offset + 1
+    if tag == 0x11:
+        return _struct.unpack_from('>H', data, offset)[0], offset + 2
+    if tag == 0x12:
+        return _struct.unpack_from('>I', data, offset)[0], offset + 4
+    if tag == 0x13:
+        return _struct.unpack_from('>Q', data, offset)[0], offset + 8
+    if tag == 0x14:
+        return _struct.unpack_from('>b', data, offset)[0], offset + 1
+    if tag == 0x15:
+        return _struct.unpack_from('>h', data, offset)[0], offset + 2
+    if tag == 0x16:
+        return _struct.unpack_from('>i', data, offset)[0], offset + 4
+    if tag == 0x17:
+        return _struct.unpack_from('>f', data, offset)[0], offset + 4
+    raise ValueError(f"Unknown stable encoding tag 0x{tag:02x}")
+
+def _decode_val(raw):
+    """Decode a complete tagged binary blob, returning the Python value."""
     if raw is None:
         return None
-    return _from_json_safe(_json.loads(raw.decode('utf-8')))
+    val, _ = _decode(raw)
+    return val
 
 # --- StableBTreeMap ---
+
+def _type_hint_for(t):
+    """Return t if it carries stable encoding metadata, else None."""
+    if t is not None and hasattr(t, '_stable_tag') and t._stable_tag is not None:
+        return t
+    return None
 
 class _StableBTreeMapMeta(type):
     def __getitem__(cls, params):
@@ -502,33 +626,33 @@ class _StableBTreeMapMeta(type):
         else:
             key_type, val_type = params, None
         def factory(memory_id=0, max_key_size=100, max_value_size=100):
-            return StableBTreeMap(memory_id=memory_id, max_key_size=max_key_size, max_value_size=max_value_size)
+            return StableBTreeMap(memory_id=memory_id, max_key_size=max_key_size, max_value_size=max_value_size, _key_type=key_type, _val_type=val_type)
         return factory
 
 class StableBTreeMap(metaclass=_StableBTreeMapMeta):
-    def __init__(self, memory_id=0, max_key_size=100, max_value_size=100):
+    def __init__(self, memory_id=0, max_key_size=100, max_value_size=100, _key_type=None, _val_type=None):
         self._memory_id = memory_id
-        self._max_key_size = max_key_size
-        self._max_value_size = max_value_size
+        self._kt = _type_hint_for(_key_type)
+        self._vt = _type_hint_for(_val_type)
         _basilisk_ic.smap_init(memory_id)
     def get(self, key):
-        return _decode_value(_basilisk_ic.smap_get(self._memory_id, _encode_key(key)))
+        return _decode_val(_basilisk_ic.smap_get(self._memory_id, _encode(key, self._kt)))
     def insert(self, key, value):
-        prev = _basilisk_ic.smap_insert(self._memory_id, _encode_key(key), _encode_value(value))
-        return _decode_value(prev)
+        prev = _basilisk_ic.smap_insert(self._memory_id, _encode(key, self._kt), _encode(value, self._vt))
+        return _decode_val(prev)
     def remove(self, key):
-        prev = _basilisk_ic.smap_remove(self._memory_id, _encode_key(key))
-        return _decode_value(prev)
+        prev = _basilisk_ic.smap_remove(self._memory_id, _encode(key, self._kt))
+        return _decode_val(prev)
     def contains_key(self, key):
-        return _basilisk_ic.smap_contains_key(self._memory_id, _encode_key(key))
+        return _basilisk_ic.smap_contains_key(self._memory_id, _encode(key, self._kt))
     def is_empty(self):
         return _basilisk_ic.smap_len(self._memory_id) == 0
     def keys(self):
-        return [_from_json_safe(_json.loads(k.decode('utf-8'))) for k in _basilisk_ic.smap_keys(self._memory_id)]
+        return [_decode_val(k) for k in _basilisk_ic.smap_keys(self._memory_id)]
     def values(self):
-        return [_from_json_safe(_json.loads(v.decode('utf-8'))) for _, v in _basilisk_ic.smap_items(self._memory_id)]
+        return [_decode_val(v) for _, v in _basilisk_ic.smap_items(self._memory_id)]
     def items(self):
-        return [(_from_json_safe(_json.loads(k.decode('utf-8'))), _from_json_safe(_json.loads(v.decode('utf-8')))) for k, v in _basilisk_ic.smap_items(self._memory_id)]
+        return [(_decode_val(k), _decode_val(v)) for k, v in _basilisk_ic.smap_items(self._memory_id)]
     def len(self):
         return _basilisk_ic.smap_len(self._memory_id)
 
@@ -537,19 +661,20 @@ _mod.StableBTreeMap = StableBTreeMap
 # --- StableBTreeSet ---
 
 class StableBTreeSet:
-    def __init__(self, memory_id=0):
+    def __init__(self, memory_id=0, _key_type=None):
         self._memory_id = memory_id
+        self._kt = _type_hint_for(_key_type)
         _basilisk_ic.sset_init(memory_id)
     def insert(self, key):
-        return _basilisk_ic.sset_insert(self._memory_id, _encode_key(key))
+        return _basilisk_ic.sset_insert(self._memory_id, _encode(key, self._kt))
     def remove(self, key):
-        return _basilisk_ic.sset_remove(self._memory_id, _encode_key(key))
+        return _basilisk_ic.sset_remove(self._memory_id, _encode(key, self._kt))
     def contains(self, key):
-        return _basilisk_ic.sset_contains(self._memory_id, _encode_key(key))
+        return _basilisk_ic.sset_contains(self._memory_id, _encode(key, self._kt))
     def is_empty(self):
         return _basilisk_ic.sset_len(self._memory_id) == 0
     def items(self):
-        return [_from_json_safe(_json.loads(k.decode('utf-8'))) for k in _basilisk_ic.sset_items(self._memory_id)]
+        return [_decode_val(k) for k in _basilisk_ic.sset_items(self._memory_id)]
     def len(self):
         return _basilisk_ic.sset_len(self._memory_id)
 
@@ -558,17 +683,18 @@ _mod.StableBTreeSet = StableBTreeSet
 # --- StableVec ---
 
 class StableVec:
-    def __init__(self, memory_id=0):
+    def __init__(self, memory_id=0, _val_type=None):
         self._memory_id = memory_id
+        self._vt = _type_hint_for(_val_type)
         _basilisk_ic.svec_init(memory_id)
     def get(self, index):
-        return _decode_value(_basilisk_ic.svec_get(self._memory_id, index))
+        return _decode_val(_basilisk_ic.svec_get(self._memory_id, index))
     def push(self, value):
-        _basilisk_ic.svec_push(self._memory_id, _encode_value(value))
+        _basilisk_ic.svec_push(self._memory_id, _encode(value, self._vt))
     def pop(self):
-        return _decode_value(_basilisk_ic.svec_pop(self._memory_id))
+        return _decode_val(_basilisk_ic.svec_pop(self._memory_id))
     def set(self, index, value):
-        _basilisk_ic.svec_set(self._memory_id, index, _encode_value(value))
+        _basilisk_ic.svec_set(self._memory_id, index, _encode(value, self._vt))
     def len(self):
         return _basilisk_ic.svec_len(self._memory_id)
     def is_empty(self):
@@ -579,13 +705,14 @@ _mod.StableVec = StableVec
 # --- StableLog ---
 
 class StableLog:
-    def __init__(self, memory_id_index=0, memory_id_data=1):
+    def __init__(self, memory_id_index=0, memory_id_data=1, _val_type=None):
         self._memory_id = memory_id_index
+        self._vt = _type_hint_for(_val_type)
         _basilisk_ic.slog_init(memory_id_index, memory_id_data)
     def append(self, value):
-        return _basilisk_ic.slog_append(self._memory_id, _encode_value(value))
+        return _basilisk_ic.slog_append(self._memory_id, _encode(value, self._vt))
     def get(self, index):
-        return _decode_value(_basilisk_ic.slog_get(self._memory_id, index))
+        return _decode_val(_basilisk_ic.slog_get(self._memory_id, index))
     def len(self):
         return _basilisk_ic.slog_len(self._memory_id)
     def is_empty(self):
@@ -596,28 +723,30 @@ _mod.StableLog = StableLog
 # --- StableCell ---
 
 class StableCell:
-    def __init__(self, memory_id=0, default_value=None):
+    def __init__(self, memory_id=0, default_value=None, _val_type=None):
         self._memory_id = memory_id
-        _basilisk_ic.scell_init(memory_id, _encode_value(default_value))
+        self._vt = _type_hint_for(_val_type)
+        _basilisk_ic.scell_init(memory_id, _encode(default_value, self._vt))
     def get(self):
-        return _decode_value(_basilisk_ic.scell_get(self._memory_id))
+        return _decode_val(_basilisk_ic.scell_get(self._memory_id))
     def set(self, value):
-        _basilisk_ic.scell_set(self._memory_id, _encode_value(value))
+        _basilisk_ic.scell_set(self._memory_id, _encode(value, self._vt))
 
 _mod.StableCell = StableCell
 
 # --- StableMinHeap ---
 
 class StableMinHeap:
-    def __init__(self, memory_id=0):
+    def __init__(self, memory_id=0, _val_type=None):
         self._memory_id = memory_id
+        self._vt = _type_hint_for(_val_type)
         _basilisk_ic.sheap_init(memory_id)
     def push(self, value):
-        _basilisk_ic.sheap_push(self._memory_id, _encode_value(value))
+        _basilisk_ic.sheap_push(self._memory_id, _encode(value, self._vt))
     def pop(self):
-        return _decode_value(_basilisk_ic.sheap_pop(self._memory_id))
+        return _decode_val(_basilisk_ic.sheap_pop(self._memory_id))
     def peek(self):
-        return _decode_value(_basilisk_ic.sheap_peek(self._memory_id))
+        return _decode_val(_basilisk_ic.sheap_peek(self._memory_id))
     def len(self):
         return _basilisk_ic.sheap_len(self._memory_id)
     def is_empty(self):

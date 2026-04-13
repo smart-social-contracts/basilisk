@@ -2,6 +2,9 @@
 
 from basilisk import (
     ic,
+    int32,
+    int64,
+    nat8,
     nat64,
     Opt,
     query,
@@ -49,6 +52,38 @@ def map_keys() -> Vec[str]:
 @query
 def map_values() -> Vec[str]:
     return smap.values()
+
+
+# --- StableBTreeMap with explicit types: nat8 keys, int32 values (memory_id=1) ---
+typed_map = StableBTreeMap[nat8, int32](memory_id=1, max_key_size=200, max_value_size=10_000)
+
+@update
+def typed_map_insert(key: nat8, value: int32) -> Opt[int32]:
+    return typed_map.insert(key, value)
+
+@query
+def typed_map_get(key: nat8) -> Opt[int32]:
+    return typed_map.get(key)
+
+@query
+def typed_map_contains_key(key: nat8) -> bool:
+    return typed_map.contains_key(key)
+
+@update
+def typed_map_remove(key: nat8) -> Opt[int32]:
+    return typed_map.remove(key)
+
+@query
+def typed_map_len() -> nat64:
+    return typed_map.len()
+
+@query
+def typed_map_keys() -> Vec[nat8]:
+    return typed_map.keys()
+
+@query
+def typed_map_values() -> Vec[int32]:
+    return typed_map.values()
 
 
 # --- StableBTreeSet (memory_id=10) ---
@@ -157,3 +192,23 @@ def heap_len() -> nat64:
 @query
 def heap_is_empty() -> bool:
     return sheap.is_empty()
+
+
+# --- StableMinHeap with int values for numeric ordering test (memory_id=51) ---
+num_heap = StableMinHeap(memory_id=51)
+
+@update
+def num_heap_push(value: int64):
+    num_heap.push(value)
+
+@update
+def num_heap_pop() -> Opt[int64]:
+    return num_heap.pop()
+
+@query
+def num_heap_peek() -> Opt[int64]:
+    return num_heap.peek()
+
+@query
+def num_heap_len() -> nat64:
+    return num_heap.len()

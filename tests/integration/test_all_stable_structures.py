@@ -1,4 +1,9 @@
-"""Integration tests for all stable data structures: BTreeMap, BTreeSet, Vec, Log, Cell, MinHeap."""
+"""Integration tests for all stable data structures: BTreeMap, BTreeSet, Vec, Log, Cell, MinHeap.
+
+Also covers:
+- Typed maps (nat8 keys, int32 values) with explicit stable encoding hints
+- Numeric min-heap ordering (big-endian binary ensures correct sort)
+"""
 
 import pytest
 from .conftest import deploy_example, call_canister, EXAMPLES_DIR
@@ -14,7 +19,7 @@ def canister(replica):
     return ids[list(ids.keys())[0]]
 
 
-# ===== StableBTreeMap =====
+# ===== StableBTreeMap (str, str) =====
 
 def test_map_initially_empty(canister):
     raw = call_canister(canister, "map_is_empty", example_dir=EXAMPLE_DIR)
@@ -46,6 +51,47 @@ def test_map_remove(canister):
     assert "wonderland" in raw
     raw = call_canister(canister, "map_is_empty", example_dir=EXAMPLE_DIR)
     assert "true" in raw
+
+
+# ===== Typed StableBTreeMap (nat8, int32) =====
+
+def test_typed_map_insert_and_get(canister):
+    call_canister(canister, "typed_map_insert", "(10 : nat8, -42 : int32)", example_dir=EXAMPLE_DIR, update=True)
+    raw = call_canister(canister, "typed_map_get", "(10 : nat8)", example_dir=EXAMPLE_DIR)
+    assert "-42" in raw
+
+def test_typed_map_contains_key(canister):
+    raw = call_canister(canister, "typed_map_contains_key", "(10 : nat8)", example_dir=EXAMPLE_DIR)
+    assert "true" in raw
+
+def test_typed_map_len(canister):
+    raw = call_canister(canister, "typed_map_len", example_dir=EXAMPLE_DIR)
+    assert "1" in raw
+
+def test_typed_map_multiple_keys(canister):
+    """Insert several nat8 keys and verify they all round-trip."""
+    call_canister(canister, "typed_map_insert", "(0 : nat8, 100 : int32)", example_dir=EXAMPLE_DIR, update=True)
+    call_canister(canister, "typed_map_insert", "(255 : nat8, -1 : int32)", example_dir=EXAMPLE_DIR, update=True)
+    raw0 = call_canister(canister, "typed_map_get", "(0 : nat8)", example_dir=EXAMPLE_DIR)
+    assert "100" in raw0
+    raw255 = call_canister(canister, "typed_map_get", "(255 : nat8)", example_dir=EXAMPLE_DIR)
+    assert "-1" in raw255
+
+def test_typed_map_keys_values(canister):
+    raw_keys = call_canister(canister, "typed_map_keys", example_dir=EXAMPLE_DIR)
+    assert "0" in raw_keys
+    assert "10" in raw_keys
+    assert "255" in raw_keys
+    raw_vals = call_canister(canister, "typed_map_values", example_dir=EXAMPLE_DIR)
+    assert "100" in raw_vals
+    assert "-42" in raw_vals
+    assert "-1" in raw_vals
+
+def test_typed_map_remove(canister):
+    raw = call_canister(canister, "typed_map_remove", "(10 : nat8)", example_dir=EXAMPLE_DIR, update=True)
+    assert "-42" in raw
+    raw = call_canister(canister, "typed_map_contains_key", "(10 : nat8)", example_dir=EXAMPLE_DIR)
+    assert "false" in raw
 
 
 # ===== StableBTreeSet =====
@@ -149,7 +195,7 @@ def test_cell_overwrite(canister):
     assert "final" in raw
 
 
-# ===== StableMinHeap =====
+# ===== StableMinHeap (str) =====
 
 def test_heap_initially_empty(canister):
     raw = call_canister(canister, "heap_is_empty", example_dir=EXAMPLE_DIR)
@@ -178,3 +224,31 @@ def test_heap_pop_order(canister):
 def test_heap_empty_after_pops(canister):
     raw = call_canister(canister, "heap_is_empty", example_dir=EXAMPLE_DIR)
     assert "true" in raw
+
+
+# ===== Numeric StableMinHeap (int64 default encoding) =====
+
+def test_num_heap_numeric_ordering(canister):
+    """With big-endian binary encoding, ints sort numerically, not lexicographically.
+
+    If encoding were text/JSON, "9" > "10" lexicographically.
+    With big-endian int64 encoding, 9 < 10 correctly.
+    """
+    call_canister(canister, "num_heap_push", "(100 : int64)", example_dir=EXAMPLE_DIR, update=True)
+    call_canister(canister, "num_heap_push", "(9 : int64)", example_dir=EXAMPLE_DIR, update=True)
+    call_canister(canister, "num_heap_push", "(42 : int64)", example_dir=EXAMPLE_DIR, update=True)
+    raw = call_canister(canister, "num_heap_peek", example_dir=EXAMPLE_DIR)
+    assert "9" in raw  # smallest value
+
+def test_num_heap_pop_order(canister):
+    """Values should pop in numeric ascending order."""
+    raw1 = call_canister(canister, "num_heap_pop", example_dir=EXAMPLE_DIR, update=True)
+    assert "9" in raw1
+    raw2 = call_canister(canister, "num_heap_pop", example_dir=EXAMPLE_DIR, update=True)
+    assert "42" in raw2
+    raw3 = call_canister(canister, "num_heap_pop", example_dir=EXAMPLE_DIR, update=True)
+    assert "100" in raw3
+
+def test_num_heap_empty_after_pops(canister):
+    raw = call_canister(canister, "num_heap_len", example_dir=EXAMPLE_DIR)
+    assert "0" in raw
