@@ -136,7 +136,7 @@ Basilisk may have unknown security vulnerabilities due to the following:
 
 ## Documentation
 
-For detailed architecture notes, see [CPYTHON_MIGRATION_NOTES.md](CPYTHON_MIGRATION_NOTES.md).
+For detailed architecture notes, see [CPYTHON_MIGRATION_NOTES.md](docs/CPYTHON_MIGRATION_NOTES.md).
 
 ## Discussion
 
