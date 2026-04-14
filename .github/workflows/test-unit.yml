@@ -1,0 +1,30 @@
+# Unit Tests — fast, pure-Python tests that need no dfx, WASM, or canisters.
+# Covers build-time bundling logic (native extension detection, unresolved
+# import warnings, bundle summary) added for GitHub issue #31.
+
+name: Unit Tests
+
+on:
+    pull_request:
+    workflow_call:
+    workflow_dispatch:
+
+env:
+    PYTHON_VERSION: "3.13"
+
+jobs:
+    unit-tests:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+
+            - name: Install dependencies
+              run: pip install pytest
+
+            - name: Run unit tests
+              run: python -m pytest tests/test_bundle.py -v

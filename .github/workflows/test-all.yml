@@ -128,6 +128,10 @@ jobs:
                   echo "Stopping canister $CANISTER_ID on $NETWORK..."
                   dfx canister stop "$CANISTER_ID" --network "$NETWORK" || true
 
+    unit-tests:
+        uses: ./.github/workflows/test-unit.yml
+        secrets: inherit
+
     local-tests:
         needs: wasm-build
         if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
