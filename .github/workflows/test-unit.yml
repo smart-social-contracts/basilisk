@@ -9,6 +9,9 @@ on:
     workflow_call:
     workflow_dispatch:
 
+permissions:
+    contents: read
+
 env:
     PYTHON_VERSION: "3.13"
 
