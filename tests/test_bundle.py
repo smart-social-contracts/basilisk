@@ -5,13 +5,14 @@ bundle summary features added for GitHub issue #31.
 """
 
 import io
+import os
 import sys
 import types
 import unittest
 from unittest.mock import patch
 
 # Add basilisk source to path so we import the local version
-sys.path.insert(0, "/home/user/dev/smartsocialcontracts/some-repos-2/basilisk")
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from basilisk.__main__ import (
     _is_from_site_packages,
