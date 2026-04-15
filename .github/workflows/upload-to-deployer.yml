@@ -16,6 +16,7 @@ env:
   PYTHON_VERSION: "3.13"
   DFX_VERSION: "0.31.0"
   DEPLOYER_CANISTER_ID: "3dwln-xiaaa-aaaag-ayrva-cai"
+  DFX_WARNING: "-mainnet_plaintext_identity"
 
 jobs:
   upload:
