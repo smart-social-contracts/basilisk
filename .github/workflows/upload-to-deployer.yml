@@ -15,7 +15,7 @@ on:
 env:
   PYTHON_VERSION: "3.13"
   DFX_VERSION: "0.31.0"
-  DEPLOYER_CANISTER_ID: ""  # TODO: set after mainnet deployment
+  DEPLOYER_CANISTER_ID: "3dwln-xiaaa-aaaag-ayrva-cai"
 
 jobs:
   upload:
