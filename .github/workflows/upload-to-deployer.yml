@@ -38,13 +38,13 @@ jobs:
 
       - name: Import deployer identity
         env:
-          DEPLOYER_IDENTITY_PEM: ${{ secrets.DEPLOYER_IDENTITY_PEM }}
+          IC_IDENTITY_PEM: ${{ secrets.IC_IDENTITY_PEM }}
         run: |
-          if [ -z "$DEPLOYER_IDENTITY_PEM" ]; then
-            echo "::error::DEPLOYER_IDENTITY_PEM secret not set"
+          if [ -z "$IC_IDENTITY_PEM" ]; then
+            echo "::error::IC_IDENTITY_PEM secret not set"
             exit 1
           fi
-          echo "$DEPLOYER_IDENTITY_PEM" > /tmp/deployer_identity.pem
+          echo "$IC_IDENTITY_PEM" > /tmp/deployer_identity.pem
           dfx identity import deployer-ci /tmp/deployer_identity.pem --storage-mode plaintext
           dfx identity use deployer-ci
           rm /tmp/deployer_identity.pem
