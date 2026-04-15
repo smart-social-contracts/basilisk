@@ -37,6 +37,7 @@ from basilisk.canisters.management import (
 
 VERSIONS_FILE = "/deployer_versions.json"
 ALLOWLIST_FILE = "/deployer_allowlist.json"
+DEPLOYMENTS_FILE = "/deployer_deployments.json"
 CHUNK_PREFIX = "/deployer_chunk_"
 
 # Deployment cost: cycles attached when creating a new canister
@@ -61,6 +62,31 @@ def _save_versions(versions):
 
 def _chunk_path(version, chunk_index):
     return f"{CHUNK_PREFIX}{version}_{chunk_index:04d}"
+
+
+def _load_deployments():
+    try:
+        with open(DEPLOYMENTS_FILE, "r") as f:
+            return json.loads(f.read())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _save_deployments(deployments):
+    with open(DEPLOYMENTS_FILE, "w") as f:
+        f.write(json.dumps(deployments))
+
+
+def _record_deployment(canister_id_str, version, caller_str, action="deploy"):
+    deployments = _load_deployments()
+    deployments.append({
+        "canister_id": canister_id_str,
+        "version": version,
+        "action": action,
+        "caller": caller_str,
+        "timestamp": ic.time(),
+    })
+    _save_deployments(deployments)
 
 
 def _load_allowlist():
@@ -324,7 +350,7 @@ def get_version_info(version: text) -> text:
 # Deploy + Upgrade endpoints
 # ---------------------------------------------------------------------------
 
-def _upload_and_install_chunks(canister_id, version, mode, num_chunks, wasm_hash):
+def _upload_and_install_chunks(canister_id, version, mode, num_chunks, wasm_hash, init_arg=None):
     """Generator helper: upload stored chunks to target canister then install.
 
     Yields management canister calls. Returns {"ok": True} or {"error": str}.
@@ -357,6 +383,7 @@ def _upload_and_install_chunks(canister_id, version, mode, num_chunks, wasm_hash
         })
         chunk_hashes.append({"hash": chunk_hash})
 
+    install_arg = init_arg if init_arg is not None else bytes()
     install_result: CallResult[void] = (
         yield management_canister.install_chunked_code({
             "mode": mode,
@@ -364,7 +391,7 @@ def _upload_and_install_chunks(canister_id, version, mode, num_chunks, wasm_hash
             "store_canister": None,
             "chunk_hashes_list": chunk_hashes,
             "wasm_module_hash": wasm_hash,
-            "arg": bytes(),
+            "arg": install_arg,
         })
     )
 
@@ -395,7 +422,8 @@ def deploy(args: text) -> Async[text]:
     Args (JSON): {
         "version": str,
         "controllers": [str]  (optional extra controller principals),
-        "cycles": int          (optional cycles to attach, default 0.5T)
+        "cycles": int          (optional cycles to attach, default 0.5T),
+        "init_arg": str        (optional base64-encoded init argument)
     }
     Returns JSON: {"ok": true, "canister_id": str, "version": str}
                   or {"error": str}
@@ -408,6 +436,8 @@ def deploy(args: text) -> Async[text]:
     version = params["version"]
     extra_controllers = params.get("controllers", [])
     deploy_cycles = params.get("cycles", DEFAULT_DEPLOY_CYCLES)
+    init_arg_b64 = params.get("init_arg", None)
+    init_arg = base64.b64decode(init_arg_b64) if init_arg_b64 else None
 
     ver_info, err = _validate_version(version)
     if err:
@@ -482,7 +512,7 @@ def deploy(args: text) -> Async[text]:
 
     # --- Step 2+3: Upload chunks and install ---
     inner = _upload_and_install_chunks(
-        canister_id, version, {"install": None}, num_chunks, wasm_hash
+        canister_id, version, {"install": None}, num_chunks, wasm_hash, init_arg
     )
     sv = None
     while True:
@@ -496,6 +526,8 @@ def deploy(args: text) -> Async[text]:
     if "error" in result:
         result["canister_id"] = canister_id.to_str()
         return json.dumps(result)
+
+    _record_deployment(canister_id.to_str(), version, ic.caller().to_str(), "deploy")
 
     return json.dumps({
         "ok": True,
@@ -550,8 +582,16 @@ def upgrade(args: text) -> Async[text]:
         result["canister_id"] = canister_id_str
         return json.dumps(result)
 
+    _record_deployment(canister_id_str, version, ic.caller().to_str(), "upgrade")
+
     return json.dumps({
         "ok": True,
         "canister_id": canister_id_str,
         "version": version,
     })
+
+
+@query
+def list_deployments() -> text:
+    """Return JSON list of all deployments/upgrades performed by this deployer."""
+    return json.dumps(_load_deployments())

@@ -102,5 +102,6 @@ service : {
   "get_version_info" : (text) -> (text) query;
   "deploy" : (text) -> (text);
   "upgrade" : (text) -> (text);
+  "list_deployments" : () -> (text) query;
   "__get_candid_interface_tmp_hack" : () -> (text) query;
 }
