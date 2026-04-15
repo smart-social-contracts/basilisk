@@ -98,5 +98,6 @@ service : {
   "list_versions" : () -> (text) query;
   "get_version_info" : (text) -> (text) query;
   "deploy" : (text) -> (text);
+  "upgrade" : (text) -> (text);
   "__get_candid_interface_tmp_hack" : () -> (text) query;
 }

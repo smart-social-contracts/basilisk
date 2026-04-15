@@ -253,8 +253,72 @@ def get_version_info(version: text) -> text:
 
 
 # ---------------------------------------------------------------------------
-# Deploy endpoint
+# Deploy + Upgrade endpoints
 # ---------------------------------------------------------------------------
+
+def _upload_and_install_chunks(canister_id, version, mode, num_chunks, wasm_hash):
+    """Generator helper: upload stored chunks to target canister then install.
+
+    Yields management canister calls. Returns {"ok": True} or {"error": str}.
+    """
+    chunk_hashes = []
+    for i in range(num_chunks):
+        try:
+            with open(_chunk_path(version, i), "rb") as f:
+                chunk_data = f.read()
+        except FileNotFoundError:
+            return {"error": f"Missing chunk {i} for version {version}"}
+
+        upload_result: CallResult[UploadChunkResult] = (
+            yield management_canister.upload_chunk({
+                "canister_id": canister_id,
+                "chunk": chunk_data,
+            })
+        )
+
+        upload_err = match(upload_result, {
+            "Ok": lambda _r: None,
+            "Err": lambda e: str(e),
+        })
+        if upload_err:
+            return {"error": f"upload_chunk failed: {upload_err}"}
+
+        chunk_hash = match(upload_result, {
+            "Ok": lambda r: r["hash"],
+            "Err": lambda _e: None,
+        })
+        chunk_hashes.append({"hash": chunk_hash})
+
+    install_result: CallResult[void] = (
+        yield management_canister.install_chunked_code({
+            "mode": mode,
+            "target_canister": canister_id,
+            "store_canister": None,
+            "chunk_hashes_list": chunk_hashes,
+            "wasm_module_hash": wasm_hash,
+            "arg": bytes(),
+        })
+    )
+
+    install_err = match(install_result, {
+        "Ok": lambda _: None,
+        "Err": lambda e: str(e),
+    })
+    if install_err:
+        return {"error": f"install_chunked_code failed: {install_err}"}
+
+    return {"ok": True}
+
+
+def _validate_version(version):
+    """Check version exists and is finalized. Returns (version_info, error_json)."""
+    versions = _load_versions()
+    if version not in versions:
+        return None, json.dumps({"error": f"Version {version} not found"})
+    if versions[version].get("status") != "finalized":
+        return None, json.dumps({"error": f"Version {version} is not finalized"})
+    return versions[version], None
+
 
 @update
 def deploy(args: text) -> Async[text]:
@@ -273,15 +337,12 @@ def deploy(args: text) -> Async[text]:
     extra_controllers = params.get("controllers", [])
     deploy_cycles = params.get("cycles", DEFAULT_DEPLOY_CYCLES)
 
-    versions = _load_versions()
-    if version not in versions:
-        return json.dumps({"error": f"Version {version} not found"})
-    if versions[version].get("status") != "finalized":
-        return json.dumps({"error": f"Version {version} is not finalized"})
+    ver_info, err = _validate_version(version)
+    if err:
+        return err
 
-    num_chunks = versions[version].get("num_chunks", 0)
-    wasm_hash_hex = versions[version].get("sha256", "")
-    wasm_hash = bytes.fromhex(wasm_hash_hex)
+    num_chunks = ver_info.get("num_chunks", 0)
+    wasm_hash = bytes.fromhex(ver_info.get("sha256", ""))
 
     # Controllers: deployer (self) + caller + any extras
     controllers = [ic.id(), ic.caller()]
@@ -312,65 +373,74 @@ def deploy(args: text) -> Async[text]:
         "Err": lambda _e: None,
     })
 
-    # --- Step 2: Upload stored chunks to the new canister ---
-    chunk_hashes = []
-    for i in range(num_chunks):
-        try:
-            with open(_chunk_path(version, i), "rb") as f:
-                chunk_data = f.read()
-        except FileNotFoundError:
-            return json.dumps({
-                "error": f"Missing chunk {i} for version {version}",
-                "canister_id": canister_id.to_str(),
-            })
-
-        upload_result: CallResult[UploadChunkResult] = (
-            yield management_canister.upload_chunk({
-                "canister_id": canister_id,
-                "chunk": chunk_data,
-            })
-        )
-
-        upload_err = match(upload_result, {
-            "Ok": lambda _r: None,
-            "Err": lambda e: str(e),
-        })
-        if upload_err:
-            return json.dumps({
-                "error": f"upload_chunk failed: {upload_err}",
-                "canister_id": canister_id.to_str(),
-            })
-
-        chunk_hash = match(upload_result, {
-            "Ok": lambda r: r["hash"],
-            "Err": lambda _e: None,
-        })
-        chunk_hashes.append({"hash": chunk_hash})
-
-    # --- Step 3: Install chunked code ---
-    install_result: CallResult[void] = (
-        yield management_canister.install_chunked_code({
-            "mode": {"install": None},
-            "target_canister": canister_id,
-            "store_canister": None,
-            "chunk_hashes_list": chunk_hashes,
-            "wasm_module_hash": wasm_hash,
-            "arg": bytes(),
-        })
+    # --- Step 2+3: Upload chunks and install ---
+    inner = _upload_and_install_chunks(
+        canister_id, version, {"install": None}, num_chunks, wasm_hash
     )
+    sv = None
+    while True:
+        try:
+            yielded = inner.send(sv)
+            sv = yield yielded
+        except StopIteration as e:
+            result = e.value
+            break
 
-    install_err = match(install_result, {
-        "Ok": lambda _: None,
-        "Err": lambda e: str(e),
-    })
-    if install_err:
-        return json.dumps({
-            "error": f"install_chunked_code failed: {install_err}",
-            "canister_id": canister_id.to_str(),
-        })
+    if "error" in result:
+        result["canister_id"] = canister_id.to_str()
+        return json.dumps(result)
 
     return json.dumps({
         "ok": True,
         "canister_id": canister_id.to_str(),
+        "version": version,
+    })
+
+
+@update
+def upgrade(args: text) -> Async[text]:
+    """Upgrade an existing canister to the specified version's WASM.
+
+    The deployer canister must be a controller of the target canister.
+
+    Args (JSON): {
+        "canister_id": str,
+        "version": str
+    }
+    Returns JSON: {"ok": true, "canister_id": str, "version": str}
+                  or {"error": str}
+    """
+    params = json.loads(args)
+    canister_id_str = params["canister_id"]
+    version = params["version"]
+
+    ver_info, err = _validate_version(version)
+    if err:
+        return err
+
+    num_chunks = ver_info.get("num_chunks", 0)
+    wasm_hash = bytes.fromhex(ver_info.get("sha256", ""))
+    canister_id = Principal.from_str(canister_id_str)
+
+    # Upload chunks and install with upgrade mode
+    inner = _upload_and_install_chunks(
+        canister_id, version, {"upgrade": None}, num_chunks, wasm_hash
+    )
+    sv = None
+    while True:
+        try:
+            yielded = inner.send(sv)
+            sv = yield yielded
+        except StopIteration as e:
+            result = e.value
+            break
+
+    if "error" in result:
+        result["canister_id"] = canister_id_str
+        return json.dumps(result)
+
+    return json.dumps({
+        "ok": True,
+        "canister_id": canister_id_str,
         "version": version,
     })

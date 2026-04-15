@@ -46,6 +46,7 @@ dfx canister call deployer deploy '("{\"version\": \"0.11.22\"}")'
 | `list_versions` | — | List finalized versions |
 | `get_version_info` | version string | Get metadata for a version |
 | `deploy` | `{version, controllers?, cycles?}` | Create + install a new canister |
+| `upgrade` | `{canister_id, version}` | Upgrade existing canister to new version |
 
 ## Architecture
 
