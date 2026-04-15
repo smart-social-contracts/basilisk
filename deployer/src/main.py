@@ -36,6 +36,7 @@ from basilisk.canisters.management import (
 # ---------------------------------------------------------------------------
 
 VERSIONS_FILE = "/deployer_versions.json"
+ALLOWLIST_FILE = "/deployer_allowlist.json"
 CHUNK_PREFIX = "/deployer_chunk_"
 
 # Deployment cost: cycles attached when creating a new canister
@@ -62,10 +63,33 @@ def _chunk_path(version, chunk_index):
     return f"{CHUNK_PREFIX}{version}_{chunk_index:04d}"
 
 
+def _load_allowlist():
+    try:
+        with open(ALLOWLIST_FILE, "r") as f:
+            return json.loads(f.read())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _save_allowlist(allowlist):
+    with open(ALLOWLIST_FILE, "w") as f:
+        f.write(json.dumps(allowlist))
+
+
 def _require_admin():
     if not ic.is_controller(ic.caller()):
         return json.dumps({"error": "Unauthorized: caller is not a controller"})
     return None
+
+
+def _require_deployer():
+    """Check caller is a controller or on the deploy allowlist."""
+    caller = ic.caller().to_str()
+    if ic.is_controller(ic.caller()):
+        return None
+    if caller in _load_allowlist():
+        return None
+    return json.dumps({"error": "Unauthorized: caller is not a controller or on the allowlist"})
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +245,50 @@ def remove_version(args: text) -> text:
     return json.dumps({"ok": True, "version": version})
 
 
+@update
+def add_to_allowlist(args: text) -> text:
+    """Add a principal to the deploy/upgrade allowlist. Controller-only.
+
+    Args (JSON): {"principal": str}
+    """
+    err = _require_admin()
+    if err:
+        return err
+
+    params = json.loads(args)
+    principal = params["principal"]
+    allowlist = _load_allowlist()
+    if principal not in allowlist:
+        allowlist.append(principal)
+        _save_allowlist(allowlist)
+    return json.dumps({"ok": True, "principal": principal, "allowlist_size": len(allowlist)})
+
+
+@update
+def remove_from_allowlist(args: text) -> text:
+    """Remove a principal from the deploy/upgrade allowlist. Controller-only.
+
+    Args (JSON): {"principal": str}
+    """
+    err = _require_admin()
+    if err:
+        return err
+
+    params = json.loads(args)
+    principal = params["principal"]
+    allowlist = _load_allowlist()
+    if principal in allowlist:
+        allowlist.remove(principal)
+        _save_allowlist(allowlist)
+    return json.dumps({"ok": True, "principal": principal, "allowlist_size": len(allowlist)})
+
+
+@query
+def get_allowlist() -> text:
+    """Return the current deploy/upgrade allowlist."""
+    return json.dumps(_load_allowlist())
+
+
 # ---------------------------------------------------------------------------
 # Public query endpoints
 # ---------------------------------------------------------------------------
@@ -332,6 +400,10 @@ def deploy(args: text) -> Async[text]:
     Returns JSON: {"ok": true, "canister_id": str, "version": str}
                   or {"error": str}
     """
+    err = _require_deployer()
+    if err:
+        return err
+
     params = json.loads(args)
     version = params["version"]
     extra_controllers = params.get("controllers", [])
@@ -351,14 +423,9 @@ def deploy(args: text) -> Async[text]:
 
     # --- Step 1: Create canister ---
     create_result: CallResult[CreateCanisterResult] = (
-        yield management_canister.create_canister({
-            "settings": Opt({
-                "controllers": Opt(controllers),
-                "compute_allocation": None,
-                "memory_allocation": None,
-                "freezing_threshold": None,
-            })
-        }).with_cycles(deploy_cycles)
+        yield management_canister.create_canister(
+            {"settings": None}
+        ).with_cycles(deploy_cycles)
     )
 
     create_err = match(create_result, {
@@ -372,6 +439,46 @@ def deploy(args: text) -> Async[text]:
         "Ok": lambda r: r["canister_id"],
         "Err": lambda _e: None,
     })
+
+    # --- Step 1b: Deposit cycles into the new canister ---
+    deposit_result: CallResult[void] = (
+        yield management_canister.deposit_cycles(
+            {"canister_id": canister_id}
+        ).with_cycles(deploy_cycles)
+    )
+
+    deposit_err = match(deposit_result, {
+        "Ok": lambda _: None,
+        "Err": lambda e: str(e),
+    })
+    if deposit_err:
+        return json.dumps({
+            "error": f"deposit_cycles failed: {deposit_err}",
+            "canister_id": canister_id.to_str(),
+        })
+
+    # --- Step 1c: Set controllers ---
+    settings_result: CallResult[void] = (
+        yield management_canister.update_settings({
+            "canister_id": canister_id,
+            "settings": {
+                "controllers": Opt(controllers),
+                "compute_allocation": None,
+                "memory_allocation": None,
+                "freezing_threshold": None,
+            },
+        })
+    )
+
+    settings_err = match(settings_result, {
+        "Ok": lambda _: None,
+        "Err": lambda e: str(e),
+    })
+    if settings_err:
+        return json.dumps({
+            "error": f"update_settings failed: {settings_err}",
+            "canister_id": canister_id.to_str(),
+        })
 
     # --- Step 2+3: Upload chunks and install ---
     inner = _upload_and_install_chunks(
@@ -410,6 +517,10 @@ def upgrade(args: text) -> Async[text]:
     Returns JSON: {"ok": true, "canister_id": str, "version": str}
                   or {"error": str}
     """
+    err = _require_deployer()
+    if err:
+        return err
+
     params = json.loads(args)
     canister_id_str = params["canister_id"]
     version = params["version"]
