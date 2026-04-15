@@ -1,0 +1,95 @@
+name: Upload WASM to Deployer Canister
+
+on:
+  workflow_run:
+    workflows: ["Publish to PyPI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to upload (e.g. 0.11.25). Leave empty to use latest release.'
+        required: false
+        default: ''
+        type: string
+
+env:
+  PYTHON_VERSION: "3.13"
+  DFX_VERSION: "0.31.0"
+  DEPLOYER_CANISTER_ID: "3dwln-xiaaa-aaaag-ayrva-cai"
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dfx
+        run: |
+          DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} \
+            sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)" > /dev/null 2>&1
+          echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+
+      - name: Import deployer identity
+        env:
+          DEPLOYER_IDENTITY_PEM: ${{ secrets.DEPLOYER_IDENTITY_PEM }}
+        run: |
+          if [ -z "$DEPLOYER_IDENTITY_PEM" ]; then
+            echo "::error::DEPLOYER_IDENTITY_PEM secret not set"
+            exit 1
+          fi
+          echo "$DEPLOYER_IDENTITY_PEM" > /tmp/deployer_identity.pem
+          dfx identity import deployer-ci /tmp/deployer_identity.pem --storage-mode plaintext
+          dfx identity use deployer-ci
+          rm /tmp/deployer_identity.pem
+          echo "Identity principal: $(dfx identity get-principal)"
+
+      - name: Determine version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            # Get latest release version (strip leading 'v')
+            VERSION=$(gh release view --json tagName -q '.tagName' | sed 's/^v//')
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Will upload version: $VERSION"
+
+      - name: Download template WASM
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          echo "Downloading cpython_canister_template.wasm from v${VERSION} release..."
+          gh release download "v${VERSION}" \
+            --pattern 'cpython_canister_template.wasm' \
+            --dir "${{ runner.temp }}" \
+            --clobber
+          ls -lh "${{ runner.temp }}/cpython_canister_template.wasm"
+
+      - name: Upload WASM to deployer canister
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          CANISTER="${{ env.DEPLOYER_CANISTER_ID }}"
+
+          if [ -z "$CANISTER" ]; then
+            echo "::error::DEPLOYER_CANISTER_ID not set in workflow env"
+            exit 1
+          fi
+
+          python3 deployer/scripts/upload_wasm.py \
+            "$VERSION" \
+            "${{ runner.temp }}/cpython_canister_template.wasm" \
+            --network ic \
+            --canister-id "$CANISTER" \
+            --description "Basilisk CPython template v${VERSION}"
+
+          echo "✅ Uploaded v${VERSION} to deployer canister ${CANISTER}"

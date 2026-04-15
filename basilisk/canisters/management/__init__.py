@@ -224,6 +224,10 @@ setattr(ManagementCanister, '_arg_types', {
     'bitcoin_send_transaction': 'record { transaction : blob; network : variant { Mainnet : null; Testnet : null; Regtest : null } }',
     'vetkd_public_key': 'record { canister_id : opt principal; context : blob; key_id : record { curve : variant { bls12_381_g2 : null }; name : text } }',
     'vetkd_derive_key': 'record { input : blob; context : blob; key_id : record { curve : variant { bls12_381_g2 : null }; name : text }; transport_public_key : blob }',
+    'upload_chunk': 'record { canister_id : principal; chunk : blob }',
+    'clear_chunk_store': 'record { canister_id : principal }',
+    'stored_chunks': 'record { canister_id : principal }',
+    'install_chunked_code': 'record { mode : variant { install : null; reinstall : null; upgrade : null }; target_canister : principal; store_canister : opt principal; chunk_hashes_list : vec record { hash : blob }; wasm_module_hash : blob; arg : blob }',
 })
 setattr(ManagementCanister, '_return_types', {
     'create_canister': 'record { canister_id : principal }',
@@ -237,4 +241,6 @@ setattr(ManagementCanister, '_return_types', {
     'bitcoin_get_current_fee_percentiles': 'vec nat64',
     'vetkd_public_key': 'record { public_key : blob }',
     'vetkd_derive_key': 'record { encrypted_key : blob }',
+    'upload_chunk': 'record { hash : blob }',
+    'stored_chunks': 'vec record { hash : blob }',
 })
