@@ -19,16 +19,16 @@ class SomeService(Service):
         "echo_text": "text",
     }
 
+    @service_update
+    def echo_text(self, payload: text) -> text:
+        ...
+
     @service_query
     def query1(self) -> bool:
         ...
 
     @service_update
     def update1(self) -> str:
-        ...
-
-    @service_update
-    def echo_text(self, payload: text) -> text:
         ...
 
 
