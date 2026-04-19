@@ -556,7 +556,11 @@ unsafe extern "C" fn ic_candid_encode(
                 Err(_) => core::ptr::null_mut(),
             }
         }
-        Err(e) => { ic_cdk::trap(&format!("candid_encode error: {}", e)); }
+        Err(e) => {
+            let msg = format!("candid_encode error: {}\0", e);
+            ffi::PyErr_SetString(ffi::PyExc_ValueError, msg.as_ptr() as *const core::ffi::c_char);
+            core::ptr::null_mut()
+        }
     }
 }
 

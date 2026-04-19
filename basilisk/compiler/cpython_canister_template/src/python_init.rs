@@ -1001,7 +1001,8 @@ def _to_candid_text(v, type_hint=None):
     if isinstance(v, float):
         return str(v)
     if isinstance(v, str):
-        return f'"{v}"'
+        escaped = v.replace('\\', '\\\\').replace('"', '\\"')
+        return f'"{escaped}"'
     if isinstance(v, bytes):
         escaped = "".join("\\{:02x}".format(b) for b in v)
         return 'blob "' + escaped + '"'
