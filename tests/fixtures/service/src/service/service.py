@@ -1,11 +1,13 @@
 from basilisk import (
     Async,
     CallResult,
+    ic,
     Principal,
     query,
     Service,
     service_query,
     service_update,
+    text,
     update,
     Variant,
     Vec,
@@ -13,6 +15,14 @@ from basilisk import (
 
 
 class SomeService(Service):
+    _arg_types = {
+        "echo_text": "text",
+    }
+
+    @service_update
+    def echo_text(self, payload: text) -> text:
+        ...
+
     @service_query
     def query1(self) -> bool:
         ...
@@ -53,3 +63,30 @@ def service_cross_canister_call(some_service: SomeService) -> Async[Update1Resul
         return {"Err": result.Err}
 
     return {"Ok": result.Ok}
+
+
+@update
+def service_call_with_json_text(some_service: SomeService) -> Async[Update1Result]:
+    """Call echo_text with a JSON payload containing quotes.
+
+    This tests that _to_candid_text correctly escapes inner double-quotes
+    in string arguments and that candid_encode handles them without trapping.
+    """
+    json_payload = '{"registry_canister_id":"abc-123","ext_id":"welcome","version":null}'
+    result: CallResult[str] = yield some_service.echo_text(json_payload)
+
+    if result.Err is not None:
+        return {"Err": result.Err}
+
+    return {"Ok": result.Ok}
+
+
+@update
+def test_candid_encode_error() -> text:
+    """Test that ic.candid_encode with invalid input raises a catchable error
+    instead of trapping the canister."""
+    try:
+        ic.candid_encode('(invalid { candid "text)')
+        return "ERROR: should have raised"
+    except Exception as e:
+        return f"caught: {type(e).__name__}: {e}"
