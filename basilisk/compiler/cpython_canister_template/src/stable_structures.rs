@@ -32,9 +32,9 @@ thread_local! {
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
 
     // Registries — one per structure kind
-    static MAPS:    RefCell<HashMap<u8, StableBTreeMap<SBytes, SBytes, VM>>> = RefCell::new(HashMap::new());
-    // BTreeSet is emulated via BTreeMap<SBytes, SBytes, VM> with empty values
-    static SETS:    RefCell<HashMap<u8, StableBTreeMap<SBytes, SBytes, VM>>>  = RefCell::new(HashMap::new());
+    static MAPS:    RefCell<HashMap<u8, StableBTreeMap<SBytesU, SBytesU, VM>>> = RefCell::new(HashMap::new());
+    // BTreeSet is emulated via BTreeMap with empty values
+    static SETS:    RefCell<HashMap<u8, StableBTreeMap<SBytesU, SBytesU, VM>>>  = RefCell::new(HashMap::new());
     static VECS:    RefCell<HashMap<u8, StableVec<SBytes, VM>>>              = RefCell::new(HashMap::new());
     static LOGS:    RefCell<HashMap<u8, StableLog<SBytes, VM, VM>>>           = RefCell::new(HashMap::new());
     static CELLS:   RefCell<HashMap<u8, StableCell<SBytes, VM>>>             = RefCell::new(HashMap::new());
@@ -49,8 +49,8 @@ fn get_vm(id: u8) -> VM {
 // Storable wrapper for arbitrary bytes
 // ---------------------------------------------------------------------------
 
-/// Wrapper around `Vec<u8>` that implements `Storable` with variable-length
-/// encoding (max 10 MB per value — generous upper bound).
+/// Bounded storable wrapper — used by StableVec, StableLog, StableCell,
+/// StableMinHeap which require `Bound::Bounded`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct SBytes(pub Vec<u8>);
 
@@ -65,6 +65,23 @@ impl Storable for SBytes {
         max_size: 2_000_000,
         is_fixed_size: false,
     };
+}
+
+/// Unbounded storable wrapper — used by StableBTreeMap / StableBTreeSet.
+/// Variable-length allocation: each entry uses only its actual size + a small
+/// header, avoiding the catastrophic 4 MB-per-entry overhead that Bounded
+/// with max_size=2MB causes.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SBytesU(pub Vec<u8>);
+
+impl Storable for SBytesU {
+    fn to_bytes(&self) -> Cow<[u8]> {
+        Cow::Borrowed(&self.0)
+    }
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        SBytesU(bytes.to_vec())
+    }
+    const BOUND: Bound = Bound::Unbounded;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +102,7 @@ pub fn smap_insert(id: u8, key: Vec<u8>, value: Vec<u8>) -> Option<Vec<u8>> {
     MAPS.with(|maps| {
         let mut maps = maps.borrow_mut();
         let map = maps.get_mut(&id).expect("smap not initialized");
-        map.insert(SBytes(key), SBytes(value)).map(|v| v.0)
+        map.insert(SBytesU(key), SBytesU(value)).map(|v| v.0)
     })
 }
 
@@ -93,7 +110,7 @@ pub fn smap_get(id: u8, key: &[u8]) -> Option<Vec<u8>> {
     MAPS.with(|maps| {
         let maps = maps.borrow();
         let map = maps.get(&id).expect("smap not initialized");
-        map.get(&SBytes(key.to_vec())).map(|v| v.0)
+        map.get(&SBytesU(key.to_vec())).map(|v| v.0)
     })
 }
 
@@ -101,7 +118,7 @@ pub fn smap_remove(id: u8, key: &[u8]) -> Option<Vec<u8>> {
     MAPS.with(|maps| {
         let mut maps = maps.borrow_mut();
         let map = maps.get_mut(&id).expect("smap not initialized");
-        map.remove(&SBytes(key.to_vec())).map(|v| v.0)
+        map.remove(&SBytesU(key.to_vec())).map(|v| v.0)
     })
 }
 
@@ -109,7 +126,7 @@ pub fn smap_contains_key(id: u8, key: &[u8]) -> bool {
     MAPS.with(|maps| {
         let maps = maps.borrow();
         let map = maps.get(&id).expect("smap not initialized");
-        map.contains_key(&SBytes(key.to_vec()))
+        map.contains_key(&SBytesU(key.to_vec()))
     })
 }
 
@@ -121,7 +138,6 @@ pub fn smap_len(id: u8) -> u64 {
     })
 }
 
-/// Returns all keys as a Vec of byte vectors.
 pub fn smap_keys(id: u8) -> Vec<Vec<u8>> {
     MAPS.with(|maps| {
         let maps = maps.borrow();
@@ -130,7 +146,6 @@ pub fn smap_keys(id: u8) -> Vec<Vec<u8>> {
     })
 }
 
-/// Returns all (key, value) pairs.
 pub fn smap_items(id: u8) -> Vec<(Vec<u8>, Vec<u8>)> {
     MAPS.with(|maps| {
         let maps = maps.borrow();
@@ -159,7 +174,7 @@ pub fn sset_insert(id: u8, key: Vec<u8>) -> bool {
     SETS.with(|sets| {
         let mut sets = sets.borrow_mut();
         let set = sets.get_mut(&id).expect("sset not initialized");
-        set.insert(SBytes(key), SBytes(Vec::new())).is_none()
+        set.insert(SBytesU(key), SBytesU(Vec::new())).is_none()
     })
 }
 
@@ -167,7 +182,7 @@ pub fn sset_remove(id: u8, key: &[u8]) -> bool {
     SETS.with(|sets| {
         let mut sets = sets.borrow_mut();
         let set = sets.get_mut(&id).expect("sset not initialized");
-        set.remove(&SBytes(key.to_vec())).is_some()
+        set.remove(&SBytesU(key.to_vec())).is_some()
     })
 }
 
@@ -175,7 +190,7 @@ pub fn sset_contains(id: u8, key: &[u8]) -> bool {
     SETS.with(|sets| {
         let sets = sets.borrow();
         let set = sets.get(&id).expect("sset not initialized");
-        set.contains_key(&SBytes(key.to_vec()))
+        set.contains_key(&SBytesU(key.to_vec()))
     })
 }
 
@@ -191,7 +206,7 @@ pub fn sset_items(id: u8) -> Vec<Vec<u8>> {
     SETS.with(|sets| {
         let sets = sets.borrow();
         let set = sets.get(&id).expect("sset not initialized");
-        set.iter().map(|(k, _v)| k.0).collect()
+        set.iter().map(|(k, _)| k.0).collect()
     })
 }
 
