@@ -788,7 +788,7 @@ _mod.StableMinHeap = StableMinHeap
 _VOLATILE_PREFIXES = ["/tmp/", "/proc/", "/dev/"]
 _BASILISK_FS_MEM_ID = 254
 _BASILISK_FS_MAX_FILE_SIZE  = 50_000_000    # 50 MB per file
-_BASILISK_FS_MAX_FILE_COUNT = 500           # max files in store
+_BASILISK_FS_MAX_FILE_COUNT = 10_000        # max files in store
 _BASILISK_FS_MAX_TOTAL_SIZE = 200_000_000   # 200 MB total across all files
 
 class FileStoreError(Exception):

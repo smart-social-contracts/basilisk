@@ -162,15 +162,15 @@ class TestFileCountLimit:
         _call(canister, "cleanup_all_files")
 
     def test_count_limit_enforced(self, canister):
-        """Writing beyond 500 files should raise FileStoreLimitError."""
+        """Writing beyond 10,000 files should raise FileStoreLimitError."""
         _call(canister, "cleanup_all_files")
-        # Write exactly 500 small files (10 bytes each = 5 KB total, well within size limit)
-        result = _call(canister, "write_many_files", '("/limit/f", 500, 10)')
-        assert result == "ok:500"
-        # The 501st file should fail
+        # Write exactly 10,000 small files (10 bytes each = 100 KB total, well within size limit)
+        result = _call(canister, "write_many_files", '("/limit/f", 10000, 10)')
+        assert result == "ok:10000"
+        # The 10,001st file should fail
         result = _call(canister, "write_file", '("/limit/overflow.dat", 10)')
         assert "FileStoreLimitError" in result
-        assert "500/500" in result
+        assert "10000/10000" in result
         _call(canister, "cleanup_all_files")
 
 
@@ -228,9 +228,9 @@ class TestExceptionHierarchy:
     def test_store_limit_is_file_store_error(self, canister):
         """FileStoreLimitError should be caught by FileStoreError handler."""
         _call(canister, "cleanup_all_files")
-        # Fill to 500 files
-        result = _call(canister, "write_many_files", '("/hier/f", 500, 10)')
-        assert result == "ok:500"
+        # Fill to 10,000 files
+        result = _call(canister, "write_many_files", '("/hier/f", 10000, 10)')
+        assert result == "ok:10000"
         result = _call(canister, "write_file", '("/hier/overflow.dat", 10)')
         assert "FileStoreLimitError" in result
         _call(canister, "cleanup_all_files")
