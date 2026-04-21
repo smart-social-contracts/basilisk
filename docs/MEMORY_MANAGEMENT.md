@@ -60,7 +60,7 @@ The stable structures system has three layers:
 │  Rust layer  (stable_structures.rs)             │
 │  ic-stable-structures 0.6.x                     │
 │  MemoryManager + per-type registries            │
-│  SBytes wrapper (Storable, Bounded, max 2 MB)   │
+│  SBytesU (Unbounded) / SBytes (Bounded, 2 MB)  │
 ├─────────────────────────────────────────────────┤
 │  IC Stable Memory  (canister-level, survives    │
 │  upgrades)                                      │
@@ -72,8 +72,8 @@ The stable structures system has three layers:
 This module owns all Rust-side state as `thread_local!` registries:
 
 ```rust
-static MAPS:  RefCell<HashMap<u8, StableBTreeMap<SBytes, SBytes, VM>>>
-static SETS:  RefCell<HashMap<u8, StableBTreeMap<SBytes, SBytes, VM>>>  // emulated
+static MAPS:  RefCell<HashMap<u8, StableBTreeMap<SBytesU, SBytesU, VM>>>
+static SETS:  RefCell<HashMap<u8, StableBTreeMap<SBytesU, SBytesU, VM>>>  // emulated
 static VECS:  RefCell<HashMap<u8, StableVec<SBytes, VM>>>
 static LOGS:  RefCell<HashMap<u8, StableLog<SBytes, VM, VM>>>
 static CELLS: RefCell<HashMap<u8, StableCell<SBytes, VM>>>
@@ -82,9 +82,24 @@ static HEAPS: RefCell<HashMap<u8, StableMinHeap<SBytes, VM>>>
 
 Each registry is a `HashMap<u8, Structure>` keyed by `memory_id`. When Python calls `StableBTreeMap(memory_id=5)`, the Rust function `smap_init(5)` checks if memory_id 5 is already in the `MAPS` registry. If not, it obtains a virtual memory and initializes a new `StableBTreeMap` with it.
 
-#### SBytes — the Storable wrapper
+#### Storable wrappers — SBytesU and SBytes
 
-All keys and values are stored as opaque byte blobs using the `SBytes` wrapper:
+Keys and values are stored as opaque byte blobs using two wrapper types:
+
+**`SBytesU`** (unbounded) — used by `StableBTreeMap` and `StableBTreeSet`:
+
+```rust
+pub struct SBytesU(pub Vec<u8>);
+
+impl Storable for SBytesU {
+    const BOUND: Bound = Bound::Unbounded;
+    // ...
+}
+```
+
+With `Bound::Unbounded`, `ic-stable-structures` uses variable-length allocation for BTree entries. Each entry occupies only its actual byte length plus a small header. This avoids the fixed-size slot overhead that bounded types incur.
+
+**`SBytes`** (bounded, max 2 MB) — used by `StableVec`, `StableLog`, `StableCell`, and `StableMinHeap`:
 
 ```rust
 pub struct SBytes(pub Vec<u8>);
@@ -98,7 +113,9 @@ impl Storable for SBytes {
 }
 ```
 
-The `Bounded` trait is required by `StableVec`, `StableLog`, `StableCell`, and `StableMinHeap` in `ic-stable-structures` 0.6.x. Only `StableBTreeMap` supports unbounded types, but a uniform bounded type (2 MB max) is used across all structures for simplicity.
+These structures require `Bound::Bounded` in `ic-stable-structures` 0.6.x. The 2 MB limit accommodates the largest values (file persistence can store files up to 2 MB).
+
+> **Why two types?** Before this split, a single bounded `SBytes` (max 2 MB) was used everywhere. For `StableBTreeMap`, this meant each BTree leaf node slot reserved 4 MB (2 MB key + 2 MB value) regardless of actual data size. A map with 1,000 entries of ~1 KB each would consume ~4 GB of stable memory instead of ~1 MB. Switching BTreeMap to unbounded eliminated this 4,000x space amplification.
 
 ### C FFI bridge (`ic_api.rs`)
 
