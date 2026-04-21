@@ -760,15 +760,36 @@ class StableMinHeap:
 _mod.StableMinHeap = StableMinHeap
 
 # === Persistent file storage ===
+#
 # Files on the canister memfs are persistent by default — they survive
-# canister upgrades.  Only files under /tmp/ are volatile.
-# File contents are stored in a dedicated StableBTreeMap (memory_id=254).
+# canister upgrades.  Only paths under _VOLATILE_PREFIXES are transient.
+#
+# Implementation: each file is stored as a single key-value entry in a
+# StableBTreeMap (memory_id 254).  The map uses SBytesU (Unbounded
+# storable), so there is NO hard Rust-level cap on entry size — the
+# limits below are Python-side safety guardrails only.
+#
+# Tuning guidance:
+#   MAX_FILE_SIZE  — bounded by the IC instruction limit for a single
+#                    update call (~20 billion instructions).  Writing a
+#                    value to stable memory costs instructions proportional
+#                    to byte count; files up to ~50-100 MB fit comfortably.
+#   MAX_TOTAL_SIZE — bounded by the canister's stable memory allocation
+#                    (up to 96 GB for 64-bit Wasm).  Storage costs
+#                    ~127k cycles/GB/second, so 200 MB is negligible.
+#   MAX_FILE_COUNT — guards against BTreeMap iteration becoming slow
+#                    (smap_keys / smap_items are O(n)); point lookups
+#                    remain O(log n) regardless.
+#
+# If your canister stores large blobs (e.g. file_registry holding
+# external WASMs), raise these values accordingly.  They are
+# compile-time constants embedded in the WASM at build time.
 
 _VOLATILE_PREFIXES = ["/tmp/", "/proc/", "/dev/"]
 _BASILISK_FS_MEM_ID = 254
-_BASILISK_FS_MAX_FILE_SIZE = 50_000_000     # 50 MB per file (BTreeMap values are unbounded)
+_BASILISK_FS_MAX_FILE_SIZE  = 50_000_000    # 50 MB per file
 _BASILISK_FS_MAX_FILE_COUNT = 500           # max files in store
-_BASILISK_FS_MAX_TOTAL_SIZE = 200_000_000   # 200 MB total
+_BASILISK_FS_MAX_TOTAL_SIZE = 200_000_000   # 200 MB total across all files
 
 class FileStoreError(Exception):
     """Base exception for file persistence errors."""
