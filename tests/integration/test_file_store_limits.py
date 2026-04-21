@@ -66,8 +66,8 @@ class TestFsStats:
         assert stats["files"] == 0
         assert stats["max_files"] == 500
         assert stats["total_bytes"] == 0
-        assert stats["max_total_bytes"] == 50_000_000
-        assert stats["max_file_bytes"] == 2_000_000
+        assert stats["max_total_bytes"] == 200_000_000
+        assert stats["max_file_bytes"] == 50_000_000
         assert stats["largest_bytes"] == 0
         assert stats["largest_path"] == ""
 
@@ -115,32 +115,32 @@ class TestFileSizeLimit:
         _call(canister, "cleanup_all_files")
 
     def test_file_exceeds_limit(self, canister):
-        """A file over 2 MB should raise FileTooLargeError."""
+        """A file over 50 MB should raise FileTooLargeError."""
         _call(canister, "cleanup_all_files")
-        result = _call(canister, "write_file", '("/too_big.dat", 2100000)')
+        result = _call(canister, "write_file", '("/too_big.dat", 51000000)')
         assert "FileTooLargeError" in result
-        assert "2100000" in result
+        assert "51000000" in result
         # File should NOT be in the store
         stats = _get_stats(canister)
         assert stats["files"] == 0
 
     def test_file_at_exact_limit(self, canister):
-        """A file at exactly 2 MB should succeed."""
+        """A file at exactly 50 MB should succeed."""
         _call(canister, "cleanup_all_files")
-        result = _call(canister, "write_file", '("/exact_2mb.dat", 2000000)')
+        result = _call(canister, "write_file", '("/exact_50mb.dat", 50000000)')
         assert result == "ok"
         stats = _get_stats(canister)
         assert stats["files"] == 1
-        assert stats["total_bytes"] == 2_000_000
+        assert stats["total_bytes"] == 50_000_000
         _call(canister, "cleanup_all_files")
 
     def test_oversized_file_still_on_memfs(self, canister):
         """Even if persistence fails, the file should still be readable on memfs."""
         _call(canister, "cleanup_all_files")
-        result = _call(canister, "write_file", '("/memfs_only.dat", 2100000)')
+        result = _call(canister, "write_file", '("/memfs_only.dat", 51000000)')
         assert "FileTooLargeError" in result
         check = _call(canister, "read_file_check", '("/memfs_only.dat")')
-        assert check == "ok:2100000"
+        assert check == "ok:51000000"
         stats = _get_stats(canister)
         assert stats["files"] == 0
 
@@ -179,22 +179,22 @@ class TestFileCountLimit:
 # ===========================================================================
 
 class TestTotalSizeLimit:
-    """Test the 50 MB total size limit."""
+    """Test the 200 MB total size limit."""
 
     def test_total_size_limit_new_file(self, canister):
-        """Adding a new file that would exceed 50 MB total should fail."""
+        """Adding a new file that would exceed 200 MB total should fail."""
         _call(canister, "cleanup_all_files")
-        # Write 26 files of ~1.9 MB each = ~49.4 MB (under 50 MB limit)
-        for i in range(26):
-            result = _call(canister, "write_file", f'("/big/chunk_{i:02d}.dat", 1900000)')
+        # Write 4 files of ~49 MB each = ~196 MB (under 200 MB limit)
+        for i in range(4):
+            result = _call(canister, "write_file", f'("/big/chunk_{i:02d}.dat", 49000000)')
             assert result == "ok", f"File {i} failed: {result}"
 
         stats = _get_stats(canister)
-        assert stats["files"] == 26
-        assert stats["total_bytes"] == 26 * 1_900_000  # 49.4 MB
+        assert stats["files"] == 4
+        assert stats["total_bytes"] == 4 * 49_000_000  # 196 MB
 
-        # A 1 MB file would push total to 50.4 MB — should fail
-        result = _call(canister, "write_file", '("/big/overflow.dat", 1000000)')
+        # A 5 MB file would push total to 201 MB — should fail
+        result = _call(canister, "write_file", '("/big/overflow.dat", 5000000)')
         assert "FileStoreLimitError" in result
 
         _call(canister, "cleanup_all_files")
@@ -222,8 +222,7 @@ class TestExceptionHierarchy:
     def test_file_too_large_is_file_store_error(self, canister):
         """FileTooLargeError should be caught by FileStoreError handler."""
         _call(canister, "cleanup_all_files")
-        # We test this by checking the error type string in the response
-        result = _call(canister, "write_file", '("/hierarchy.dat", 2100000)')
+        result = _call(canister, "write_file", '("/hierarchy.dat", 51000000)')
         assert "FileTooLargeError" in result
 
     def test_store_limit_is_file_store_error(self, canister):
