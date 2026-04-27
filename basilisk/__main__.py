@@ -1,4 +1,25 @@
 import modulefinder
+import modulefinder as _mf
+import importlib.util as _ilu
+
+_original_find_module = _mf._find_module
+
+def _patched_find_module(name, path=None):
+    """Guard against spec.loader being None (namespace packages)."""
+    if path is None:
+        spec = _ilu.find_spec(name)
+    else:
+        spec = _ilu.find_spec(name, path)
+    if spec is None:
+        raise ImportError(f"No module named {name!r}")
+    if spec.loader is None:
+        if spec.submodule_search_locations:
+            return None, list(spec.submodule_search_locations)[0], ("", "", _mf._PKG_DIRECTORY)
+        raise ImportError(f"No module named {name!r}")
+    return _original_find_module(name, path)
+
+_mf._find_module = _patched_find_module
+
 import os
 from pathlib import Path
 import re
