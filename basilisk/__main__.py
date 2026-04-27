@@ -1,22 +1,39 @@
 import modulefinder
 import modulefinder as _mf
-import importlib.util as _ilu
+import importlib.machinery as _im
+import io as _io
+import os as _os2
 
 _original_find_module = _mf._find_module
 
 def _patched_find_module(name, path=None):
     """Guard against spec.loader being None (namespace packages)."""
-    if path is None:
-        spec = _ilu.find_spec(name)
-    else:
-        spec = _ilu.find_spec(name, path)
+    _im.PathFinder.invalidate_caches()
+    spec = _im.PathFinder.find_spec(name, path)
     if spec is None:
-        raise ImportError(f"No module named {name!r}")
+        raise ImportError(f"No module named {name!r}", name=name)
     if spec.loader is None:
         if spec.submodule_search_locations:
             return None, list(spec.submodule_search_locations)[0], ("", "", _mf._PKG_DIRECTORY)
-        raise ImportError(f"No module named {name!r}")
-    return _original_find_module(name, path)
+        raise ImportError(f"No module named {name!r}", name=name)
+    if spec.loader is _im.BuiltinImporter:
+        return None, None, ("", "", _mf._C_BUILTIN)
+    if spec.loader is _im.FrozenImporter:
+        return None, None, ("", "", _mf._PY_FROZEN)
+    file_path = spec.origin
+    if spec.loader.is_package(name):
+        return None, _os2.path.dirname(file_path), ("", "", _mf._PKG_DIRECTORY)
+    if isinstance(spec.loader, _im.SourceFileLoader):
+        kind = _mf._PY_SOURCE
+    elif isinstance(spec.loader, _im.ExtensionFileLoader):
+        kind = _mf._C_EXTENSION
+    elif isinstance(spec.loader, _im.SourcelessFileLoader):
+        kind = _mf._PY_COMPILED
+    else:
+        return None, None, ("", "", _mf._SEARCH_ERROR)
+    file = _io.open_code(file_path)
+    suffix = _os2.path.splitext(file_path)[-1]
+    return file, file_path, (suffix, "rb", kind)
 
 _mf._find_module = _patched_find_module
 
