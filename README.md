@@ -27,19 +27,20 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Basilisk CDK                          │
+│                    Basilisk CDK                         │
 ├─────────────┬────────────┬──────────────────────────────┤
 │ Filesystem  │ Storage    │ IC System APIs               │
 │ POSIX-like  │ BTreeMap,  │ Timers, Inter-canister calls │
 │ os/open()   │ Vec, Log,  │ Candid types, Lifecycle      │
 │ auto-persist│ Cell, Heap │                              │
 ├─────────────┴────────────┴──────────────────────────────┤
-│        MemoryManager (ic-stable-structures)              │
+│        MemoryManager (ic-stable-structures)             │
 ├─────────────────────────────────────────────────────────┤
 │           CPython 3.13 (compiled to WASM)               │
 ├─────────────────────────────────────────────────────────┤
 │              Internet Computer (ICP)                    │
 └─────────────────────────────────────────────────────────┘
+```
 
 ## Quick Start
 
