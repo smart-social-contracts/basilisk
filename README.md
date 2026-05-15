@@ -110,6 +110,12 @@ Full CI logs: [CPython run](https://github.com/smart-social-contracts/basilisk/a
 The benchmark source is in [`benchmarks/counter/`](benchmarks/counter/).
 
 
+## Projects Using Basilisk
+
+- [**Realms**](https://github.com/smart-social-contracts/realms) — Governance Operating System for building and deploying governance systems on the Internet Computer
+
+*Using Basilisk? Open a PR to add your project here.*
+
 ## Why "Basilisk"?
 
 <div align="center">
