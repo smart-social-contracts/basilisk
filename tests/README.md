@@ -34,7 +34,7 @@ Toolkit-specific IC tests (tasks, wallet, fx, crypto, vetkeys) live in [ic-basil
 
 **Running locally:**
 ```bash
-pip install -e ".[shell,test]"
+pip install -e ".[test]"
 BASILISK_TEST_CANISTER=2i66l-saaaa-aaaas-qe3sq-cai \
 BASILISK_TEST_NETWORK=ic \
 PYTHONPATH=. python -m pytest tests/test_shell.py -v

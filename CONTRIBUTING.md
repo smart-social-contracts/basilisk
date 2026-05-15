@@ -7,7 +7,7 @@ Thanks for your interest in contributing! Here's how to get started.
 ```bash
 git clone https://github.com/smart-social-contracts/basilisk.git
 cd basilisk
-pip install -e ".[shell,test]"
+pip install -e ".[test]"
 ```
 
 ## Running Tests
@@ -30,7 +30,7 @@ BASILISK_PREBUILT_WASMS=1 pytest tests/integration/ -v
 ```bash
 BASILISK_TEST_CANISTER=<canister-id> \
 BASILISK_TEST_NETWORK=ic \
-PYTHONPATH=. pytest tests/test_tasks.py -v
+PYTHONPATH=. pytest tests/test_shell.py -v
 ```
 
 See [tests/README.md](tests/README.md) for full details on the test suite architecture.
