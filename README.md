@@ -46,7 +46,7 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 
 ### Prerequisites
 
-- [icp](https://internetcomputer.org/docs/current/developer-docs/setup/install/) (IC SDK)
+- [dfx](https://internetcomputer.org/docs/building-apps/getting-started/install) (IC SDK)
 - Python 3.10+
 
 ### Install
