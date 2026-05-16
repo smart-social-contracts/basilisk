@@ -113,7 +113,7 @@ impl Storable for SBytes {
 }
 ```
 
-These structures require `Bound::Bounded` in `ic-stable-structures` 0.6.x. The 2 MB limit accommodates the largest values (file persistence can store files up to 2 MB).
+These structures require `Bound::Bounded` in `ic-stable-structures` 0.6.x.
 
 > **Why two types?** Before this split, a single bounded `SBytes` (max 2 MB) was used everywhere. For `StableBTreeMap`, this meant each BTree leaf node slot reserved 4 MB (2 MB key + 2 MB value) regardless of actual data size. A map with 1,000 entries of ~1 KB each would consume ~4 GB of stable memory instead of ~1 MB. Switching BTreeMap to unbounded eliminated this 4,000x space amplification.
 
@@ -434,9 +434,9 @@ The file store enforces hard limits to prevent `post_upgrade` instruction limit 
 
 | Limit | Value | Constant |
 |-------|-------|----------|
-| Per-file size | 2 MB | `_BASILISK_FS_MAX_FILE_SIZE` |
-| File count | 500 files | `_BASILISK_FS_MAX_FILE_COUNT` |
-| Total size | 50 MB | `_BASILISK_FS_MAX_TOTAL_SIZE` |
+| Per-file size | 50 MB | `_BASILISK_FS_MAX_FILE_SIZE` |
+| File count | 10,000 files | `_BASILISK_FS_MAX_FILE_COUNT` |
+| Total size | 200 MB | `_BASILISK_FS_MAX_TOTAL_SIZE` |
 
 When a limit is violated, the file is **still written to memfs** (usable for the current execution) but is **not persisted** to stable memory. An exception is raised:
 
@@ -445,7 +445,7 @@ from basilisk import FileTooLargeError, FileStoreLimitError, FileStoreError
 
 try:
     with open("/data/big.bin", "wb") as f:
-        f.write(b"A" * 3_000_000)  # 3 MB — exceeds per-file limit
+        f.write(b"A" * 51_000_000)  # 51 MB — exceeds per-file limit
 except FileTooLargeError:
     # File exists on memfs but won't survive upgrades
     pass
@@ -468,10 +468,10 @@ from basilisk import fs_stats
 stats = fs_stats()
 # {
 #     "files": 12,
-#     "max_files": 500,
+#     "max_files": 10_000,
 #     "total_bytes": 1_887_232,
-#     "max_total_bytes": 50_000_000,
-#     "max_file_bytes": 2_000_000,
+#     "max_total_bytes": 200_000_000,
+#     "max_file_bytes": 50_000_000,
 #     "largest_bytes": 421_900,
 #     "largest_path": "data/users.json",
 # }
@@ -517,6 +517,6 @@ No serialization or deserialization step is needed. The structures are always "l
 | Max stable memory (IC limit) | 96 GB per canister |
 | IC reply size limit | 3 MB (affects `stable_bytes()`) |
 | Reserved memory IDs | 254 (file store) |
-| File store: max file size | 2 MB per file |
-| File store: max file count | 500 files |
-| File store: max total size | 50 MB |
+| File store: max file size | 50 MB per file |
+| File store: max file count | 10,000 files |
+| File store: max total size | 200 MB |

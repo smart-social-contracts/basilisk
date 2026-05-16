@@ -1,9 +1,9 @@
 """Integration tests for file store persistence limits (issue #38).
 
 Tests enforce:
-  - Per-file size limit (2 MB)
-  - File count limit (500)
-  - Total size limit (50 MB)
+  - Per-file size limit (50 MB)
+  - File count limit (10,000)
+  - Total size limit (200 MB)
   - fs_stats() correctness
   - Exceptions raised on limit violations
   - Files still work on memfs after rejection
@@ -64,7 +64,7 @@ class TestFsStats:
         _call(canister, "cleanup_all_files")
         stats = _get_stats(canister)
         assert stats["files"] == 0
-        assert stats["max_files"] == 500
+        assert stats["max_files"] == 10_000
         assert stats["total_bytes"] == 0
         assert stats["max_total_bytes"] == 200_000_000
         assert stats["max_file_bytes"] == 50_000_000
@@ -102,10 +102,10 @@ class TestFsStats:
 # ===========================================================================
 
 class TestFileSizeLimit:
-    """Test the 2 MB per-file size limit."""
+    """Test the 50 MB per-file size limit."""
 
     def test_file_within_limit(self, canister):
-        """A file under 2 MB should persist successfully."""
+        """A file under 50 MB should persist successfully."""
         _call(canister, "cleanup_all_files")
         result = _call(canister, "write_file", '("/ok_size.dat", 1000000)')
         assert result == "ok"
@@ -150,7 +150,7 @@ class TestFileSizeLimit:
 # ===========================================================================
 
 class TestFileCountLimit:
-    """Test the 500-file count limit."""
+    """Test the 10,000-file count limit."""
 
     def test_write_many_within_limit(self, canister):
         """Writing files within the count limit should succeed."""
@@ -164,9 +164,16 @@ class TestFileCountLimit:
     def test_count_limit_enforced(self, canister):
         """Writing beyond 10,000 files should raise FileStoreLimitError."""
         _call(canister, "cleanup_all_files")
-        # Write exactly 10,000 small files (10 bytes each = 100 KB total, well within size limit)
-        result = _call(canister, "write_many_files", '("/limit/f", 10000, 10)')
-        assert result == "ok:10000"
+        # Write 10,000 small files in batches to stay within IC instruction limit
+        batch_size = 2000
+        for batch in range(5):
+            offset = batch * batch_size
+            result = _call(canister, "write_many_files",
+                           f'("/limit/b{batch}_f", {batch_size}, 10)')
+            assert result == f"ok:{batch_size}", (
+                f"Batch {batch} (offset {offset}) failed: {result}")
+        stats = _get_stats(canister)
+        assert stats["files"] == 10_000
         # The 10,001st file should fail
         result = _call(canister, "write_file", '("/limit/overflow.dat", 10)')
         assert "FileStoreLimitError" in result
@@ -228,9 +235,13 @@ class TestExceptionHierarchy:
     def test_store_limit_is_file_store_error(self, canister):
         """FileStoreLimitError should be caught by FileStoreError handler."""
         _call(canister, "cleanup_all_files")
-        # Fill to 10,000 files
-        result = _call(canister, "write_many_files", '("/hier/f", 10000, 10)')
-        assert result == "ok:10000"
+        # Fill to 10,000 files in batches to stay within IC instruction limit
+        batch_size = 2000
+        for batch in range(5):
+            result = _call(canister, "write_many_files",
+                           f'("/hier/b{batch}_f", {batch_size}, 10)')
+            assert result == f"ok:{batch_size}", (
+                f"Batch {batch} failed: {result}")
         result = _call(canister, "write_file", '("/hier/overflow.dat", 10)')
         assert "FileStoreLimitError" in result
         _call(canister, "cleanup_all_files")
