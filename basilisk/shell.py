@@ -136,7 +136,7 @@ def canister_exec(code: str, canister: str, network: str = None) -> str:
     """Send Python code to the canister and return the output."""
     escaped = code.replace('"', '\\"').replace("\n", "\\n")
     cmd = _dfx_call_cmd(network)
-    cmd.extend([canister, "execute_code_shell", f'("{escaped}")'])
+    cmd.extend([canister, "__shell__", f'("{escaped}")'])
 
     try:
         r = _run_dfx_with_retries(cmd, timeout_s=120)

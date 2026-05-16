@@ -3,7 +3,7 @@ Tests for controller guard access control on critical entrypoints.
 
 Unit tests verify that wasm_manipulator correctly extracts guard metadata.
 Integration tests verify that:
-  - Controllers can call execute_code_shell and download_to_file
+  - Controllers can call __shell__ and download_to_file
   - Non-controllers are rejected with the correct error message
 """
 
@@ -61,10 +61,10 @@ class TestGuardMetadataExtraction(_GuardMetadataMixin):
         with open(canister_path) as f:
             return f.read()
 
-    def test_canister_has_guard_on_execute_code_shell(self):
+    def test_canister_has_guard_on_shell(self):
         guards = self._extract_guards(self._canister_source)
-        assert "execute_code_shell" in guards
-        assert guards["execute_code_shell"] == "guard_against_non_controllers"
+        assert "__shell__" in guards
+        assert guards["__shell__"] == "guard_against_non_controllers"
 
     def test_canister_has_guard_on_download_to_file(self):
         guards = self._extract_guards(self._canister_source)
@@ -87,7 +87,7 @@ class TestGuardMetadataExtraction(_GuardMetadataMixin):
 class TestControllerAccess:
     """Verify that the CI identity (a controller) can call guarded endpoints."""
 
-    def test_controller_can_execute_code_shell(self, canister_reachable, canister, network):
+    def test_controller_can_call_shell(self, canister_reachable, canister, network):
         result = exec_on_canister("print('guard_pass')", canister, network)
         assert result == "guard_pass"
 
@@ -147,10 +147,10 @@ class TestNonControllerRejection:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         return r
 
-    def test_non_controller_rejected_execute_code_shell(self, canister, network):
+    def test_non_controller_rejected_shell(self, canister, network):
         r = self._call_as_non_controller(
             canister, network,
-            "execute_code_shell", '("print(1)",)',
+            "__shell__", '("print(1)",)',
         )
         # The call should fail — either via trap (Rust guard) or Err return (Python guard)
         combined = r.stdout + r.stderr

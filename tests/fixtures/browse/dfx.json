@@ -1,0 +1,12 @@
+{
+    "canisters": {
+        "browse": {
+            "type": "basilisk",
+            "main": "src/main.py",
+            "declarations": {
+                "output": "test/dfx_generated/browse",
+                "node_compatibility": true
+            }
+        }
+    }
+}

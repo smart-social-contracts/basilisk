@@ -131,7 +131,7 @@ class TestShellExec:
 # ===========================================================================
 
 class TestPersistentVariables:
-    """Test variable persistence in execute_code_shell.
+    """Test variable persistence in __shell__.
 
     IMPORTANT FINDING: Variables do NOT persist across separate dfx canister
     calls. Each call gets a fresh execution context. This is a known Basilisk
@@ -164,7 +164,7 @@ class TestPersistentVariables:
 
     def test_variable_across_calls(self, canister_reachable, canister, network):
         """Variables set in one call should be visible in the next.
-        Persistence depends on the canister's execute_code_shell implementation
+        Persistence depends on the canister's __shell__ implementation
         maintaining a per-principal namespace.
         """
         exec_on_canister("shelltestpersist = 42", canister, network)

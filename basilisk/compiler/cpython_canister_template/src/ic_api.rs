@@ -910,7 +910,7 @@ static mut TIMER_CB_COUNTER: u64 = 0;
 /// Resolve a Python callback by storing it in __main__ globals under a unique
 /// generated name.  We always store the actual callback object rather than
 /// trusting __name__, because functions defined inside exec() (e.g. via
-/// execute_code_shell) live in a per-call namespace that is NOT __main__.
+/// __shell__) live in a per-call namespace that is NOT __main__.
 /// Looking them up by __name__ later would fail with a silent trap.
 unsafe fn resolve_timer_callback(callback: &PyObjectRef) -> String {
     // If the caller passed a plain string, trust it (explicit name).

@@ -1292,6 +1292,109 @@ def extract_methods_from_python(python_source: str) -> List[Dict]:
     return methods, type_defs, lifecycle
 
 
+def extract_features_from_python(python_source: str) -> List[str]:
+    """Extract the __basilisk_features__ list from Python source.
+
+    Scans for a module-level assignment like:
+        __basilisk_features__ = ["shell", "browse"]
+
+    Returns the list of feature strings, or an empty list if not found.
+    """
+    import ast
+
+    tree = ast.parse(python_source)
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+            continue
+        if node.targets[0].id != "__basilisk_features__":
+            continue
+        if isinstance(node.value, ast.List):
+            return [
+                elt.value
+                for elt in node.value.elts
+                if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+            ]
+    return []
+
+
+def extract_stable_structures_from_python(python_source: str) -> List[Dict]:
+    """Extract StableBTreeMap/Set/Vec instantiations from Python source.
+
+    Scans module-level assignments for patterns like:
+        users = StableBTreeMap[str, UserRecord](memory_id=0, max_key_size=64, max_value_size=1024)
+        tags = StableBTreeSet[text](memory_id=1)
+        logs = StableVec[text](memory_id=2)
+
+    Returns a list of dicts with keys: name, structure_type, memory_id,
+    key_type, value_type, max_key_size, max_value_size.
+    """
+    import ast
+
+    STRUCTURE_TYPES = {"StableBTreeMap", "StableBTreeSet", "StableVec"}
+
+    tree = ast.parse(python_source)
+    structures = []
+
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        call = node.value
+        if not isinstance(call, ast.Call):
+            continue
+
+        func = call.func
+        structure_type = None
+        type_params = []
+
+        if isinstance(func, ast.Subscript):
+            if isinstance(func.value, ast.Name) and func.value.id in STRUCTURE_TYPES:
+                structure_type = func.value.id
+                if isinstance(func.slice, ast.Tuple):
+                    type_params = [ast.unparse(e) for e in func.slice.elts]
+                else:
+                    type_params = [ast.unparse(func.slice)]
+        elif isinstance(func, ast.Name) and func.id in STRUCTURE_TYPES:
+            structure_type = func.id
+
+        if structure_type is None:
+            continue
+
+        var_name = None
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            var_name = node.targets[0].id
+
+        kwargs = {}
+        for kw in call.keywords:
+            if kw.arg in ("memory_id", "max_key_size", "max_value_size"):
+                if isinstance(kw.value, ast.Constant):
+                    kwargs[kw.arg] = kw.value.value
+
+        entry = {
+            "name": var_name or f"_{structure_type.lower()}_{kwargs.get('memory_id', '?')}",
+            "structure_type": structure_type,
+            "memory_id": kwargs.get("memory_id", 0),
+        }
+
+        if structure_type == "StableBTreeMap":
+            entry["key_type"] = type_params[0] if len(type_params) >= 1 else "unknown"
+            entry["value_type"] = type_params[1] if len(type_params) >= 2 else "unknown"
+        elif structure_type == "StableBTreeSet":
+            entry["key_type"] = type_params[0] if len(type_params) >= 1 else "unknown"
+        elif structure_type == "StableVec":
+            entry["value_type"] = type_params[0] if len(type_params) >= 1 else "unknown"
+
+        if "max_key_size" in kwargs:
+            entry["max_key_size"] = kwargs["max_key_size"]
+        if "max_value_size" in kwargs:
+            entry["max_value_size"] = kwargs["max_value_size"]
+
+        structures.append(entry)
+
+    return structures
+
+
 def generate_candid_from_methods(
     methods: List[Dict],
     type_defs: Optional[Dict[str, str]] = None,

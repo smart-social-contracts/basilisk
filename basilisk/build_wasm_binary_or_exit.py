@@ -51,6 +51,8 @@ def build_with_template(
     from basilisk.wasm_manipulator import (
         manipulate_wasm,
         extract_methods_from_python,
+        extract_features_from_python,
+        extract_stable_structures_from_python,
         generate_candid_from_methods,
     )
 
@@ -137,7 +139,45 @@ def build_with_template(
         if lifecycle:
             print(f"  Lifecycle hooks: {', '.join(lifecycle.keys())}")
 
-    # 3b. Add __get_candid_interface_tmp_hack built-in query method.
+    # 3b. Inject __shell__ and __browse__ if opted in via __basilisk_features__.
+    features = extract_features_from_python(python_source)
+    user_method_names = {m["name"] for m in methods}
+
+    if features and verbose:
+        print(f"  __basilisk_features__: {features}")
+
+    if "shell" in features and "__shell__" not in user_method_names:
+        python_source += _generate_default_shell_code()
+        methods.append({
+            "name": "__basilisk_controller_guard__",
+            "method_type": "_guard",  # internal, not a canister method
+        })
+        methods.append({
+            "name": "__shell__",
+            "method_type": "update",
+            "params": [{"name": "code", "candid_type": "text"}],
+            "returns": "text",
+            "guard": "__basilisk_controller_guard__",
+        })
+        if verbose:
+            print("  Injected built-in __shell__ (update, controller-only)")
+
+    if "browse" in features and "__browse__" not in user_method_names:
+        stable_structures = extract_stable_structures_from_python(python_source)
+        python_source += _generate_default_browse_code(stable_structures)
+        methods.append({
+            "name": "__browse__",
+            "method_type": "query",
+            "params": [{"name": "query", "candid_type": "text"}],
+            "returns": "text",
+        })
+        if verbose:
+            print(f"  Injected built-in __browse__ (query, {len(stable_structures)} stable structure(s))")
+
+    # Filter out internal-only entries (guards) before generating .did
+    methods = [m for m in methods if m["method_type"] != "_guard"]
+
+    # 3c. Add __get_candid_interface_tmp_hack built-in query method.
     # The Candid UI calls this to fetch the .did interface at runtime.
     hack_method = {
         "name": "__get_candid_interface_tmp_hack",
@@ -611,6 +651,149 @@ def generate_candid_file_from_source(paths: Paths, verbose: bool):
         print(candid_string)
 
     create_file(paths["did"], candid_string)
+
+
+def _generate_default_shell_code() -> str:
+    """Return Python source for the default __shell__ and its controller guard."""
+    return '''
+_basilisk_shell_ns = {}
+
+def __basilisk_controller_guard__():
+    if _basilisk_ic.is_controller(_basilisk_ic.caller()):
+        return {"Ok": None}
+    return {"Err": "only controllers may use __shell__"}
+
+def __shell__(code: str) -> str:
+    import io as _io
+    import sys as _sys
+    import traceback as _tb
+    caller = str(_basilisk_ic.caller())
+    if caller not in _basilisk_shell_ns:
+        _basilisk_shell_ns[caller] = {"__builtins__": __builtins__}
+        _basilisk_shell_ns[caller]["ic"] = ic
+        _basilisk_shell_ns[caller]["basilisk"] = __import__("basilisk")
+    ns = _basilisk_shell_ns[caller]
+    stdout, stderr = _io.StringIO(), _io.StringIO()
+    _sys.stdout, _sys.stderr = stdout, stderr
+    try:
+        exec(code, ns, ns)
+    except Exception:
+        _tb.print_exc()
+    _sys.stdout, _sys.stderr = _sys.__stdout__, _sys.__stderr__
+    return stdout.getvalue() + stderr.getvalue()
+'''
+
+
+def _generate_default_browse_code(stable_structures: list[dict]) -> str:
+    """Return Python source for the default __browse__ endpoint."""
+    import json
+
+    schema = {
+        "stable_maps": {},
+        "stable_sets": {},
+        "stable_vecs": {},
+    }
+    registry_lines = ["_basilisk_browse_registry = {}"]
+
+    for ss in stable_structures:
+        name = ss["name"]
+        st = ss["structure_type"]
+        entry = {"memory_id": ss["memory_id"]}
+
+        if st == "StableBTreeMap":
+            entry["key_type"] = ss.get("key_type", "unknown")
+            entry["value_type"] = ss.get("value_type", "unknown")
+            schema["stable_maps"][name] = entry
+            registry_lines.append(
+                f'_basilisk_browse_registry[{name!r}] = {{"ref": {name}, "type": "map"}}'
+            )
+        elif st == "StableBTreeSet":
+            entry["key_type"] = ss.get("key_type", "unknown")
+            schema["stable_sets"][name] = entry
+            registry_lines.append(
+                f'_basilisk_browse_registry[{name!r}] = {{"ref": {name}, "type": "set"}}'
+            )
+        elif st == "StableVec":
+            entry["value_type"] = ss.get("value_type", "unknown")
+            schema["stable_vecs"][name] = entry
+            registry_lines.append(
+                f'_basilisk_browse_registry[{name!r}] = {{"ref": {name}, "type": "vec"}}'
+            )
+
+    # Remove empty categories from schema
+    schema = {k: v for k, v in schema.items() if v}
+
+    schema_json = json.dumps(schema)
+    registry_block = "\n".join(registry_lines)
+
+    return f'''
+{registry_block}
+
+_BASILISK_BROWSE_DEFAULT_LIMIT = 100
+
+def __browse__(query: str) -> str:
+    import json as _json
+    try:
+        q = _json.loads(query)
+    except Exception:
+        return _json.dumps({{"error": "invalid JSON"}})
+    action = q.get("action", "")
+    limit = min(int(q.get("limit", _BASILISK_BROWSE_DEFAULT_LIMIT)), 10000)
+    offset = int(q.get("offset", 0))
+
+    if action == "schema":
+        return {schema_json!r}
+
+    target_name = q.get("map") or q.get("set") or q.get("vec")
+    if not target_name:
+        return _json.dumps({{"error": "missing target name (map, set, or vec)", "available": list(_basilisk_browse_registry.keys())}})
+    if target_name not in _basilisk_browse_registry:
+        return _json.dumps({{"error": f"unknown target: {{target_name}}", "available": list(_basilisk_browse_registry.keys())}})
+
+    entry = _basilisk_browse_registry[target_name]
+    ref = entry["ref"]
+    stype = entry["type"]
+
+    if action == "len":
+        return _json.dumps({{"result": ref.len()}})
+
+    if action == "keys":
+        if stype == "map":
+            all_keys = ref.keys()
+            return _json.dumps({{"result": all_keys[offset:offset + limit], "total": len(all_keys)}})
+        elif stype == "set":
+            all_items = ref.items()
+            return _json.dumps({{"result": all_items[offset:offset + limit], "total": len(all_items)}})
+        return _json.dumps({{"error": "keys not supported for this type"}})
+
+    if action == "get":
+        key = q.get("key")
+        if key is None:
+            return _json.dumps({{"error": "missing key"}})
+        if stype == "map":
+            return _json.dumps({{"result": ref.get(key)}})
+        elif stype == "vec":
+            try:
+                return _json.dumps({{"result": ref.get(int(key))}})
+            except (ValueError, TypeError):
+                return _json.dumps({{"error": "vec index must be an integer"}})
+        return _json.dumps({{"error": "get not supported for this type"}})
+
+    if action == "items":
+        if stype == "map":
+            all_items = ref.items()
+            return _json.dumps({{"result": all_items[offset:offset + limit], "total": len(all_items)}})
+        elif stype == "set":
+            all_items = ref.items()
+            return _json.dumps({{"result": all_items[offset:offset + limit], "total": len(all_items)}})
+        elif stype == "vec":
+            total = ref.len()
+            end = min(offset + limit, total)
+            return _json.dumps({{"result": [ref.get(i) for i in range(offset, end)], "total": total}})
+        return _json.dumps({{"error": "items not supported for this type"}})
+
+    return _json.dumps({{"error": f"unknown action: {{action}}", "actions": ["schema", "len", "keys", "get", "items"]}})
+'''
 
 
 def run_subprocess(

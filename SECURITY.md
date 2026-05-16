@@ -39,7 +39,7 @@ Basilisk compiles Python code into WebAssembly canisters that run on the Interne
 ### Threat Model
 
 **Trusted:**
-- The canister controller(s) — they can execute arbitrary code via `execute_code_shell`
+- The canister controller(s) — they can execute arbitrary code via `__shell__`
 - The IC subnet nodes — they execute canister code in consensus
 
 **Untrusted:**
@@ -54,13 +54,15 @@ Basilisk compiles Python code into WebAssembly canisters that run on the Interne
 
 1. **Access control is the developer's responsibility.** Basilisk provides `guard_against_non_controllers` and `ic.is_controller()`, but developers must apply guards to their endpoints. Endpoints without guards are callable by anyone.
 
-2. **`execute_code_shell` is an arbitrary code execution endpoint.** It MUST be guarded with `guard_against_non_controllers` or equivalent. The built-in test canister and templates apply this guard by default.
+2. **`__shell__` is an arbitrary code execution endpoint.** When enabled via `__basilisk_features__ = ["shell"]`, the built-in default is controller-only. Custom implementations MUST apply `guard_against_non_controllers` or equivalent. The built-in test canister and templates apply this guard by default.
 
-3. **Cross-canister calls are async and subject to interleaving.** Between `yield` points in async methods, other messages can execute and mutate state (TOCTOU). Implement per-caller locking for financial operations.
+3. **`__browse__` exposes stable structure data as a public query by default.** When enabled via `__basilisk_features__ = ["browse"]`, any principal can read all keys and values in your canister's stable maps, sets, and vectors. If your canister stores sensitive data, provide a custom `__browse__` implementation with an appropriate guard. The built-in default has no access control.
 
-4. **`pre_upgrade` can trap if stable memory serialization exceeds instruction limits.** Monitor canister data size. Use the `StableBTreeMap` (memory_id=255) file persistence for large file storage instead of accumulating data in the legacy stable memory region.
+4. **Cross-canister calls are async and subject to interleaving.** Between `yield` points in async methods, other messages can execute and mutate state (TOCTOU). Implement per-caller locking for financial operations.
 
-5. **Query calls run on a single replica and can be spoofed.** Do not rely on query responses for security-critical decisions. Use update calls or certified variables for trustworthy reads.
+5. **`pre_upgrade` can trap if stable memory serialization exceeds instruction limits.** Monitor canister data size. Use the `StableBTreeMap` (memory_id=255) file persistence for large file storage instead of accumulating data in the legacy stable memory region.
+
+6. **Query calls run on a single replica and can be spoofed.** Do not rely on query responses for security-critical decisions. Use update calls or certified variables for trustworthy reads.
 
 ## Security Checklist for Canister Developers
 

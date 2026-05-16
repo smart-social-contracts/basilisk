@@ -141,6 +141,36 @@ Basilisk may have unknown security vulnerabilities due to the following:
 - No extensive automated property tests
 - No independent security reviews/audits
 
+## Built-in AI/Agent Endpoints
+
+Basilisk can auto-inject standardized `__shell__` and `__browse__` endpoints into your canister at build time. Enable them with a single line:
+
+```python
+__basilisk_features__ = ["shell", "browse"]
+```
+
+**`__shell__`** — full Python execution (controller-only `@update`):
+```bash
+dfx canister call my_canister __shell__ '("print(1 + 1)")'
+# ("2\n")
+```
+
+**`__browse__`** — read-only data introspection (public `@query`, instant, free):
+```bash
+# Discover data schema
+dfx canister call my_canister __browse__ '("{\"action\": \"schema\"}")'
+
+# Read keys from a stable map (paginated, default limit=100)
+dfx canister call my_canister __browse__ '("{\"action\": \"keys\", \"map\": \"users\"}")'
+
+# Get a specific value
+dfx canister call my_canister __browse__ '("{\"action\": \"get\", \"map\": \"users\", \"key\": \"alice\"}")'
+```
+
+Both endpoints can be overridden with custom implementations (e.g. custom guards, filtered data access). If you define `__shell__` or `__browse__` yourself, the compiler uses yours instead of the default.
+
+See [SECURITY.md](SECURITY.md) for access control considerations.
+
 ## Documentation
 
 For detailed architecture notes, see [CPYTHON_MIGRATION_NOTES.md](docs/CPYTHON_MIGRATION_NOTES.md).
