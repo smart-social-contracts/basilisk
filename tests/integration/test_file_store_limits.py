@@ -164,12 +164,11 @@ class TestFileCountLimit:
     def test_count_limit_enforced(self, canister):
         """Writing beyond 10,000 files should raise FileStoreLimitError."""
         _call(canister, "cleanup_all_files")
-        # Write 10,000 small files in batches to stay within IC instruction limit
-        batch_size = 2000
-        for batch in range(5):
+        batch_size = 500
+        for batch in range(20):
             offset = batch * batch_size
             result = _call(canister, "write_many_files",
-                           f'("/limit/b{batch}_f", {batch_size}, 10)')
+                           f'("/limit/b{batch:02d}_f", {batch_size}, 10)')
             assert result == f"ok:{batch_size}", (
                 f"Batch {batch} (offset {offset}) failed: {result}")
         stats = _get_stats(canister)
@@ -235,11 +234,10 @@ class TestExceptionHierarchy:
     def test_store_limit_is_file_store_error(self, canister):
         """FileStoreLimitError should be caught by FileStoreError handler."""
         _call(canister, "cleanup_all_files")
-        # Fill to 10,000 files in batches to stay within IC instruction limit
-        batch_size = 2000
-        for batch in range(5):
+        batch_size = 500
+        for batch in range(20):
             result = _call(canister, "write_many_files",
-                           f'("/hier/b{batch}_f", {batch_size}, 10)')
+                           f'("/hier/b{batch:02d}_f", {batch_size}, 10)')
             assert result == f"ok:{batch_size}", (
                 f"Batch {batch} failed: {result}")
         result = _call(canister, "write_file", '("/hier/overflow.dat", 10)')
