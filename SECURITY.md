@@ -2,19 +2,9 @@
 
 ## Reporting Vulnerabilities
 
-If you discover a security vulnerability in Basilisk, **please report it responsibly**.
+See the [organization-wide security policy](https://github.com/smart-social-contracts/.github/blob/main/SECURITY.md) for reporting instructions and PGP key.
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
-
-Instead, please email: **contact@smartsocialcontracts.org** using a secure channel like GPG.
-
-Include:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if any)
-
-We will acknowledge receipt within 48 hours and aim to provide a fix or mitigation within 7 days for critical issues.
 
 ## Supported Versions
 
