@@ -174,10 +174,30 @@ def build_with_template(
         if verbose:
             print(f"  Injected built-in __browse__ (query, {len(stable_structures)} stable structure(s))")
 
+    # 3c. Inject automatic schema upgrade check into post_upgrade.
+    # If ic_python_db is present, check_upgrade_compatibility() runs after the
+    # user's post_upgrade (if any).  If the check fails, the IC rolls back.
+    if "post_upgrade" in lifecycle:
+        user_fn_name = lifecycle["post_upgrade"]["name"]
+        python_source += _generate_post_upgrade_wrapper(user_fn_name)
+        lifecycle["post_upgrade"]["name"] = "_basilisk_post_upgrade_wrapper"
+        if verbose:
+            print(f"  Wrapped {user_fn_name}() with schema upgrade check")
+    else:
+        python_source += _generate_post_upgrade_wrapper(None)
+        lifecycle["post_upgrade"] = {
+            "name": "_basilisk_post_upgrade_wrapper",
+            "method_type": "post_upgrade",
+            "params": [],
+            "returns": "void",
+        }
+        if verbose:
+            print("  Injected post_upgrade with schema upgrade check")
+
     # Filter out internal-only entries (guards) before generating .did
     methods = [m for m in methods if m["method_type"] != "_guard"]
 
-    # 3c. Add __get_candid_interface_tmp_hack built-in query method.
+    # 3d. Add __get_candid_interface_tmp_hack built-in query method.
     # The Candid UI calls this to fetch the .did interface at runtime.
     hack_method = {
         "name": "__get_candid_interface_tmp_hack",
@@ -684,6 +704,28 @@ def __shell__(code: str) -> str:
 '''
 
 
+def _generate_post_upgrade_wrapper(user_fn_name: str | None) -> str:
+    """Return Python source that wraps post_upgrade with a schema compatibility check.
+
+    If ``user_fn_name`` is given, the wrapper calls the user's original function
+    first, then runs the check.  If ``None``, the wrapper only runs the check.
+    The check is guarded by try/except so canisters without ic_python_db are
+    unaffected.
+    """
+    call_user = f"    {user_fn_name}()\n" if user_fn_name else ""
+    return f'''
+def _basilisk_post_upgrade_wrapper():
+{call_user}    try:
+        from ic_python_db import Database as _DB
+        _db = _DB.get_instance()
+        _db.check_upgrade_compatibility()
+    except ImportError:
+        pass
+    except Exception as _e:
+        _basilisk_ic.trap(f"Upgrade rejected: {{_e}}")
+'''
+
+
 def _generate_default_browse_code(stable_structures: list[dict]) -> str:
     """Return Python source for the default __browse__ endpoint."""
     import json
@@ -742,7 +784,15 @@ def __browse__(query: str) -> str:
     offset = int(q.get("offset", 0))
 
     if action == "schema":
-        return {schema_json!r}
+        _schema = _json.loads({schema_json!r})
+        try:
+            from ic_python_db import Database as _DB
+            _db = _DB.get_instance()
+            _schema["entities"] = _db.build_schema_from_entities()
+            _schema["schema_hash"] = _db.get_schema_hash()
+        except Exception:
+            pass
+        return _json.dumps(_schema)
 
     target_name = q.get("map") or q.get("set") or q.get("vec")
     if not target_name:
