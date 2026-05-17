@@ -7,7 +7,7 @@ import Nat "mo:base/Nat";
 import Order "mo:base/Order";
 import HashMap "mo:base/HashMap";
 
-actor Counter {
+persistent actor Counter {
 
     transient var count : Nat64 = 0;
 
