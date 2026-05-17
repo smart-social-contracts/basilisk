@@ -1,0 +1,22 @@
+type BenchmarkResult = record {
+  body_instructions : nat64;
+  total_instructions : nat64;
+  result : nat64;
+};
+
+type BenchmarkResultText = record {
+  body_instructions : nat64;
+  total_instructions : nat64;
+  result : text;
+};
+
+service : {
+  bench_noop : () -> (BenchmarkResult) query;
+  bench_increment : () -> (BenchmarkResult);
+  bench_fibonacci : () -> (BenchmarkResult) query;
+  bench_fibonacci_recursive : () -> (BenchmarkResult) query;
+  bench_string_ops : () -> (BenchmarkResultText) query;
+  bench_list_ops : () -> (BenchmarkResult) query;
+  bench_dict_ops : () -> (BenchmarkResult) query;
+  bench_method_overhead : () -> (BenchmarkResult) query;
+};

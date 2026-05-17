@@ -1,0 +1,8 @@
+{
+    "canisters": {
+        "benchmark_counter": {
+            "type": "motoko",
+            "main": "src/main.mo"
+        }
+    }
+}

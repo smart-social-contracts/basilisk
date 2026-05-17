@@ -1,0 +1,17 @@
+[package]
+name = "benchmark_counter"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+ic-cdk = "0.17"
+ic-cdk-macros = "0.17"
+candid = "0.10"
+serde = "1"
+
+[profile.release]
+opt-level = "z"
+lto = true

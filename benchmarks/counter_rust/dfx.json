@@ -1,0 +1,9 @@
+{
+    "canisters": {
+        "benchmark_counter": {
+            "type": "rust",
+            "candid": "benchmark_counter.did",
+            "package": "benchmark_counter"
+        }
+    }
+}

@@ -116,26 +116,28 @@ A benchmark comparison was done between [Kybra](https://github.com/demergent-lab
 
 ### Benchmark Results
 
-Wasm instruction counts measured on a PocketIC replica via GitHub Actions CI. Lower is better — fewer instructions means lower cycle cost on the IC.
+Wasm instruction counts measured via `ic0.performance_counter` on a PocketIC replica. On the IC, **1 instruction ≈ 1 cycle** of compute cost. Lower is better. These numbers measure pure compute; they exclude the fixed per-call fee (~590K cycles for updates, ~260K for queries) and memory/storage costs.
 
-| Benchmark | CPython (instructions) | RustPython (instructions) | RustPython / CPython |
-|---|---:|---:|---:|
-| **noop** (call overhead) | 15,914 | 88,918 | **5.6x** |
-| **increment** (state mutation) | 16,050 | 92,485 | **5.8x** |
-| **fibonacci(25)** (iterative) | 37,269 | 294,649 | **7.9x** |
-| **fibonacci_recursive(20)** | 29,617,903 | 337,795,318 | **11.4x** |
-| **string_ops** (100 concatenations) | 275,375 | 2,135,202 | **7.8x** |
-| **list_ops** (500 append + sort) | 602,711 | 5,819,267 | **9.7x** |
-| **dict_ops** (500 inserts + lookups) | 3,407,101 | 23,087,720 | **6.8x** |
-| **method_overhead** (total prelude) | 11,122 | 42,216 | **3.8x** |
+| Benchmark | Rust | Motoko | CPython | RustPython | vs Rust |
+|---|---:|---:|---:|---:|---:|
+| **noop** (call overhead) | — | — | 15,914 | 88,918 | — |
+| **increment** (state mutation) | — | — | 16,050 | 92,485 | — |
+| **fibonacci(25)** (iterative) | — | — | 37,269 | 294,649 | — |
+| **fibonacci_recursive(20)** | — | — | 29,617,903 | 337,795,318 | — |
+| **string_ops** (100 concatenations) | — | — | 275,375 | 2,135,202 | — |
+| **list_ops** (500 append + sort) | — | — | 602,711 | 5,819,267 | — |
+| **dict_ops** (500 inserts + lookups) | — | — | 3,407,101 | 23,087,720 | — |
+| **method_overhead** (total prelude) | — | — | 11,122 | 42,216 | — |
+
+> **Rust and Motoko columns are pending** — run the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) with `rust`, `motoko`, or `all` to populate them. The "vs Rust" column shows CPython's overhead relative to native Rust (the theoretical floor).
 
 CPython is **6–11x faster** than RustPython for compute-heavy workloads due to its optimized C interpreter. The gap is largest for **recursive function calls** (11.4x) and **list operations** (9.7x). Even the minimum overhead per call is lower: 11K vs 42K instructions.
 
 Full CI logs: [CPython run](https://github.com/smart-social-contracts/basilisk/actions/runs/22616838245) · [RustPython run](https://github.com/smart-social-contracts/basilisk/actions/runs/22616844678)
 
-> **Run it yourself:** trigger the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) from the Actions tab — select `cpython`, `rustpython`, or `both` as the backend, and `local` or `ic` as the network.
+> **Run it yourself:** trigger the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) from the Actions tab — select `cpython`, `rust`, `motoko`, or `all` as the backend, and `local` or `ic` as the network.
 
-The benchmark source is in [`benchmarks/counter/`](benchmarks/counter/).
+The benchmark sources are in [`benchmarks/counter/`](benchmarks/counter/) (CPython), [`benchmarks/counter_rust/`](benchmarks/counter_rust/) (Rust), and [`benchmarks/counter_motoko/`](benchmarks/counter_motoko/) (Motoko).
 
 
 ## Projects Using Basilisk

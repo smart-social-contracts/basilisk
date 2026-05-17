@@ -1,0 +1,3 @@
+.dfx/
+target/
+benchmark_results_*.txt
