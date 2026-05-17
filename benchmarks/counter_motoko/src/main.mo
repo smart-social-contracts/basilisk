@@ -9,7 +9,7 @@ import HashMap "mo:base/HashMap";
 
 actor Counter {
 
-    var count : Nat64 = 0;
+    transient var count : Nat64 = 0;
 
     type BenchmarkResult = {
         body_instructions : Nat64;
