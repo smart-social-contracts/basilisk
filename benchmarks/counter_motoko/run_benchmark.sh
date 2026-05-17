@@ -35,33 +35,22 @@ echo "║  Network:   $NETWORK                                       ║"
 echo "║  Runs:      $RUNS per benchmark                            ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 
-# ─── Build ───────────────────────────────────────────────────────────────────
+# ─── Build + Deploy ──────────────────────────────────────────────────────────
 if [ "$SKIP_BUILD" = false ]; then
     echo ""
-    echo "--- Building canister ($BACKEND) ---"
+    echo "--- Building + deploying canister ($BACKEND on $NETWORK) ---"
     BUILD_START=$(date +%s%N)
-    dfx build benchmark_counter 2>&1
+    dfx deploy benchmark_counter --yes $NETWORK_FLAG 2>&1
     BUILD_END=$(date +%s%N)
     BUILD_MS=$(( (BUILD_END - BUILD_START) / 1000000 ))
     WASM_PATH=".dfx/local/canisters/benchmark_counter/benchmark_counter.wasm"
-    WASM_SIZE=$(wc -c < "$WASM_PATH")
-    echo "Build time: ${BUILD_MS}ms"
+    WASM_SIZE=$(wc -c < "$WASM_PATH" 2>/dev/null || echo "0")
+    echo "Build + deploy time: ${BUILD_MS}ms"
     echo "Wasm size:  $WASM_SIZE bytes ($(( WASM_SIZE / 1024 )) KB)"
+    DEPLOY_MS="(included above)"
 else
     WASM_SIZE="skipped"
     BUILD_MS="skipped"
-fi
-
-# ─── Deploy ──────────────────────────────────────────────────────────────────
-if [ "$SKIP_DEPLOY" = false ]; then
-    echo ""
-    echo "--- Deploying canister ($NETWORK) ---"
-    DEPLOY_START=$(date +%s%N)
-    dfx deploy benchmark_counter --yes $NETWORK_FLAG 2>&1
-    DEPLOY_END=$(date +%s%N)
-    DEPLOY_MS=$(( (DEPLOY_END - DEPLOY_START) / 1000000 ))
-    echo "Deploy time: ${DEPLOY_MS}ms"
-else
     DEPLOY_MS="skipped"
 fi
 
