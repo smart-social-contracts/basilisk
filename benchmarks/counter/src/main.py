@@ -138,3 +138,38 @@ def bench_method_overhead() -> BenchmarkResult:
         "total_instructions": ic.performance_counter(1),
         "result": 0,
     }
+
+
+@query
+def bench_sum_to() -> BenchmarkResult:
+    """Pure arithmetic loop: sum integers 1 to 10000."""
+    start = ic.performance_counter(0)
+    total = 0
+    for i in range(1, 10001):
+        total += i
+    end = ic.performance_counter(0)
+    return {
+        "body_instructions": end - start,
+        "total_instructions": ic.performance_counter(1),
+        "result": total,
+    }
+
+
+@query
+def bench_ackermann() -> BenchmarkResult:
+    """Deep recursion with branching: ackermann(3, 6) = 509."""
+    def ack(m: int, n: int) -> int:
+        if m == 0:
+            return n + 1
+        if n == 0:
+            return ack(m - 1, 1)
+        return ack(m - 1, ack(m, n - 1))
+
+    start = ic.performance_counter(0)
+    result = ack(3, 6)
+    end = ic.performance_counter(0)
+    return {
+        "body_instructions": end - start,
+        "total_instructions": ic.performance_counter(1),
+        "result": result,
+    }

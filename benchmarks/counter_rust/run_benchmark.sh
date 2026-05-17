@@ -68,6 +68,8 @@ BENCHMARKS=(
     bench_list_ops
     bench_dict_ops
     bench_method_overhead
+    bench_sum_to
+    bench_ackermann
 )
 
 # Warm up

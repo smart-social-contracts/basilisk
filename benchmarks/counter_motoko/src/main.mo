@@ -147,4 +147,37 @@ persistent actor Counter {
             result = 0;
         };
     };
+
+    public query func bench_sum_to() : async BenchmarkResult {
+        let start = Prim.performanceCounter(0);
+        var total : Nat64 = 0;
+        var i : Nat64 = 1;
+        while (i <= 10000) {
+            total += i;
+            i += 1;
+        };
+        let end = Prim.performanceCounter(0);
+        {
+            body_instructions = end - start;
+            total_instructions = Prim.performanceCounter(1);
+            result = total;
+        };
+    };
+
+    func ack(m : Nat, n : Nat) : Nat {
+        if (m == 0) { return n + 1 };
+        if (n == 0) { return ack(m - 1, 1) };
+        ack(m - 1, ack(m, n - 1));
+    };
+
+    public query func bench_ackermann() : async BenchmarkResult {
+        let start = Prim.performanceCounter(0);
+        let result = ack(3, 6);
+        let end = Prim.performanceCounter(0);
+        {
+            body_instructions = end - start;
+            total_instructions = Prim.performanceCounter(1);
+            result = Nat64.fromNat(result);
+        };
+    };
 };

@@ -143,3 +143,40 @@ fn bench_method_overhead() -> BenchmarkResult {
         result: 0,
     }
 }
+
+#[query]
+fn bench_sum_to() -> BenchmarkResult {
+    let start = ic_cdk::api::performance_counter(0);
+    let mut total: u64 = 0;
+    for i in 1..=10000u64 {
+        total += i;
+    }
+    let end = ic_cdk::api::performance_counter(0);
+    BenchmarkResult {
+        body_instructions: end - start,
+        total_instructions: ic_cdk::api::performance_counter(1),
+        result: total,
+    }
+}
+
+fn ackermann(m: u64, n: u64) -> u64 {
+    if m == 0 {
+        return n + 1;
+    }
+    if n == 0 {
+        return ackermann(m - 1, 1);
+    }
+    ackermann(m - 1, ackermann(m, n - 1))
+}
+
+#[query]
+fn bench_ackermann() -> BenchmarkResult {
+    let start = ic_cdk::api::performance_counter(0);
+    let result = ackermann(3, 6);
+    let end = ic_cdk::api::performance_counter(0);
+    BenchmarkResult {
+        body_instructions: end - start,
+        total_instructions: ic_cdk::api::performance_counter(1),
+        result,
+    }
+}
