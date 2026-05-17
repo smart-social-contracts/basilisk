@@ -216,11 +216,14 @@ def bundle_python_code(paths: Paths):
     finder = modulefinder.ModuleFinder(path=path)
     finder.run_script(paths["py_entry_file"])
 
+    # ── Rescue editable-install packages that modulefinder missed ──
+    rescued = _rescue_editable_packages(finder)
+
     # ── Reject pip packages that contain native (C) extensions ──
     _check_native_extensions(finder)
 
     # ── Warn about unresolved imports ──
-    _warn_unresolved_imports(finder)
+    _warn_unresolved_imports(finder, rescued)
 
     python_source_path = paths["python_source"]
 
@@ -271,6 +274,22 @@ def bundle_python_code(paths: Paths):
                 if _is_from_site_packages(mod.__file__):
                     _track_bundled_package(bundled_packages, name)
 
+    # ── Bundle rescued editable packages ──
+    for pkg_name, pkg_path in rescued.items():
+        if should_skip_package(pkg_name, pkg_path):
+            continue
+        dest_dir = pkg_name.replace(".", os.sep)
+        dest_full = f"{python_source_path}/{dest_dir}"
+        if not os.path.exists(dest_full):
+            shutil.copytree(
+                pkg_path,
+                dest_full,
+                dirs_exist_ok=True,
+                ignore=ignore_specific_dir,
+            )
+            _ensure_parent_inits(python_source_path, dest_dir)
+        _track_bundled_package(bundled_packages, pkg_name)
+
     # ── Print bundled packages summary ──
     _print_bundle_summary(bundled_packages)
 
@@ -281,6 +300,76 @@ def bundle_python_code(paths: Paths):
     ]
 
     create_file(paths["py_file_names_file"], ",".join(py_file_names))
+
+
+def _rescue_editable_packages(finder: modulefinder.ModuleFinder) -> dict[str, str]:
+    """Try to locate packages that modulefinder couldn't trace.
+
+    Editable installs (pip install -e) use custom import hooks on sys.meta_path
+    that modulefinder doesn't understand. For each unresolved top-level package,
+    we attempt a real import to discover its file path, then return a mapping of
+    package_name -> package_directory for bundling.
+
+    Also traces imports within rescued packages to catch their transitive
+    dependencies (e.g. ic_python_db -> ic_python_logging).
+
+    Only rescues proper packages (directories with __init__.py), not single-file
+    stdlib modules.
+    """
+    import ast
+
+    stdlib_dirs = {os.path.dirname(os.__file__), os.path.dirname(os.path.dirname(os.__file__))}
+
+    def _try_rescue(name: str) -> tuple[str, str] | None:
+        try:
+            mod = __import__(name)
+        except Exception:
+            return None
+        pkg_path = getattr(mod, "__path__", None)
+        if not pkg_path:
+            return None
+        pkg_dir = pkg_path[0] if isinstance(pkg_path, list) else list(pkg_path)[0]
+        if not os.path.isdir(pkg_dir):
+            return None
+        if any(pkg_dir.startswith(sd) for sd in stdlib_dirs):
+            return None
+        return name, pkg_dir
+
+    rescued: dict[str, str] = {}
+    seen_top_level: set[str] = set()
+
+    candidates = {name.split(".")[0] for name in finder.badmodules}
+    candidates -= set(finder.modules)
+
+    while candidates:
+        name = candidates.pop()
+        if name in seen_top_level:
+            continue
+        seen_top_level.add(name)
+
+        result = _try_rescue(name)
+        if not result:
+            continue
+        pkg_name, pkg_dir = result
+        rescued[pkg_name] = pkg_dir
+
+        for py_file in Path(pkg_dir).rglob("*.py"):
+            try:
+                tree = ast.parse(py_file.read_text(errors="replace"))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        dep = alias.name.split(".")[0]
+                        if dep not in seen_top_level and dep not in finder.modules:
+                            candidates.add(dep)
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    dep = node.module.split(".")[0]
+                    if dep not in seen_top_level and dep not in finder.modules:
+                        candidates.add(dep)
+
+    return rescued
 
 
 def ignore_specific_dir(dirname: str, filenames: list[str]) -> list[str]:
@@ -344,10 +433,14 @@ def _check_native_extensions(finder: modulefinder.ModuleFinder):
         sys.exit(1)
 
 
-def _warn_unresolved_imports(finder: modulefinder.ModuleFinder):
+def _warn_unresolved_imports(
+    finder: modulefinder.ModuleFinder,
+    rescued: dict[str, str] | None = None,
+):
     """Print warnings for imports that modulefinder could not resolve.
 
-    Excludes known false positives from stdlib and basilisk internals.
+    Excludes known false positives from stdlib and basilisk internals,
+    as well as packages that were rescued via editable-install fallback.
     """
     IGNORE_PREFIXES = (
         "_",          # private C accelerators (_pickle, _io, etc.)
@@ -361,12 +454,16 @@ def _warn_unresolved_imports(finder: modulefinder.ModuleFinder):
         "org", "java",
         "test", "tests",
     }
+    rescued_tops = set(rescued or {})
 
     unresolved = []
     for name in sorted(finder.badmodules):
         if name in IGNORE_EXACT:
             continue
         if any(name.startswith(p) for p in IGNORE_PREFIXES):
+            continue
+        top_level = name.split(".")[0]
+        if top_level in rescued_tops:
             continue
         unresolved.append(name)
 
