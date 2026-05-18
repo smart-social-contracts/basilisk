@@ -120,14 +120,12 @@ Pure-compute benchmarks comparing Rust, Motoko, and CPython on identical algorit
 | **noop** (call overhead) | 13,686 | 3,299 | 15,592 | **1.1x** |
 | **increment** (state mutation) | 12,827 | 3,411 | 15,159 | **1.2x** |
 | **fibonacci(25)** (iterative) | 12,750 | 5,713 | 36,553 | **2.9x** |
-| **fibonacci_recursive(20)** | 373,953 | 2,203,257 | 29,617,193 | **79.2x** |
+| **fibonacci_recursive(20)** | 373,953 | 2,050,048 | 29,617,193 | **79.2x** |
 | **sum_to(10000)** (arithmetic loop) | 272,761 | 513,314 | 12,767,523 | **46.8x** |
-| **ackermann(3,6)** (deep recursion) | 3,285,678 | 19,717,638 | 284,158,839 | **86.5x** |
+| **ackermann(3,6)** (deep recursion) | 3,285,678 | 15,225,081 | 284,158,839 | **86.5x** |
 | **method_overhead** (total prelude) | 12,334 | 2,863 | 10,172 | **0.8x** |
 
-For lightweight operations (noop, increment), CPython is within **1–2x** of native Rust — the interpreter overhead is negligible. For short iterative work (fibonacci), the gap is modest at **2.9x**. However, for longer loops (sum_to: **47x**) and deep recursion (ackermann: **87x**, fibonacci_recursive: **79x**), Python's per-instruction and per-frame overhead compounds significantly. Motoko has the smallest call prelude (~3K instructions) but its instruction cost grows faster than Rust for heavy computation.
-
-Full CI logs: [All backends](https://github.com/smart-social-contracts/basilisk/actions/runs/26002047455)
+Full CI logs: [All backends](https://github.com/smart-social-contracts/basilisk/actions/runs/26014003754)
 
 ### Python-Specific Benchmark (CPython vs RustPython)
 
@@ -139,7 +137,7 @@ These benchmarks use language-specific data structures (Python `dict`, `list`, `
 | **list_ops** (500 append + sort) | 602,711 | 5,819,267 | **9.7x** |
 | **dict_ops** (500 inserts + lookups) | 3,407,101 | 23,087,720 | **6.8x** |
 
-CPython is **6–11x faster** than RustPython across the board, with the gap largest for recursive function calls and list operations.
+CPython is **6–10x faster** than RustPython across the board, with the gap largest for recursive function calls and list operations.
 
 > **Run it yourself:** trigger the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) from the Actions tab — select `cpython`, `rust`, `motoko`, or `all` as the backend, and `local` or `ic` as the network.
 
