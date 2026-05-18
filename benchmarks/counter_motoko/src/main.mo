@@ -63,7 +63,7 @@ persistent actor Counter {
         };
     };
 
-    func fibRecursive(n : Nat) : Nat {
+    func fibRecursive(n : Nat64) : Nat64 {
         if (n <= 1) { return n };
         fibRecursive(n - 1) + fibRecursive(n - 2);
     };
@@ -75,7 +75,7 @@ persistent actor Counter {
         {
             body_instructions = end - start;
             total_instructions = Prim.performanceCounter(1);
-            result = Nat64.fromNat(result);
+            result = result;
         };
     };
 
@@ -164,7 +164,7 @@ persistent actor Counter {
         };
     };
 
-    func ack(m : Nat, n : Nat) : Nat {
+    func ack(m : Nat64, n : Nat64) : Nat64 {
         if (m == 0) { return n + 1 };
         if (n == 0) { return ack(m - 1, 1) };
         ack(m - 1, ack(m, n - 1));
@@ -177,7 +177,7 @@ persistent actor Counter {
         {
             body_instructions = end - start;
             total_instructions = Prim.performanceCounter(1);
-            result = Nat64.fromNat(result);
+            result = result;
         };
     };
 };
