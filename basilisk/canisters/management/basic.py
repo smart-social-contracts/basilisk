@@ -1,4 +1,4 @@
-from basilisk import blob, nat, null, Opt, Principal, Record, Variant, Vec
+from basilisk import blob, nat, nat64, null, Opt, Principal, Record, Variant, Vec
 
 # TODO type aliases do not work yet
 # TODO many canister_id fields need to be changed to use this alias
@@ -133,3 +133,32 @@ class InstallChunkedCodeArgs(Record):
     chunk_hashes_list: Vec[ChunkHash]
     wasm_module_hash: blob
     arg: blob
+
+
+# Canister snapshot API
+# See: https://internetcomputer.org/docs/current/references/ic-interface-spec#ic-take_canister_snapshot
+
+class TakeCanisterSnapshotArgs(Record):
+    canister_id: Principal
+    replace_snapshot: Opt[blob]
+
+
+class CanisterSnapshotResult(Record):
+    id: blob
+    taken_at_timestamp: nat64
+    total_size: nat64
+
+
+class LoadCanisterSnapshotArgs(Record):
+    canister_id: Principal
+    snapshot_id: blob
+    sender_canister_version: Opt[nat64]
+
+
+class DeleteCanisterSnapshotArgs(Record):
+    canister_id: Principal
+    snapshot_id: blob
+
+
+class ListCanisterSnapshotsArgs(Record):
+    canister_id: Principal

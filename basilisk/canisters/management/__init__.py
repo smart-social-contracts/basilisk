@@ -46,6 +46,12 @@ from basilisk.canisters.management.basic import (
     StoredChunksArgs as StoredChunksArgs,
     StoredChunksResult as StoredChunksResult,
     InstallChunkedCodeArgs as InstallChunkedCodeArgs,
+    # Canister snapshot API
+    TakeCanisterSnapshotArgs as TakeCanisterSnapshotArgs,
+    CanisterSnapshotResult as CanisterSnapshotResult,
+    LoadCanisterSnapshotArgs as LoadCanisterSnapshotArgs,
+    DeleteCanisterSnapshotArgs as DeleteCanisterSnapshotArgs,
+    ListCanisterSnapshotsArgs as ListCanisterSnapshotsArgs,
 )
 from basilisk.canisters.management.tecdsa import (
     EcdsaCurve as EcdsaCurve,
@@ -200,6 +206,23 @@ class ManagementCanister(Service):
     def install_chunked_code(self, args: InstallChunkedCodeArgs) -> void:
         ...
 
+    # Canister snapshot API
+    @service_update
+    def take_canister_snapshot(self, args: TakeCanisterSnapshotArgs) -> CanisterSnapshotResult:
+        ...
+
+    @service_update
+    def load_canister_snapshot(self, args: LoadCanisterSnapshotArgs) -> void:
+        ...
+
+    @service_update
+    def delete_canister_snapshot(self, args: DeleteCanisterSnapshotArgs) -> void:
+        ...
+
+    @service_update
+    def list_canister_snapshots(self, args: ListCanisterSnapshotsArgs) -> Vec[CanisterSnapshotResult]:
+        ...
+
 
 management_canister = ManagementCanister(Principal.from_str("aaaaa-aa"))
 
@@ -228,6 +251,10 @@ setattr(ManagementCanister, '_arg_types', {
     'clear_chunk_store': 'record { canister_id : principal }',
     'stored_chunks': 'record { canister_id : principal }',
     'install_chunked_code': 'record { mode : variant { install : null; reinstall : null; upgrade : null }; target_canister : principal; store_canister : opt principal; chunk_hashes_list : vec record { hash : blob }; wasm_module_hash : blob; arg : blob }',
+    'take_canister_snapshot': 'record { canister_id : principal; replace_snapshot : opt blob }',
+    'load_canister_snapshot': 'record { canister_id : principal; snapshot_id : blob; sender_canister_version : opt nat64 }',
+    'delete_canister_snapshot': 'record { canister_id : principal; snapshot_id : blob }',
+    'list_canister_snapshots': 'record { canister_id : principal }',
 })
 setattr(ManagementCanister, '_return_types', {
     'create_canister': 'record { canister_id : principal }',
@@ -243,4 +270,6 @@ setattr(ManagementCanister, '_return_types', {
     'vetkd_derive_key': 'record { encrypted_key : blob }',
     'upload_chunk': 'record { hash : blob }',
     'stored_chunks': 'vec record { hash : blob }',
+    'take_canister_snapshot': 'record { id : blob; taken_at_timestamp : nat64; total_size : nat64 }',
+    'list_canister_snapshots': 'vec record { id : blob; taken_at_timestamp : nat64; total_size : nat64 }',
 })
