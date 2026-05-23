@@ -3,7 +3,7 @@
 import subprocess
 import os
 import pytest
-from .conftest import call_canister, parse_candid_text, _get_canister_id, EXAMPLES_DIR, _USE_PREBUILT, _CANDID_MAP
+from .conftest import call_canister, parse_candid_text, _get_canister_id, EXAMPLES_DIR, _USE_PREBUILT, _CANDID_MAP, _ensure_network
 
 EXAMPLE = "init_and_post_upgrade_recovery"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
@@ -16,6 +16,7 @@ def _wasm_path():
 
 @pytest.fixture(scope="module")
 def canister(replica):
+    _ensure_network(EXAMPLE_DIR)
     if _USE_PREBUILT:
         subprocess.run(
             ["icp", "canister", "create", CANISTER_NAME],
