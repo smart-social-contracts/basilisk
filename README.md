@@ -62,15 +62,11 @@ pip install ic-basilisk
 ### Create and deploy
 
 ```bash
-# 1. Scaffold a new project
-basilisk new my_project
-cd my_project
-
-# 2. Start the local replica and deploy
+# 1. Start the local replica and deploy the example
 icp network start -d
 icp deploy
 
-# 3. Call your canister
+# 2. Call your canister
 icp canister call my_project greet '("World")'
 # ("Hello, World! The counter is at 0.")
 ```

@@ -3,7 +3,6 @@ recursive-include basilisk/canisters *.py *.did
 recursive-include basilisk/templates *
 include basilisk/py.typed
 recursive-exclude basilisk/templates/*/.basilisk *
-recursive-exclude basilisk/templates/*/.dfx *
 recursive-exclude basilisk/compiler/*/target *
 recursive-exclude basilisk/compiler/*/.basilisk *
 prune basilisk/compiler/cpython_canister_template/target

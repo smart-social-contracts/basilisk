@@ -56,15 +56,6 @@ from basilisk.types import Args, Paths
 
 @timed
 def main():
-    if sys.argv[1] == "install-dfx-extension":
-        subprocess.run(
-            ["./install.sh"],
-            cwd=os.path.join(
-                os.path.dirname(basilisk.__file__), "compiler", "dfx_extension"
-            ),
-        )
-        return
-
     args = parse_args_or_exit(sys.argv)
     paths = create_paths(args)
     is_verbose = args["flags"]["verbose"] or os.environ.get("BASILISK_VERBOSE") == "true"
@@ -358,7 +349,7 @@ def ignore_specific_dir(dirname: str, filenames: list[str]) -> list[str]:
     # Exclude build output, caches, and template scaffolding from copytree
     ignored = []
     for f in filenames:
-        if f in (".basilisk", "__pycache__", ".dfx", ".icp"):
+        if f in (".basilisk", "__pycache__", ".icp"):
             ignored.append(f)
     return ignored
 

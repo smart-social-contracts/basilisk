@@ -134,12 +134,11 @@ def deploy_example(example_name, replica_fixture=None):
 
 
 def _read_canister_config(example_dir):
-    """Read canister configuration from icp.yaml or dfx.json.
+    """Read canister configuration from icp.yaml.
 
-    Returns a dict of {canister_name: {"main": str}} regardless of source format.
+    Returns a dict of {canister_name: {"main": str}}.
     """
     icp_yaml_path = os.path.join(example_dir, "icp.yaml")
-    dfx_json_path = os.path.join(example_dir, "dfx.json")
 
     if os.path.exists(icp_yaml_path):
         import yaml
@@ -148,20 +147,11 @@ def _read_canister_config(example_dir):
         result = {}
         for canister in config.get("canisters", []):
             name = canister["name"]
-            # Extract main from build commands
             main_file = _extract_main_from_icp_yaml(canister)
             result[name] = {"main": main_file}
         return result
 
-    if os.path.exists(dfx_json_path):
-        with open(dfx_json_path) as f:
-            config = json.load(f)
-        result = {}
-        for name, cfg in config.get("canisters", {}).items():
-            result[name] = {"main": cfg.get("main", "")}
-        return result
-
-    raise FileNotFoundError(f"No icp.yaml or dfx.json in {example_dir}")
+    raise FileNotFoundError(f"No icp.yaml in {example_dir}")
 
 
 def _extract_main_from_icp_yaml(canister_config):

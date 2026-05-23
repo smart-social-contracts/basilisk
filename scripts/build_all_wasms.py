@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build all example canister WASMs in a single pass.
 
-Reads each example's icp.yaml (or dfx.json fallback), runs
+Reads each example's icp.yaml, runs
 `python -m basilisk <name> <main>` for every canister, and collects
 the output WASMs + .did files.
 
@@ -11,7 +11,6 @@ Usage:
 If no arguments given, builds ALL examples listed in the CI matrix.
 """
 
-import json
 import os
 import subprocess
 import sys
@@ -87,9 +86,8 @@ ALL_EXAMPLES = [
 
 
 def _read_canister_config(example_dir):
-    """Read canister config from icp.yaml or dfx.json, returning {name: {"main": str}}."""
+    """Read canister config from icp.yaml, returning {name: {"main": str}}."""
     icp_yaml_path = os.path.join(example_dir, "icp.yaml")
-    dfx_json_path = os.path.join(example_dir, "dfx.json")
 
     if os.path.exists(icp_yaml_path):
         if yaml is None:
@@ -101,14 +99,6 @@ def _read_canister_config(example_dir):
             name = canister["name"]
             main_file = _extract_main_from_build(canister)
             result[name] = {"main": main_file}
-        return result
-
-    if os.path.exists(dfx_json_path):
-        with open(dfx_json_path) as f:
-            dfx_config = json.load(f)
-        result = {}
-        for name, cfg in dfx_config.get("canisters", {}).items():
-            result[name] = {"main": cfg.get("main", "")}
         return result
 
     return {}
@@ -132,7 +122,7 @@ def build_example(example_name: str) -> bool:
 
     canisters = _read_canister_config(example_dir)
     if not canisters:
-        print(f"  SKIP {example_name}: no icp.yaml or dfx.json")
+        print(f"  SKIP {example_name}: no icp.yaml")
         return False
 
     all_ok = True
