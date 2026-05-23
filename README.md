@@ -62,13 +62,34 @@ pip install ic-basilisk
 ### Create and deploy
 
 ```bash
-# 1. Start the local replica and deploy the example
+# 1. Scaffold a new project from the Basilisk template
+icp new my_project --git https://github.com/smart-social-contracts/basilisk --subfolder templates/hello-world
+
+# 2. Deploy to the local replica
+cd my_project
 icp network start -d
 icp deploy
 
-# 2. Call your canister
+# 3. Call your canister
 icp canister call my_project greet '("World")'
 # ("Hello, World! The counter is at 0.")
+
+icp canister call my_project increment
+# (1)
+```
+
+### Using the recipe
+
+Instead of inline build steps, you can reference the [Basilisk recipe](recipes/python/) in your `icp.yaml`:
+
+```yaml
+canisters:
+  - name: my_canister
+    recipe:
+      type: "https://github.com/smart-social-contracts/basilisk/releases/download/recipe-python-v1.0.0/recipe.hbs"
+      configuration:
+        entry: src/main.py
+        shrink: true
 ```
 
 ## Built-in AI/Agent Endpoints

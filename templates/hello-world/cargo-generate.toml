@@ -1,0 +1,3 @@
+[template]
+name = "Basilisk Python Canister"
+description = "A Python canister for the Internet Computer using Basilisk"
