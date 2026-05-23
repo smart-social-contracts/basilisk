@@ -1,0 +1,17 @@
+canisters:
+  - name: cycles
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=.basilisk/cycles/cycles.did python3 -m basilisk cycles src/cycles/cycles.py
+            - cp .basilisk/cycles/cycles.wasm "$ICP_WASM_OUTPUT_PATH"
+    candid: .basilisk/cycles/cycles.did
+  - name: intermediary
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=.basilisk/intermediary/intermediary.did python3 -m basilisk intermediary src/intermediary/intermediary.py
+            - cp .basilisk/intermediary/intermediary.wasm "$ICP_WASM_OUTPUT_PATH"
+    candid: .basilisk/intermediary/intermediary.did

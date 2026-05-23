@@ -1,4 +1,5 @@
 .dfx
+.icp
 .basilisk
 dfx_generated
 venv

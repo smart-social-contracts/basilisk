@@ -17,7 +17,7 @@ def canister(replica):
 
 def test_get_randomness_directly(canister):
     raw = call_canister(canister, "get_randomness_directly", example_dir=EXAMPLE_DIR)
-    # Result is a blob; dfx prints it as (blob "...") with 32 bytes
+    # Result is a blob; icp-cli prints it as (blob "...") with 32 bytes
     assert "blob" in raw
 
 

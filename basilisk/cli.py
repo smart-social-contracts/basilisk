@@ -4,17 +4,20 @@ Basilisk — An Internet Computer's Python Canister Development Kit.
 Usage: basilisk <command> [options]
 
 Commands:
+  (Plugins installed via entry points are listed here)
+
+Other:
   --version        Print version info
   help, -h         Show this help
 
-Scaffolding and deployment are handled by icp-cli:
-  icp new          Scaffold a new Python canister project (select "python")
-  icp deploy       Build and deploy using icp.yaml
-
-Run basilisk <command> --help for command-specific options and examples.
+Use icp-cli for project management:
+  icp new <name>   Scaffold a new project
+  icp deploy       Build and deploy
+  https://cli.internetcomputer.org
 """
 
 import os
+import subprocess
 import sys
 
 
@@ -34,7 +37,7 @@ def _help_text() -> str:
         lines = base.split("\n")
         result = []
         for line in lines:
-            if line.startswith("Scaffolding"):
+            if line.startswith("Other:"):
                 result.append("Plugin commands:")
                 for name, ep in sorted(plugins.items()):
                     fn = ep.load()
@@ -57,7 +60,15 @@ def main():
 
     command = sys.argv[1]
 
-    if command in ("-h", "--help", "help"):
+    if command in ("new", "build"):
+        print(f"'basilisk {command}' has been removed.", file=sys.stderr)
+        print("Use icp-cli instead:", file=sys.stderr)
+        print("  icp new <project>    Scaffold a new project", file=sys.stderr)
+        print("  icp deploy           Build and deploy", file=sys.stderr)
+        print("  https://cli.internetcomputer.org", file=sys.stderr)
+        sys.exit(1)
+
+    elif command in ("-h", "--help", "help"):
         print(_help_text())
 
     elif command == "--version":
@@ -71,7 +82,6 @@ def main():
         except ImportError:
             pass
         if not commit:
-            import subprocess
             try:
                 commit = subprocess.run(
                     ["git", "rev-parse", "HEAD"], capture_output=True, text=True,
@@ -89,14 +99,6 @@ def main():
             print(date)
         if commit:
             print(commit)
-
-    elif command in ("new", "build"):
-        print(f"'basilisk {command}' has been removed.", file=sys.stderr)
-        print("Use icp-cli instead:", file=sys.stderr)
-        print("  icp new <project>    Scaffold a new project", file=sys.stderr)
-        print("  icp deploy           Build and deploy", file=sys.stderr)
-        print("  https://cli.internetcomputer.org", file=sys.stderr)
-        sys.exit(1)
 
     else:
         plugins = _discover_plugin_commands()

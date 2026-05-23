@@ -1,0 +1,23 @@
+canisters:
+  - name: shell_test
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=./shell_test.did python3 -m basilisk shell_test src/main.py
+            - cp .basilisk/shell_test/shell_test.wasm "$ICP_WASM_OUTPUT_PATH"
+    candid: shell_test.did
+  - name: ckbtc_ledger
+    build:
+      steps:
+        - type: script
+          commands:
+            - "echo 'Pre-built canister — use icp canister install --wasm to deploy'"
+    candid: https://raw.githubusercontent.com/dfinity/ic/master/rs/ledger_suite/icrc1/ledger/ledger.did
+  - name: ckbtc_indexer
+    build:
+      steps:
+        - type: script
+          commands:
+            - "echo 'Pre-built canister — use icp canister install --wasm to deploy'"
+    candid: https://raw.githubusercontent.com/dfinity/ic/master/rs/ledger_suite/icrc1/index-ng/index-ng.did

@@ -20,13 +20,13 @@ import sys
 CHUNK_SIZE = 200_000  # 200 KB per chunk (base64 decode + file write must fit in instruction budget)
 
 
-def dfx_call(canister, method, arg, network="local"):
+def icp_call(canister, method, arg, network="local"):
     import tempfile
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
         f.write(arg)
         arg_file = f.name
     try:
-        cmd = ["dfx", "canister", "call", canister, method, "--argument-file", arg_file, "--network", network]
+        cmd = ["icp", "canister", "call", canister, method, "--args-file", arg_file, "-n", network]
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
             print(f"ERROR: {' '.join(cmd)}")
@@ -41,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser(description="Upload WASM to deployer canister")
     parser.add_argument("version", help="Version string (e.g., 0.11.22)")
     parser.add_argument("wasm_file", help="Path to .wasm file")
-    parser.add_argument("--network", default="local", help="DFX network (default: local)")
+    parser.add_argument("--network", default="local", help="ICP network (default: local)")
     parser.add_argument("--canister-id", default="deployer", help="Deployer canister name or ID")
     parser.add_argument("--description", default="", help="Version description")
     args = parser.parse_args()
@@ -74,7 +74,7 @@ def main():
         })
 
         print(f"  Uploading chunk {i + 1}/{num_chunks} ({len(chunk):,} bytes)...", end=" ", flush=True)
-        output = dfx_call(args.canister_id, "upload_wasm_chunk", f'({json.dumps(payload)})', args.network)
+        output = icp_call(args.canister_id, "upload_wasm_chunk", f'({json.dumps(payload)})', args.network)
         print("OK")
 
     print()
@@ -84,7 +84,7 @@ def main():
         "description": args.description,
         "expected_hash": wasm_hash,
     })
-    output = dfx_call(args.canister_id, "finalize_version", f'({json.dumps(payload)})', args.network)
+    output = icp_call(args.canister_id, "finalize_version", f'({json.dumps(payload)})', args.network)
     print(f"  Result: {output}")
     print()
     print("Done!")

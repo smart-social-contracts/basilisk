@@ -40,10 +40,10 @@ if [ "$SKIP_BUILD" = false ]; then
     echo ""
     echo "--- Building + deploying canister ($BACKEND on $NETWORK) ---"
     BUILD_START=$(date +%s%N)
-    dfx deploy benchmark_counter --yes $NETWORK_FLAG 2>&1
+    icp deploy benchmark_counter -y $NETWORK_FLAG 2>&1
     BUILD_END=$(date +%s%N)
     BUILD_MS=$(( (BUILD_END - BUILD_START) / 1000000 ))
-    WASM_PATH=".dfx/local/canisters/benchmark_counter/benchmark_counter.wasm"
+    WASM_PATH=".icp/build/benchmark_counter/benchmark_counter.wasm"
     WASM_SIZE=$(wc -c < "$WASM_PATH" 2>/dev/null || echo "0")
     echo "Build + deploy time: ${BUILD_MS}ms"
     echo "Wasm size:  $WASM_SIZE bytes ($(( WASM_SIZE / 1024 )) KB)"
@@ -73,8 +73,8 @@ BENCHMARKS=(
 )
 
 # Warm up
-dfx canister call benchmark_counter bench_noop '()' $NETWORK_FLAG > /dev/null 2>&1 || true
-dfx canister call benchmark_counter bench_noop '()' $NETWORK_FLAG > /dev/null 2>&1 || true
+icp canister call benchmark_counter bench_noop '()' $NETWORK_FLAG > /dev/null 2>&1 || true
+icp canister call benchmark_counter bench_noop '()' $NETWORK_FLAG > /dev/null 2>&1 || true
 
 RESULTS_FILE="benchmark_results_${BACKEND}_${NETWORK}.txt"
 {
@@ -100,7 +100,7 @@ for bench in "${BENCHMARKS[@]}"; do
 
     for ((run=1; run<=RUNS; run++)); do
         T_START=$(date +%s%N)
-        OUTPUT=$(dfx canister call benchmark_counter "$bench" '()' $NETWORK_FLAG 2>&1)
+        OUTPUT=$(icp canister call benchmark_counter "$bench" '()' $NETWORK_FLAG 2>&1)
         T_END=$(date +%s%N)
         T_MS=$(( (T_END - T_START) / 1000000 ))
         TIME_VALUES+=("$T_MS")

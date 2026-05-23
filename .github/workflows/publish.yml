@@ -18,7 +18,6 @@ on:
         type: string
 env:
     PYTHON_VERSION: "3.13"
-    DFX_VERSION: "0.30.2"
 
 jobs:
   publish:
@@ -135,8 +134,8 @@ jobs:
               set -e
 
               apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
-              DFXVM_INIT_YES=true DFX_VERSION=0.30.2 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)" > /dev/null 2>&1
-              export PATH="$HOME/.local/share/dfx/bin:$PATH"
+              curl -fsSL https://cli.internetcomputer.org/install.sh | bash > /dev/null 2>&1
+              export PATH="$HOME/.local/share/icp/bin:$PATH"
 
               # Wait for PyPI propagation
               echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
@@ -151,15 +150,15 @@ jobs:
               basilisk --version | grep -q "${VERSION}" || { echo "::error::Version mismatch"; exit 1; }
 
               # Scaffold, build, deploy locally, and test
-              basilisk new smoke_test && cd smoke_test
-              dfx start --background
-              dfx deploy
+              icp new smoke_test --template python && cd smoke_test
+              icp network start -d
+              icp deploy
 
-              RESULT=$(dfx canister call smoke_test status "()")
+              RESULT=$(icp canister call smoke_test status "()")
               echo "status: ${RESULT}"
               echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
 
-              dfx stop
+              icp network stop
 
               echo "✅ Local smoke test passed"
             '

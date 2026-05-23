@@ -21,16 +21,16 @@ which uses CPython 3.13 compiled to `wasm32-wasip1`.
    (~3.7 MB) that contains both the CPython interpreter and your Python application. Post-processing
    tools (`wasi2ic`, `wasm-opt`) convert WASI imports to IC system calls and optimize for size.
 
-4. **Deploying to the local replica** — `dfx deploy` sends the `.wasm` to a local IC replica.
+4. **Deploying to the local replica** — `icp deploy` sends the `.wasm` to a local IC replica.
    The replica compiles the wasm to native code and runs `canister_init`, which boots CPython
    and executes your Python source. On a **system subnet** (used in CI/dev), there is no
-   instruction limit, but the 5-minute dfx timeout may expire before compilation finishes —
-   the pretest scripts poll `dfx canister status` until the module hash appears.
+   instruction limit, but the 5-minute icp-cli timeout may expire before compilation finishes —
+   the pretest scripts poll `icp canister status` until the module hash appears.
 
 5. **Deploying to IC mainnet** — The same `.wasm` is uploaded to a real IC subnet. Mainnet uses
    **Deterministic Time Slicing (DTS)**, which splits wasm compilation across multiple rounds.
-   The empirical limit is ~3.8 MB; our 3.73 MB binary fits. We use `dfx canister install --async-call`
-   because dfx may timeout, but DTS completes the installation in the background.
+   The empirical limit is ~3.8 MB; our 3.73 MB binary fits. We use `icp canister install --async-call`
+   because icp-cli may timeout, but DTS completes the installation in the background.
 
 6. **At runtime** — When someone calls a canister method, the Rust glue deserializes the Candid
    arguments, calls the corresponding Python function via CPython's C API, and serializes the
@@ -166,7 +166,7 @@ the linker pulls in far more code than needed because of **`config.o`**.
 built-in extension module. Since every `PyInit_*` function is an undefined symbol in `config.o`,
 the linker resolves them from other `.o` files, which transitively pull in their dependencies
 (mpdecimal, expat, HACL*, etc.). The result is a ~6.9 MB wasm that exceeds the replica's
-compilation budget and times out during `dfx canister install`.
+compilation budget and times out during `icp canister install`.
 
 #### Solution: custom `config.c`
 
@@ -355,10 +355,10 @@ native code.
 
 ### What was tested
 
-- `dfx canister install --wasm <file> --network ic` — timed out
-- `dfx canister install --wasm <file.gz> --network ic` — timed out (IC accepts gzip)
+- `icp canister install --wasm <file> --network ic` — timed out
+- `icp canister install --wasm <file.gz> --network ic` — timed out (IC accepts gzip)
 - `install_chunked_code` via management canister (upload 7 chunks, then install) — timed out
-- dfx versions 0.29.0 and 0.30.2 — same result
+- icp-cli versions 0.29.0 and 0.30.2 — same result
 - Polling canister status after timeout — `Module hash: None` (install failed, not slow)
 - Total cycles burned across attempts: ~920B (canister `2i66l-saaaa-aaaas-qe3sq-cai`)
 
@@ -450,16 +450,16 @@ the wasm from 3.93MB to 3.73MB — crossing the IC DTS compilation threshold.
 
 ```bash
 # Always clear chunk store before retrying (previous attempts leave chunks behind)
-dfx canister call aaaaa-aa clear_chunk_store \
+icp canister call aaaaa-aa clear_chunk_store \
   '(record { canister_id = principal "CANISTER_ID" })' --network ic
 
-# Use --async-call: dfx may timeout at 5 min but DTS completes in background
-dfx canister install CANISTER_ID --wasm path/to/canister.wasm \
+# Use --async-call: icp-cli may timeout at 5 min but DTS completes in background
+icp canister install CANISTER_ID --wasm path/to/canister.wasm \
   --network ic --mode reinstall --yes --async-call
 
 # Poll for completion
-dfx canister status CANISTER_ID --network ic  # check Module hash is set
-dfx canister call CANISTER_ID simple_query --network ic  # verify it works
+icp canister status CANISTER_ID --network ic  # check Module hash is set
+icp canister call CANISTER_ID simple_query --network ic  # verify it works
 ```
 
 #### DTS boundary empirical data
@@ -484,7 +484,7 @@ function signatures before stubbing. E.g., `_PySignal_Init` returns `int` (not
 `PyStatus`). Wrong return type causes sret ABI mismatch → writes to random memory.
 Headers at: `~/.config/basilisk/0.7.2/cpython_wasm/include/internal/pycore_*.h`
 
-**Chunk store errors**: If `dfx canister install` fails with "Wasm chunk store has
+**Chunk store errors**: If `icp canister install` fails with "Wasm chunk store has
 already reached maximum capacity", run `clear_chunk_store` (see deployment method above).
 Each failed install attempt leaves chunks behind.
 
@@ -492,11 +492,11 @@ Each failed install attempt leaves chunks behind.
 
 For local testing (CI and development), the wasm deploys successfully on a **system
 subnet** which has no instruction limit. The `pretest.ts` includes polling logic to
-handle the dfx ingress timeout (5 min) — it polls `dfx canister status` for up to
+handle the icp-cli ingress timeout (5 min) — it polls `icp canister status` for up to
 20 minutes until the module hash appears.
 
 ```json
-// ~/.config/dfx/networks.json
+// ~/.config/icp-cli/networks.json
 {"local":{"replica":{"subnet_type":"system"}}}
 ```
 
@@ -681,7 +681,7 @@ and follows the indirection to find the actual inner function body (the 2nd of 3
 ### End-to-end verified (Feb 26, 2026)
 
 ```bash
-$ dfx canister call query simple_query
+$ icp canister call query simple_query
 ("This is a query function")
 ```
 

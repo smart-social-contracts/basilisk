@@ -1,10 +1,10 @@
-# Local Tests — build and test example canisters on a local dfx replica.
+# Local Tests — build and test example canisters on a local replica.
 #
 # Architecture: build-once + deploy-only
 #   1. build-wasms: Single runner builds ALL example WASMs (~minutes total
 #      in CPython template mode) and uploads as artifact.
 #   2. local-tests (6 shards): Each shard downloads pre-built WASMs,
-#      deploys via `dfx canister install --wasm` (no rebuild), and runs tests.
+#      deploys via `icp canister install --wasm` (no rebuild), and runs tests.
 
 name: Local Tests
 
@@ -17,7 +17,6 @@ env:
     WASI_SDK_VERSION: "24"
     WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
     PYTHON_VERSION: "3.13"
-    DFX_VERSION: "0.30.2"
 
 jobs:
     # -----------------------------------------------------------------------
@@ -34,16 +33,10 @@ jobs:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-cpython-v4-${{ hashFiles('basilisk/cargotoml.py') }}
 
-            - name: Cache dfx
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cache/dfinity
-                  key: basilisk-dfx-${{ env.DFX_VERSION }}
-
-            - name: Install dfx
+            - name: Install icp-cli
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  curl -fsSL https://cli.internetcomputer.org/install.sh | bash
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
             - name: Install WASI SDK
               run: |
@@ -77,14 +70,12 @@ jobs:
               shell: bash -l {0}
               run: source venv/bin/activate && pip install -e .
 
-            - name: Install dfx extension
-              run: source venv/bin/activate && python -m basilisk install-dfx-extension
-
             - name: Build all example WASMs
               shell: bash -l {0}
               timeout-minutes: 60
               run: |
                   source venv/bin/activate
+                  pip install pyyaml
                   python scripts/build_all_wasms.py
 
             - name: Package pre-built WASMs
@@ -138,24 +129,18 @@ jobs:
                   tar xzf example-wasms.tar.gz
                   find tests/fixtures -path '*/.basilisk/*.wasm' | wc -l
 
-            - name: Cache dfx
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cache/dfinity
-                  key: basilisk-dfx-${{ env.DFX_VERSION }}
-
-            - name: Install dfx
+            - name: Install icp-cli
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  curl -fsSL https://cli.internetcomputer.org/install.sh | bash
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
                   python-version: ${{ env.PYTHON_VERSION }}
 
-            - name: Install pytest
-              run: pip install pytest
+            - name: Install pytest and dependencies
+              run: pip install pytest pyyaml
 
             - name: Run integration tests
               timeout-minutes: 30

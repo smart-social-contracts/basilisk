@@ -56,9 +56,6 @@ from basilisk.types import Args, Paths
 
 @timed
 def main():
-    # TODO this way of installing the extension is just temporary
-    # TODO we should use the official dfx extension install command
-    # TODO are the dfx extensions repository once those mature
     if sys.argv[1] == "install-dfx-extension":
         subprocess.run(
             ["./install.sh"],
@@ -80,7 +77,6 @@ def main():
         ]
     )
 
-    # This is the name of the canister passed into python -m basilisk from the dfx.json build command
     canister_name = args["canister_name"]
 
     verbose_mode_qualifier = " in verbose mode" if is_verbose else ""
@@ -137,38 +133,22 @@ def parse_args_or_exit(args: list[str]) -> Args:
 def create_paths(args: Args) -> Paths:
     canister_name = args["canister_name"]
 
-    # This is the path to the developer's entry point Python file passed into python -m basilisk from the dfx.json build command
     py_entry_file_path = args["entry_point"]
-
-    # This is the Python module name of the developer's Python project, derived from the entry point Python file passed into python -m basilisk from the dfx.json build command
     py_entry_module_name = Path(py_entry_file_path).stem
 
-    # This is the location of all code used to generate the final canister Rust code
     canister_path = f".basilisk/{canister_name}"
-
     python_source_path = f"{canister_path}/python_source"
-
     py_file_names_file_path = f"{canister_path}/py_file_names.csv"
 
-    # This is the path to the developer's Candid file as resolved by dfx
     did_path = os.environ.get("CANISTER_CANDID_PATH")
 
     if did_path is None:
         raise Exception("Basilisk: CANISTER_CANDID_PATH is not defined")
 
-    # This is the path to the Basilisk compiler Rust code delivered with the Python package
     compiler_path = os.path.dirname(basilisk.__file__) + "/compiler"
-
-    # This is the final generated Rust file that is the canister
     lib_path = f"{canister_path}/src/lib.rs"
-
-    # This is the location of the Candid file generated from the final generated Rust file
     generated_did_path = f"{canister_path}/index.did"
-
-    # This is the unzipped generated Wasm that is the canister
     wasm_path = f"{canister_path}/{canister_name}.wasm"
-
-    # This is where we store custom Python modules, such as stripped-down versions of stdlib modules
     custom_modules_path = f"{compiler_path}/custom_modules"
 
     home_dir = os.path.expanduser("~")
@@ -378,7 +358,7 @@ def ignore_specific_dir(dirname: str, filenames: list[str]) -> list[str]:
     # Exclude build output, caches, and template scaffolding from copytree
     ignored = []
     for f in filenames:
-        if f in (".basilisk", "__pycache__", ".dfx"):
+        if f in (".basilisk", "__pycache__", ".dfx", ".icp"):
             ignored.append(f)
     return ignored
 

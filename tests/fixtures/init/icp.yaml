@@ -1,0 +1,9 @@
+canisters:
+  - name: init
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=.basilisk/init/init.did python3 -m basilisk init src/main.py
+            - cp .basilisk/init/init.wasm "$ICP_WASM_OUTPUT_PATH"
+    candid: .basilisk/init/init.did

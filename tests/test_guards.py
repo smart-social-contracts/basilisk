@@ -94,7 +94,7 @@ class TestControllerAccess:
     def test_controller_can_call_status(self, canister_reachable, canister, network):
         """Unguarded endpoint should always work."""
         r = subprocess.run(
-            ["dfx", "canister", "call", canister, "status", "--network", network],
+            ["icp", "canister", "call", canister, "status", "-n", network],
             capture_output=True, text=True, timeout=30,
         )
         assert r.returncode == 0
@@ -108,7 +108,7 @@ class TestControllerAccess:
 class TestNonControllerRejection:
     """Verify that a non-controller identity is rejected by guarded endpoints.
 
-    These tests create a temporary dfx identity that is NOT a controller
+    These tests create a temporary identity that is NOT a controller
     of the test canister, then attempt to call guarded endpoints.
     """
 
@@ -119,27 +119,24 @@ class TestNonControllerRejection:
         """Create a temporary non-controller identity for testing."""
         # Create temp identity (ignore error if already exists)
         subprocess.run(
-            ["dfx", "identity", "new", self.TEMP_IDENTITY, "--storage-mode", "plaintext"],
+            ["icp", "identity", "new", self.TEMP_IDENTITY],
             capture_output=True, text=True,
         )
         yield
-        # Cleanup: switch back to default identity
-        # (the original identity is restored by switching away from temp)
         subprocess.run(
-            ["dfx", "identity", "use", "ci-deploy"],
+            ["icp", "identity", "use", "ci-deploy"],
             capture_output=True, text=True,
         )
-        # Remove temp identity
         subprocess.run(
-            ["dfx", "identity", "remove", self.TEMP_IDENTITY],
+            ["icp", "identity", "remove", self.TEMP_IDENTITY],
             capture_output=True, text=True,
         )
 
     def _call_as_non_controller(self, canister, network, method, args=""):
         """Call a canister method using the non-controller identity."""
         cmd = [
-            "dfx", "canister", "call", canister, method,
-            "--network", network,
+            "icp", "canister", "call", canister, method,
+            "-n", network,
             "--identity", self.TEMP_IDENTITY,
         ]
         if args:

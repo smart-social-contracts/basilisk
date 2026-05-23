@@ -92,7 +92,7 @@ def test_get_nat8(canister):
 
 def test_get_float64(canister):
     raw = call_canister(canister, "get_float64", example_dir=EXAMPLE_DIR)
-    # dfx outputs floats as e.g. (2.718281828459045 : float64)
+    # icp-cli outputs floats as e.g. (2.718281828459045 : float64)
     import re
     m = re.search(r'([\d.]+(?:e[+-]?\d+)?)\s*:\s*float64', raw)
     assert m is not None

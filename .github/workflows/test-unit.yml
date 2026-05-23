@@ -1,4 +1,4 @@
-# Unit Tests — fast, pure-Python tests that need no dfx, WASM, or canisters.
+# Unit Tests — fast, pure-Python tests that need no icp-cli, WASM, or canisters.
 # Covers build-time bundling logic (native extension detection, unresolved
 # import warnings, bundle summary) added for GitHub issue #31.
 

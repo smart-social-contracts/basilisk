@@ -25,7 +25,7 @@ def _call_or_err(canister, method, args=None):
     """Call a management canister method, returning output or error string.
 
     PocketIC doesn't fully support management canister inter-subnet calls,
-    so dfx may return non-zero exit codes for async update calls.
+    so icp-cli may return non-zero exit codes for async update calls.
     """
     try:
         return call_canister(canister, method, args, example_dir=EXAMPLE_DIR, update=True)
