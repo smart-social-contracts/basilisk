@@ -5,4 +5,3 @@ canisters:
         - type: script
           commands:
             - "echo 'WASM built externally via basilisk'"
-    candid: benchmark_counter.did

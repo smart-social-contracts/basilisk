@@ -6,4 +6,3 @@ canisters:
           commands:
             - CANISTER_CANDID_PATH=.basilisk/browse/browse.did python3 -m basilisk browse src/main.py
             - cp .basilisk/browse/browse.wasm "$ICP_WASM_OUTPUT_PATH"
-    candid: .basilisk/browse/browse.did

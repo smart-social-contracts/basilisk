@@ -6,4 +6,3 @@ canisters:
           commands:
             - CANISTER_CANDID_PATH=.basilisk/calc/calc.did python3 -m basilisk calc src/main.py
             - cp .basilisk/calc/calc.wasm "$ICP_WASM_OUTPUT_PATH"
-    candid: .basilisk/calc/calc.did

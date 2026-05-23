@@ -43,8 +43,8 @@ jobs:
             exit 1
           fi
           echo "$IC_IDENTITY_PEM" > /tmp/deployer_identity.pem
-          icp identity import deployer-ci /tmp/deployer_identity.pem
-          icp identity use deployer-ci
+          icp identity import --from-pem /tmp/deployer_identity.pem --storage plaintext deployer-ci
+          icp identity default deployer-ci
           rm /tmp/deployer_identity.pem
           echo "Identity principal: $(icp identity get-principal)"
 

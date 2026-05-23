@@ -1,4 +1,3 @@
 canisters:
   - name: benchmark_counter
     recipe: "@dfinity/rust"
-    candid: benchmark_counter.did

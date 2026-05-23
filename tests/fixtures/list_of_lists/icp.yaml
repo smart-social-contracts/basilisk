@@ -6,4 +6,3 @@ canisters:
           commands:
             - CANISTER_CANDID_PATH=.basilisk/list_of_lists/list_of_lists.did python3 -m basilisk list_of_lists src/main.py
             - cp .basilisk/list_of_lists/list_of_lists.wasm "$ICP_WASM_OUTPUT_PATH"
-    candid: .basilisk/list_of_lists/list_of_lists.did

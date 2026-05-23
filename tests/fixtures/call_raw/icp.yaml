@@ -6,4 +6,3 @@ canisters:
           commands:
             - CANISTER_CANDID_PATH=.basilisk/call_raw/call_raw.did python3 -m basilisk call_raw src/main.py
             - cp .basilisk/call_raw/call_raw.wasm "$ICP_WASM_OUTPUT_PATH"
-    candid: .basilisk/call_raw/call_raw.did

@@ -92,9 +92,9 @@ jobs:
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  icp identity import ci-deploy /tmp/ci-identity.pem 2>/dev/null || true
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  icp identity use ci-deploy
+                  icp identity default ci-deploy
 
             - name: Run full benchmark
               shell: bash -l {0}
@@ -151,9 +151,9 @@ jobs:
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  icp identity import ci-deploy /tmp/ci-identity.pem 2>/dev/null || true
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  icp identity use ci-deploy
+                  icp identity default ci-deploy
 
             - name: Run full benchmark
               working-directory: benchmarks/counter_rust
@@ -195,9 +195,9 @@ jobs:
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  icp identity import ci-deploy /tmp/ci-identity.pem 2>/dev/null || true
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  icp identity use ci-deploy
+                  icp identity default ci-deploy
 
             - name: Run full benchmark
               working-directory: benchmarks/counter_motoko
