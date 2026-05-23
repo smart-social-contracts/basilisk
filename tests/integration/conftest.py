@@ -355,14 +355,11 @@ def call_canister(canister_id, method, args=None, *, example_dir=None, update=Fa
     """Call a canister method via icp-cli and return the parsed result.
 
     Runs from the fixture directory so the project-local network is used.
+    icp-cli auto-detects query vs update from the candid interface.
     """
     info = _CANDID_MAP.get(canister_id)
     target = info["name"] if info else canister_id
-    cmd = ["icp", "canister", "call", target, method]
-    if args:
-        cmd.append(args)
-    if not update:
-        cmd.append("--query")
+    cmd = ["icp", "canister", "call", target, method, args or "()"]
 
     cwd = (info["example_dir"] if info else None) or example_dir or EXAMPLES_DIR
     result = subprocess.run(
@@ -385,9 +382,7 @@ def call_canister_expect_trap(canister_id, method, args=None, *, example_dir=Non
     """Call a canister method expecting it to trap. Returns the error message."""
     info = _CANDID_MAP.get(canister_id)
     target = info["name"] if info else canister_id
-    cmd = ["icp", "canister", "call", target, method]
-    if args:
-        cmd.append(args)
+    cmd = ["icp", "canister", "call", target, method, args or "()"]
 
     cwd = (info["example_dir"] if info else None) or example_dir or EXAMPLES_DIR
     result = subprocess.run(
