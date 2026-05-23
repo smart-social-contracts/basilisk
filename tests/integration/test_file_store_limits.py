@@ -288,8 +288,8 @@ class TestUpgradeStress:
             pytest.skip("WASM not available for upgrade test")
 
         result = subprocess.run(
-            ["dfx", "canister", "install", "file_store_limits",
-             "--mode", "upgrade", "--wasm", wasm_path, "--upgrade-unchanged"],
+            ["icp", "canister", "install", "file_store_limits",
+             "--mode", "upgrade", "--wasm", wasm_path, "-y"],
             cwd=EXAMPLE_DIR,
             capture_output=True,
             text=True,

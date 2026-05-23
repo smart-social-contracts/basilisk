@@ -1,0 +1,5 @@
+canisters:
+  - name: benchmark_counter
+    recipe: "@dfinity/motoko"
+    with:
+      entry: src/main.mo

@@ -19,7 +19,6 @@ concurrency:
 
 env:
     PYTHON_VERSION: "3.13"
-    DFX_VERSION: "0.30.2"
 
 permissions:
     contents: write # Required by build-cpython-wasm for GitHub releases
@@ -41,7 +40,6 @@ jobs:
         if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         runs-on: ubuntu-latest
         env:
-            DFX_WARNING: -mainnet_plaintext_identity
             CANISTER_ID: 2i66l-saaaa-aaaas-qe3sq-cai
             NETWORK: ic
         steps:
@@ -52,17 +50,17 @@ jobs:
               with:
                   python-version: ${{ env.PYTHON_VERSION }}
 
-            - name: Install dfx
+            - name: Install icp-cli
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  curl -fsSL https://cli.internetcomputer.org/install.sh | bash
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
-            - name: Import DFX identity
+            - name: Import identity
               run: |
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  icp identity import ci-deploy /tmp/ci-identity.pem 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
+                  icp identity use ci-deploy
 
             - name: Install basilisk and test dependencies
               run: |
@@ -87,14 +85,14 @@ jobs:
               working-directory: tests/test_canister
               run: |
                   echo "Stopping canister $CANISTER_ID..."
-                  dfx canister stop "$CANISTER_ID" --network "$NETWORK" 2>/dev/null || true
+                  icp canister stop "$CANISTER_ID" -n "$NETWORK" 2>/dev/null || true
                   sleep 3
                   echo "Reinstalling canister with fresh WASM..."
-                  dfx canister install "$CANISTER_ID" --mode reinstall --yes --network "$NETWORK" --wasm .basilisk/shell_test/shell_test.wasm
+                  icp canister install "$CANISTER_ID" --mode reinstall -y -n "$NETWORK" --wasm .basilisk/shell_test/shell_test.wasm
                   echo "Starting canister..."
-                  dfx canister start "$CANISTER_ID" --network "$NETWORK"
+                  icp canister start "$CANISTER_ID" -n "$NETWORK"
                   echo "Verifying canister is reachable..."
-                  dfx canister call "$CANISTER_ID" status --network "$NETWORK"
+                  icp canister call "$CANISTER_ID" status -n "$NETWORK"
 
     ic-tests:
         needs: setup-ic-canister
@@ -107,26 +105,25 @@ jobs:
         if: always()
         runs-on: ubuntu-latest
         env:
-            DFX_WARNING: -mainnet_plaintext_identity
             CANISTER_ID: 2i66l-saaaa-aaaas-qe3sq-cai
             NETWORK: ic
         steps:
-            - name: Install dfx
+            - name: Install icp-cli
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  curl -fsSL https://cli.internetcomputer.org/install.sh | bash
+                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
 
-            - name: Import DFX identity
+            - name: Import identity
               run: |
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  icp identity import ci-deploy /tmp/ci-identity.pem 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
+                  icp identity use ci-deploy
 
             - name: Stop canister
               run: |
                   echo "Stopping canister $CANISTER_ID on $NETWORK..."
-                  dfx canister stop "$CANISTER_ID" --network "$NETWORK" || true
+                  icp canister stop "$CANISTER_ID" -n "$NETWORK" || true
 
     unit-tests:
         uses: ./.github/workflows/test-unit.yml

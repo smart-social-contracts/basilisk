@@ -12,10 +12,10 @@ them.
 cd deployer
 
 # Start local network
-dfx start --background
+icp network start -d
 
 # Deploy the deployer canister
-dfx deploy
+icp deploy
 
 # Upload a WASM version
 python3 scripts/upload_wasm.py 0.11.22 \
@@ -23,10 +23,10 @@ python3 scripts/upload_wasm.py 0.11.22 \
     --network local --description "Basilisk v0.11.22"
 
 # List available versions
-dfx canister call deployer list_versions
+icp canister call deployer list_versions
 
 # Deploy a new canister from the stored WASM
-dfx canister call deployer deploy '("{\"version\": \"0.11.22\"}")'
+icp canister call deployer deploy '("{\"version\": \"0.11.22\"}")'
 ```
 
 ## API

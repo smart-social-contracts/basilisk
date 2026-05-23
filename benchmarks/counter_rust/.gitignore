@@ -1,3 +1,4 @@
 .dfx/
+.icp/
 target/
 benchmark_results_*.txt

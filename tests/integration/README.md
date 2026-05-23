@@ -7,7 +7,7 @@ Python pytest integration tests for Basilisk example canisters. These replace th
 - **`conftest.py`** — Shared fixtures and helpers:
   - `replica` — Session-scoped PocketIC replica (started once, shared across all tests in a session)
   - `deploy_example(name)` — Builds and deploys an example canister, returns `{canister_name: canister_id}`
-  - `call_canister(id, method, args)` — Calls a canister method via `dfx canister call`
+  - `call_canister(id, method, args)` — Calls a canister method via `icp canister call`
   - `call_canister_expect_trap(id, method, args)` — Calls expecting a trap, returns error message
   - `parse_candid_text(response)` — Parses simple Candid text responses into Python types
 
@@ -16,7 +16,7 @@ Python pytest integration tests for Basilisk example canisters. These replace th
 ## Running Locally
 
 ```bash
-# All integration tests (requires dfx, basilisk, WASI SDK installed)
+# All integration tests (requires icp-cli, basilisk, WASI SDK installed)
 pytest tests/integration/ -v
 
 # Single example

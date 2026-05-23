@@ -453,7 +453,7 @@ def build_modified_wasm(
             # Strip canister_heartbeat export when no user @ic.heartbeat is defined.
             # The heartbeat fires every IC block (~0.5s) and produces empty log
             # entries even when the handler returns immediately, flooding
-            # dfx canister logs and wasting cycles.
+            # canister logs and wasting cycles.
             strip_heartbeat = not (lifecycle or {}).get("heartbeat")
             if strip_heartbeat:
                 # Rebuild existing exports without canister_heartbeat entries
