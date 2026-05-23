@@ -1,0 +1,7 @@
+canisters:
+  - name: deployer
+    build:
+      steps:
+        - commands:
+            - CANISTER_CANDID_PATH=./deployer.did python3 -m basilisk deployer src/main.py
+    wasm: .basilisk/deployer/deployer.wasm

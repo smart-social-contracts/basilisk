@@ -37,7 +37,7 @@ fn setup_initial_canister() -> PocketIc {
     setup_test_projects();
     let pic = PocketIc::new();
 
-    let wasm = fs::read(BACKEND_WASM).expect("Wasm file not found, run 'dfx build'.");
+    let wasm = fs::read(BACKEND_WASM).expect("Wasm file not found, run 'icp deploy' or 'python -m basilisk'.");
 
     let backend_canister = pic.create_canister();
 
@@ -56,7 +56,7 @@ fn upgrade_canister(pic: &PocketIc) {
     setup_test_projects();
 
     let wasm_upgraded =
-        fs::read(BACKEND_WASM_UPGRADED).expect("Wasm file not found, run 'dfx build'.");
+        fs::read(BACKEND_WASM_UPGRADED).expect("Wasm file not found, run 'icp deploy' or 'python -m basilisk'.");
 
     pic.upgrade_canister(active_canister(), wasm_upgraded, vec![], None)
         .unwrap();

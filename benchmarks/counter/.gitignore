@@ -1,5 +1,4 @@
 venv/
-.dfx/
 .icp/
 .basilisk/
 benchmark_counter.wasm
