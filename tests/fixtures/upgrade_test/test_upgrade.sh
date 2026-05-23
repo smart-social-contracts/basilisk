@@ -76,7 +76,7 @@ echo "Pre-upgrade data verified OK"
 # 5. Add controller canister as a controller of target
 echo ""
 echo "=== Setting controller canister as controller of target ==="
-icp canister settings target --add-controller "$CONTROLLER_ID"
+icp canister settings update target --add-controller "$CONTROLLER_ID"
 
 # 6. Build target_v2 to get the WASM
 echo ""

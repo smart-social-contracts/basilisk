@@ -36,11 +36,11 @@ def replica(tmp_path_factory):
 
     icp-cli networks are project-local: each directory with an icp.yaml
     gets its own network.  For integration tests we start the network
-    from a temporary directory that acts as our "project root".
+    from a temporary directory that acts as our "project root".  Other
+    fixture directories connect by URL + root key.
     """
     project_dir = str(tmp_path_factory.mktemp("icp_project"))
 
-    # Write a minimal icp.yaml so icp-cli recognizes this as a project
     with open(os.path.join(project_dir, "icp.yaml"), "w") as f:
         f.write("canisters: []\n")
 
@@ -56,14 +56,19 @@ def replica(tmp_path_factory):
             f"icp network start failed (exit code {result.returncode}): {result.stderr[-500:]}"
         )
 
-    # Get the network URL from icp network status
-    network_url = _get_network_url(project_dir)
+    network_info = _get_network_info(project_dir)
 
-    yield {
+    info = {
         "project_dir": project_dir,
-        "network_url": network_url or "http://127.0.0.1:4943",
+        "network_url": network_info["url"],
+        "root_key": network_info["root_key"],
     }
 
+    _REPLICA_INFO.update(info)
+
+    yield info
+
+    _REPLICA_INFO.clear()
     subprocess.run(
         ["icp", "network", "stop"],
         cwd=project_dir,
@@ -72,25 +77,25 @@ def replica(tmp_path_factory):
     )
 
 
-def _get_network_url(project_dir):
-    """Extract the network URL from icp network status."""
+def _get_network_info(project_dir):
+    """Extract network URL and root key from icp network status --json."""
     try:
         result = subprocess.run(
-            ["icp", "network", "status"],
+            ["icp", "network", "status", "--json"],
             cwd=project_dir,
             capture_output=True,
             text=True,
             timeout=15,
         )
         if result.returncode == 0:
-            for line in result.stdout.splitlines():
-                if "http" in line.lower():
-                    m = re.search(r'(https?://[\w.:]+)', line)
-                    if m:
-                        return m.group(1)
-    except (subprocess.TimeoutExpired, OSError):
+            data = json.loads(result.stdout)
+            url = data.get("api_url", "").rstrip("/")
+            root_key = data.get("root_key", "")
+            if url:
+                return {"url": url, "root_key": root_key}
+    except (subprocess.TimeoutExpired, OSError, json.JSONDecodeError):
         pass
-    return None
+    return {"url": "http://127.0.0.1:4943", "root_key": ""}
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +105,11 @@ def _get_network_url(project_dir):
 # When BASILISK_PREBUILT_WASMS=1, skip build and deploy pre-built WASMs directly.
 _USE_PREBUILT = os.environ.get("BASILISK_PREBUILT_WASMS", "") == "1"
 
-# Global mapping: canister_id -> {"name": str, "example_dir": str}
+# Global mapping: canister_id -> {"name": str, "example_dir": str, ...}
 _CANDID_MAP: dict = {}
+
+# Set by the `replica` session fixture so deploy_example() can find the network.
+_REPLICA_INFO: dict = {}
 
 
 def deploy_example(example_name, replica_fixture=None):
@@ -117,33 +125,46 @@ def deploy_example(example_name, replica_fixture=None):
     if not os.path.isdir(example_dir):
         raise FileNotFoundError(f"Example directory not found: {example_dir}")
 
-    # Read canister config — prefer icp.yaml, fall back to dfx.json
     canister_configs = _read_canister_config(example_dir)
     canister_names = list(canister_configs.keys())
     if not canister_names:
         raise ValueError(f"No canisters defined in {example_dir}")
 
-    network_url = None
-    if replica_fixture:
-        network_url = replica_fixture.get("network_url")
+    ri = replica_fixture or _REPLICA_INFO
+    network_url = ri.get("network_url")
+    root_key = ri.get("root_key")
 
     if _USE_PREBUILT:
-        _deploy_prebuilt(example_dir, example_name, canister_names, canister_configs, network_url)
+        _deploy_prebuilt(example_dir, example_name, canister_names, canister_configs, network_url, root_key)
     else:
-        _deploy_with_build(example_dir, example_name, canister_names, network_url)
+        _deploy_with_build(example_dir, example_name, canister_names, network_url, root_key)
 
-    # Read canister IDs
     canister_ids = {}
     for name in canister_names:
-        cid = _get_canister_id(example_dir, name, network_url)
+        cid = _get_canister_id(example_dir, name, network_url, root_key)
         if cid:
             canister_ids[name] = cid
-            _CANDID_MAP[cid] = {"name": name, "example_dir": example_dir}
+            _CANDID_MAP[cid] = {
+                "name": name,
+                "example_dir": example_dir,
+                "network_url": network_url,
+                "root_key": root_key,
+            }
 
     if not canister_ids:
         raise RuntimeError(f"Failed to deploy {example_name}: no canister IDs found")
 
     return canister_ids
+
+
+def _network_args(network_url=None, root_key=None):
+    """Build CLI args for connecting to a network by URL + root key."""
+    args = []
+    if network_url:
+        args.extend(["-n", network_url])
+        if root_key:
+            args.extend(["-k", root_key])
+    return args
 
 
 def _read_canister_config(example_dir):
@@ -190,11 +211,9 @@ def _extract_main_from_icp_yaml(canister_config):
     return ""
 
 
-def _deploy_with_build(example_dir, example_name, canister_names, network_url=None):
+def _deploy_with_build(example_dir, example_name, canister_names, network_url=None, root_key=None):
     """Full build + deploy via icp deploy."""
-    cmd = ["icp", "deploy"]
-    if network_url:
-        cmd.extend(["-n", network_url])
+    cmd = ["icp", "deploy", *_network_args(network_url, root_key)]
 
     result = subprocess.run(
         cmd,
@@ -204,20 +223,19 @@ def _deploy_with_build(example_dir, example_name, canister_names, network_url=No
         timeout=1800,
     )
     if result.returncode != 0:
-        _wait_for_canisters(example_dir, canister_names, network_url, timeout=3600)
+        _wait_for_canisters(example_dir, canister_names, network_url, root_key, timeout=3600)
 
 
-def _deploy_prebuilt(example_dir, example_name, canister_names, canister_configs, network_url=None):
+def _deploy_prebuilt(example_dir, example_name, canister_names, canister_configs, network_url=None, root_key=None):
     """Deploy pre-built WASMs without running the build step.
 
     Uses icp canister create + icp canister install --wasm for each canister.
     """
-    network_args = ["-n", network_url] if network_url else []
+    net_args = _network_args(network_url, root_key)
 
-    # Create all canisters
     for name in canister_names:
         result = subprocess.run(
-            ["icp", "canister", "create", name, *network_args],
+            ["icp", "canister", "create", name, *net_args],
             cwd=example_dir,
             capture_output=True,
             text=True,
@@ -228,7 +246,6 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, canister_configs
                 f"icp canister create {name} failed for {example_name}: {result.stderr[-300:]}"
             )
 
-    # Install each canister from pre-built WASM
     installed = set()
     remaining = list(canister_names)
 
@@ -247,7 +264,7 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, canister_configs
                 still_remaining.append(name)
                 continue
 
-            cmd = ["icp", "canister", "install", name, "--wasm", wasm_path, "-y", *network_args]
+            cmd = ["icp", "canister", "install", name, "--wasm", wasm_path, "-y", *net_args]
             if init_arg:
                 cmd.extend(["--args", init_arg])
 
@@ -310,9 +327,9 @@ _INIT_DEPS = {
 }
 
 
-def _wait_for_canisters(example_dir, canister_names, network_url=None, timeout=3600):
+def _wait_for_canisters(example_dir, canister_names, network_url=None, root_key=None, timeout=3600):
     """Poll until all canisters have a module hash (= installed)."""
-    network_args = ["-n", network_url] if network_url else []
+    net_args = _network_args(network_url, root_key)
     start = time.time()
     while time.time() - start < timeout:
         time.sleep(15)
@@ -320,7 +337,7 @@ def _wait_for_canisters(example_dir, canister_names, network_url=None, timeout=3
         for name in canister_names:
             try:
                 status = subprocess.run(
-                    ["icp", "canister", "status", name, *network_args],
+                    ["icp", "canister", "status", name, *net_args],
                     cwd=example_dir,
                     capture_output=True,
                     text=True,
@@ -337,14 +354,13 @@ def _wait_for_canisters(example_dir, canister_names, network_url=None, timeout=3
     raise TimeoutError(f"Canisters did not install within {timeout}s")
 
 
-def _get_canister_id(example_dir, canister_name, network_url=None):
+def _get_canister_id(example_dir, canister_name, network_url=None, root_key=None):
     """Get canister ID via icp canister list or from .icp data files."""
-    network_args = ["-n", network_url] if network_url else []
+    net_args = _network_args(network_url, root_key)
 
-    # Try icp canister list --json
     try:
         result = subprocess.run(
-            ["icp", "canister", "list", *network_args, "--json"],
+            ["icp", "canister", "list", *net_args, "--json"],
             cwd=example_dir,
             capture_output=True,
             text=True,
@@ -353,7 +369,6 @@ def _get_canister_id(example_dir, canister_name, network_url=None):
         if result.returncode == 0 and result.stdout.strip():
             try:
                 data = json.loads(result.stdout)
-                # icp canister list returns canister info - parse for our name
                 if isinstance(data, list):
                     for entry in data:
                         if entry.get("name") == canister_name:
@@ -370,7 +385,6 @@ def _get_canister_id(example_dir, canister_name, network_url=None):
     except (subprocess.TimeoutExpired, OSError):
         pass
 
-    # Fallback: read from .icp/data/ or .dfx/local/canister_ids.json
     for ids_file in [
         os.path.join(example_dir, ".icp", "data", "canister_ids.json"),
         os.path.join(example_dir, ".dfx", "local", "canister_ids.json"),
@@ -408,11 +422,16 @@ def call_canister(canister_id, method, args=None, *, example_dir=None, update=Fa
     """
     info = _CANDID_MAP.get(canister_id)
     target = info["name"] if info else canister_id
+    net_args = _network_args(
+        info.get("network_url") if info else None,
+        info.get("root_key") if info else None,
+    )
     cmd = ["icp", "canister", "call", target, method]
     if args:
         cmd.append(args)
     if not update:
         cmd.append("--query")
+    cmd.extend(net_args)
 
     cwd = (info["example_dir"] if info else None) or example_dir or EXAMPLES_DIR
     result = subprocess.run(
@@ -435,9 +454,14 @@ def call_canister_expect_trap(canister_id, method, args=None, *, example_dir=Non
     """Call a canister method expecting it to trap. Returns the error message."""
     info = _CANDID_MAP.get(canister_id)
     target = info["name"] if info else canister_id
+    net_args = _network_args(
+        info.get("network_url") if info else None,
+        info.get("root_key") if info else None,
+    )
     cmd = ["icp", "canister", "call", target, method]
     if args:
         cmd.append(args)
+    cmd.extend(net_args)
 
     cwd = (info["example_dir"] if info else None) or example_dir or EXAMPLES_DIR
     result = subprocess.run(
