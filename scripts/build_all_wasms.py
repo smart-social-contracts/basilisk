@@ -165,7 +165,17 @@ def build_example(example_name: str) -> bool:
             all_ok = False
         else:
             wasm_path = os.path.join(example_dir, ".basilisk", canister_name, f"{canister_name}.wasm")
+            did_path = os.path.join(example_dir, candid_path)
             if os.path.exists(wasm_path):
+                if os.path.exists(did_path):
+                    subprocess.run(
+                        ["ic-wasm", wasm_path, "-o", wasm_path,
+                         "metadata", "candid:service", "-f", did_path,
+                         "-v", "public", "--keep-name-section"],
+                        cwd=example_dir,
+                        capture_output=True,
+                        timeout=30,
+                    )
                 size_mb = os.path.getsize(wasm_path) / (1024 * 1024)
                 print(f"    OK {size_mb:.1f} MB ({elapsed:.1f}s)")
             else:

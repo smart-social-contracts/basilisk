@@ -71,6 +71,9 @@ jobs:
               shell: bash -l {0}
               run: source venv/bin/activate && pip install -e .
 
+            - name: Install ic-wasm
+              run: npm install -g @icp-sdk/ic-wasm
+
             - name: Build all example WASMs
               shell: bash -l {0}
               timeout-minutes: 60
