@@ -1,4 +1,5 @@
 .basilisk
 .dfx
+.icp
 node_modules
 venv
