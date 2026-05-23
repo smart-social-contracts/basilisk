@@ -287,6 +287,15 @@ class TestUpgradeStress:
         if not os.path.exists(wasm_path):
             pytest.skip("WASM not available for upgrade test")
 
+        # Top up cycles — the stress writes drain a lot
+        subprocess.run(
+            ["icp", "canister", "top-up", "file_store_limits", "--amount", "1t"],
+            cwd=EXAMPLE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
         result = subprocess.run(
             ["icp", "canister", "install", "file_store_limits",
              "--mode", "upgrade", "--wasm", wasm_path, "-y"],

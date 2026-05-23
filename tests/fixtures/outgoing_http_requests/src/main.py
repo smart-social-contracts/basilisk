@@ -27,7 +27,7 @@ def xkcd() -> Async[HttpResponse]:
             "body": None,
             "transform": {"function": (ic.id(), "xkcd_transform"), "context": bytes()},
         }
-    ).with_cycles(50_000_000)
+    ).with_cycles(100_000_000)
 
     return match(http_result, {"Ok": lambda ok: ok, "Err": lambda err: ic.trap(err)})
 
@@ -54,7 +54,7 @@ def xkcd_raw() -> Async[Manual[HttpResponse]]:
                 )
             """
         ),
-        50_000_000,
+        100_000_000,
     )
 
     match(
