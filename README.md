@@ -72,10 +72,7 @@ icp deploy
 
 # 3. Call your canister
 icp canister call my_project greet '("World")'
-# ("Hello, World! The counter is at 0.")
-
-icp canister call my_project increment
-# (1)
+# ("Hello, World!")
 ```
 
 ### Using the recipe

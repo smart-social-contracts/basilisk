@@ -19,11 +19,5 @@ icp deploy
 
 ```bash
 icp canister call {{project-name}} greet '("World")'
-# ("Hello, World! The counter is at 0.")
-
-icp canister call {{project-name}} increment
-# (1)
-
-icp canister call {{project-name}} get_counter
-# (1)
+# ("Hello, World!")
 ```
