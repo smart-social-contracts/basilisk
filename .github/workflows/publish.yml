@@ -134,8 +134,8 @@ jobs:
               set -e
 
               apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
-              curl -fsSL https://cli.internetcomputer.org/install.sh | bash > /dev/null 2>&1
-              export PATH="$HOME/.local/share/icp/bin:$PATH"
+              curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh > /dev/null 2>&1
+              export PATH="$HOME/.cargo/bin:$PATH"
 
               # Wait for PyPI propagation
               echo "Waiting for ic-basilisk==${VERSION} on PyPI..."

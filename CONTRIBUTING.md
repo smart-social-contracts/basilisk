@@ -15,7 +15,7 @@ pip install -e ".[test]"
 ### Local integration tests (requires icp-cli)
 
 ```bash
-# Install icp-cli: curl -fsSL https://cli.internetcomputer.org/install.sh | bash
+# Install icp-cli: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
 icp network start --clean -d
 
 # Build all example WASMs (slow, ~minutes first time)

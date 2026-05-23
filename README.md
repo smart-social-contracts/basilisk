@@ -50,7 +50,7 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 
 ### Prerequisites
 
-- [icp-cli](https://docs.internetcomputer.org/docs/getting-started/install-cli) (`curl -fsSL https://cli.internetcomputer.org/install.sh | bash`)
+- [icp-cli](https://docs.internetcomputer.org/docs/getting-started/install-cli) (`curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh`)
 - Python 3.10+
 
 ### Install

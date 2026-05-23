@@ -39,8 +39,8 @@ jobs:
 
             - name: Install icp-cli
               run: |
-                  curl -fsSL https://cli.internetcomputer.org/install.sh | bash
-                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
+                  curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+                  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
             - name: Set up Python
               uses: actions/setup-python@v5
@@ -53,6 +53,7 @@ jobs:
 
             - name: Install WASI SDK
               run: |
+                  mkdir -p ~/.local/share
                   curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
@@ -121,8 +122,8 @@ jobs:
 
             - name: Install icp-cli
               run: |
-                  curl -fsSL https://cli.internetcomputer.org/install.sh | bash
-                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
+                  curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+                  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
             - name: Install Rust + wasm32 target
               run: |
@@ -178,8 +179,8 @@ jobs:
 
             - name: Install icp-cli
               run: |
-                  curl -fsSL https://cli.internetcomputer.org/install.sh | bash
-                  echo "$HOME/.local/share/icp/bin" >> $GITHUB_PATH
+                  curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+                  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
             - name: Start local replica
               if: github.event.inputs.network == 'local'
