@@ -4,21 +4,18 @@ Basilisk — An Internet Computer's Python Canister Development Kit.
 Usage: basilisk <command> [options]
 
 Commands:
-  new <name>       Scaffold a new canister project
-  build            Build the canister(s) in the current directory
-
-Other:
   --version        Print version info
   help, -h         Show this help
+
+Scaffolding and deployment are handled by icp-cli:
+  icp new          Scaffold a new Python canister project (select "python")
+  icp deploy       Build and deploy using icp.yaml
 
 Run basilisk <command> --help for command-specific options and examples.
 """
 
 import os
-import shutil
-import subprocess
 import sys
-from pathlib import Path
 
 
 def _discover_plugin_commands() -> dict:
@@ -37,12 +34,11 @@ def _help_text() -> str:
         lines = base.split("\n")
         result = []
         for line in lines:
-            if line.startswith("Other:"):
+            if line.startswith("Scaffolding"):
                 result.append("Plugin commands:")
                 for name, ep in sorted(plugins.items()):
                     fn = ep.load()
                     desc = (fn.__doc__ or "").split("\n")[0].strip()
-                    # Strip "basilisk <cmd> — " prefix from docstring
                     if "\u2014" in desc:
                         desc = desc.split("\u2014", 1)[1].strip()
                     elif "--" in desc:
@@ -54,162 +50,6 @@ def _help_text() -> str:
     return base
 
 
-_HELP_NEW = """\
-basilisk new — Scaffold a new canister project.
-
-Usage: basilisk new <project_name>
-
-Creates a project with both icp.yaml (icp-cli) and dfx.json (legacy dfx).
-
-Examples:
-  basilisk new my_app
-  cd my_app && icp network start -d && icp deploy
-  cd my_app && dfx start --background && dfx deploy
-"""
-
-_HELP_BUILD = """\
-basilisk build — Build the canister(s) in the current directory.
-
-Usage: basilisk build
-
-Reads dfx.json in the current directory and builds every canister whose
-build command references basilisk. When using icp-cli, the build is
-handled automatically by `icp deploy` via icp.yaml.
-
-Examples:
-  basilisk build
-  basilisk build && dfx deploy
-"""
-
-
-def cmd_new(project_name: str):
-    """Scaffold a new basilisk canister project."""
-    project_dir = Path(project_name)
-
-    if project_dir.exists():
-        print(f"Error: directory '{project_name}' already exists.", file=sys.stderr)
-        sys.exit(1)
-
-    # Validate project name (must be a valid canister name)
-    if not project_name.replace("_", "").replace("-", "").isalnum():
-        print(f"Error: '{project_name}' is not a valid project name. Use alphanumeric, dashes, and underscores.", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Creating new basilisk project: {project_name}")
-
-    template_dir = Path(__file__).parent / "templates"
-    _scaffold_simple(project_dir, project_name, template_dir)
-
-
-def _scaffold_simple(project_dir: Path, project_name: str, template_dir: Path):
-    """Scaffold the minimal single-file template."""
-    src_dir = project_dir / "src"
-    src_dir.mkdir(parents=True)
-
-    build_cmd = f"CANISTER_CANDID_PATH=./{project_name}.did python -m basilisk {project_name} src/main.py"
-
-    dfx_json = f"""\
-{{
-    "canisters": {{
-        "{project_name}": {{
-            "type": "custom",
-            "build": "{build_cmd}",
-            "candid": "{project_name}.did",
-            "wasm": ".basilisk/{project_name}/{project_name}.wasm"
-        }}
-    }}
-}}
-"""
-    (project_dir / "dfx.json").write_text(dfx_json)
-
-    icp_yaml = f"""\
-canisters:
-  - name: {project_name}
-    build:
-      steps:
-        - type: script
-          commands:
-            - CANISTER_CANDID_PATH=./{project_name}.did python3 -m basilisk {project_name} src/main.py
-            - cp .basilisk/{project_name}/{project_name}.wasm "$ICP_WASM_OUTPUT_PATH"
-    candid: {project_name}.did
-"""
-    (project_dir / "icp.yaml").write_text(icp_yaml)
-
-    # src/main.py — copy from bundled template
-    shutil.copy(template_dir / "main.py", src_dir / "main.py")
-
-    # .gitignore
-    gitignore = """\
-.dfx/
-.icp/
-.basilisk/
-node_modules/
-"""
-    (project_dir / ".gitignore").write_text(gitignore)
-
-    print(f"""
-Done! Created {project_name}/
-  src/main.py    — your canister code (counter, greet, status)
-  icp.yaml       — icp-cli project config
-  dfx.json       — dfx project config (legacy)
-
-Next steps (icp-cli):
-  cd {project_name}
-  icp network start -d
-  icp deploy
-  icp canister call {project_name} greet '("World")'
-
-Or with dfx:
-  cd {project_name}
-  dfx start --background
-  dfx deploy
-  dfx canister call {project_name} greet '("World")'
-""")
-
-
-def cmd_build():
-    """Build the canister in the current directory."""
-    # Find dfx.json
-    if not Path("dfx.json").exists():
-        print("Error: no dfx.json found. Run this from a basilisk project directory.", file=sys.stderr)
-        sys.exit(1)
-
-    import json
-    with open("dfx.json") as f:
-        dfx = json.load(f)
-
-    canisters = dfx.get("canisters", {})
-    if not canisters:
-        print("Error: no canisters defined in dfx.json.", file=sys.stderr)
-        sys.exit(1)
-
-    # Build each canister
-    for name, config in canisters.items():
-        build_cmd = config.get("build", "")
-        if "basilisk" in build_cmd:
-            print(f"Building canister: {name}")
-            # Extract entry point from build command
-            parts = build_cmd.split()
-            # Expected: python -m basilisk <name> <entry_point>
-            if len(parts) >= 5:
-                entry_point = parts[4]
-            else:
-                entry_point = "src/main.py"
-
-            candid_path = config.get("candid", f"{name}.did")
-            os.environ["CANISTER_CANDID_PATH"] = f"./{candid_path}"
-
-            # Run the basilisk build
-            import subprocess
-            result = subprocess.run(
-                [sys.executable, "-m", "basilisk", name, entry_point],
-                env={**os.environ},
-            )
-            if result.returncode != 0:
-                print(f"Error: build failed for canister '{name}'.", file=sys.stderr)
-                sys.exit(1)
-
-
 def main():
     if len(sys.argv) < 2:
         print(_help_text())
@@ -217,23 +57,7 @@ def main():
 
     command = sys.argv[1]
 
-    if command == "new":
-        args = sys.argv[2:]
-        if "--help" in args or "-h" in args:
-            print(_HELP_NEW, end="")
-            return
-        if len(args) < 1:
-            print(_HELP_NEW, end="")
-            sys.exit(1)
-        cmd_new(args[0])
-
-    elif command == "build":
-        if "--help" in sys.argv[2:] or "-h" in sys.argv[2:]:
-            print(_HELP_BUILD, end="")
-            return
-        cmd_build()
-
-    elif command in ("-h", "--help", "help"):
+    if command in ("-h", "--help", "help"):
         print(_help_text())
 
     elif command == "--version":
@@ -266,15 +90,21 @@ def main():
         if commit:
             print(commit)
 
+    elif command in ("new", "build"):
+        print(f"'basilisk {command}' has been removed.", file=sys.stderr)
+        print("Use icp-cli instead:", file=sys.stderr)
+        print("  icp new <project>    Scaffold a new project", file=sys.stderr)
+        print("  icp deploy           Build and deploy", file=sys.stderr)
+        print("  https://cli.internetcomputer.org", file=sys.stderr)
+        sys.exit(1)
+
     else:
-        # Check for plugin commands
         plugins = _discover_plugin_commands()
         if command in plugins:
             handler = plugins[command].load()
             handler()
             return
 
-        # Unknown command
         print(f"Unknown command: {command}", file=sys.stderr)
         print(_help_text())
         sys.exit(1)
