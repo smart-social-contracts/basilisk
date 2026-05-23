@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://github.com/dfinity/icp-cli/raw/refs/tags/v0.2.7/docs/schemas/icp-yaml-schema.json
+canisters:
+  - name: "{canister_name}"
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=./{canister_name}.did python3 -m basilisk {canister_name} src/main.py
+            - cp .basilisk/{canister_name}/{canister_name}.wasm "$ICP_WASM_OUTPUT_PATH"
+    candid: "{canister_name}.did"

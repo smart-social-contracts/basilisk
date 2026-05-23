@@ -59,8 +59,11 @@ basilisk new — Scaffold a new canister project.
 
 Usage: basilisk new <project_name>
 
+Creates a project with both icp.yaml (icp-cli) and dfx.json (legacy dfx).
+
 Examples:
   basilisk new my_app
+  cd my_app && icp network start -d && icp deploy
   cd my_app && dfx start --background && dfx deploy
 """
 
@@ -70,7 +73,8 @@ basilisk build — Build the canister(s) in the current directory.
 Usage: basilisk build
 
 Reads dfx.json in the current directory and builds every canister whose
-build command references basilisk.
+build command references basilisk. When using icp-cli, the build is
+handled automatically by `icp deploy` via icp.yaml.
 
 Examples:
   basilisk build
@@ -118,29 +122,48 @@ def _scaffold_simple(project_dir: Path, project_name: str, template_dir: Path):
 """
     (project_dir / "dfx.json").write_text(dfx_json)
 
+    icp_yaml = f"""\
+canisters:
+  - name: {project_name}
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=./{project_name}.did python3 -m basilisk {project_name} src/main.py
+            - cp .basilisk/{project_name}/{project_name}.wasm "$ICP_WASM_OUTPUT_PATH"
+    candid: {project_name}.did
+"""
+    (project_dir / "icp.yaml").write_text(icp_yaml)
+
     # src/main.py — copy from bundled template
     shutil.copy(template_dir / "main.py", src_dir / "main.py")
 
     # .gitignore
     gitignore = """\
 .dfx/
+.icp/
 .basilisk/
 node_modules/
 """
     (project_dir / ".gitignore").write_text(gitignore)
 
     print(f"""
-Done! Created {project_name}/ (⚡ fast template build)
+Done! Created {project_name}/
   src/main.py    — your canister code (counter, greet, status)
-  dfx.json       — IC project config
+  icp.yaml       — icp-cli project config
+  dfx.json       — dfx project config (legacy)
 
-Next steps:
+Next steps (icp-cli):
+  cd {project_name}
+  icp network start -d
+  icp deploy
+  icp canister call {project_name} greet '("World")'
+
+Or with dfx:
   cd {project_name}
   dfx start --background
   dfx deploy
   dfx canister call {project_name} greet '("World")'
-  dfx canister call {project_name} increment
-  dfx canister call {project_name} get_counter
 """)
 
 
