@@ -30,33 +30,48 @@ EXAMPLES_DIR = os.path.join(REPO_ROOT, "tests", "fixtures")
 # Session-scoped replica
 # ---------------------------------------------------------------------------
 
-_RUNNING_NETWORKS: list = []
+_CURRENT_NETWORK_DIR: str = ""
 
 
 @pytest.fixture(scope="session")
 def replica():
     """Marker fixture that integration tests depend on.
 
-    icp-cli networks are project-local, so each fixture directory starts
-    its own network on demand (see _ensure_network).  This fixture only
-    handles cleanup at session end.
+    icp-cli networks are project-local and bind to the same port (8000),
+    so only one can run at a time.  _ensure_network stops any previous
+    fixture's network before starting the next one.
     """
     yield
 
-    for d in _RUNNING_NETWORKS:
+    if _CURRENT_NETWORK_DIR:
         subprocess.run(
             ["icp", "network", "stop"],
-            cwd=d,
+            cwd=_CURRENT_NETWORK_DIR,
             capture_output=True,
             text=True,
         )
-    _RUNNING_NETWORKS.clear()
 
 
 def _ensure_network(example_dir):
-    """Start the local network for a fixture directory if not already running."""
-    if example_dir in _RUNNING_NETWORKS:
+    """Start the local network for a fixture directory.
+
+    Stops the previous fixture's network first since icp-cli binds to
+    a fixed port.
+    """
+    global _CURRENT_NETWORK_DIR
+
+    if _CURRENT_NETWORK_DIR == example_dir:
         return
+
+    if _CURRENT_NETWORK_DIR:
+        subprocess.run(
+            ["icp", "network", "stop"],
+            cwd=_CURRENT_NETWORK_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        _CURRENT_NETWORK_DIR = ""
 
     result = subprocess.run(
         ["icp", "network", "start", "-d"],
@@ -67,13 +82,10 @@ def _ensure_network(example_dir):
     )
     if result.returncode != 0:
         err = result.stderr[-500:] if result.stderr else ""
-        if "already running" in err.lower():
-            _RUNNING_NETWORKS.append(example_dir)
-            return
         raise RuntimeError(
             f"icp network start failed in {example_dir}: {err}"
         )
-    _RUNNING_NETWORKS.append(example_dir)
+    _CURRENT_NETWORK_DIR = example_dir
 
 
 # ---------------------------------------------------------------------------
