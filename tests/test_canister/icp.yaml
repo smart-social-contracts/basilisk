@@ -1,0 +1,9 @@
+canisters:
+  - name: shell_test
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=.basilisk/shell_test/shell_test.did python3 -m basilisk shell_test src/main.py
+            - cp .basilisk/shell_test/shell_test.wasm "$ICP_WASM_OUTPUT_PATH"
+    candid: .basilisk/shell_test/shell_test.did

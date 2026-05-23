@@ -1,0 +1,9 @@
+canisters:
+  - name: browse_custom
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=.basilisk/browse_custom/browse_custom.did python3 -m basilisk browse_custom src/main.py
+            - cp .basilisk/browse_custom/browse_custom.wasm "$ICP_WASM_OUTPUT_PATH"
+    candid: .basilisk/browse_custom/browse_custom.did
