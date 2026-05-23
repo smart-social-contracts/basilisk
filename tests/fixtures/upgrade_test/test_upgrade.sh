@@ -13,9 +13,9 @@ sleep 3
 echo "Deploying canisters..."
 icp deploy
 
-# 3. Get canister IDs
-CONTROLLER_ID=$(icp canister list --json | python3 -c "import sys,json; data=json.load(sys.stdin); print([c['id'] for c in data if c['name']=='controller'][0])" 2>/dev/null || echo "")
-TARGET_ID=$(icp canister list --json | python3 -c "import sys,json; data=json.load(sys.stdin); print([c['id'] for c in data if c['name']=='target'][0])" 2>/dev/null || echo "")
+# 3. Get canister IDs from local.ids.json
+CONTROLLER_ID=$(python3 -c "import json; d=json.load(open('.icp/cache/mappings/local.ids.json')); print(d['controller'])" 2>/dev/null || echo "")
+TARGET_ID=$(python3 -c "import json; d=json.load(open('.icp/cache/mappings/local.ids.json')); print(d['target'])" 2>/dev/null || echo "")
 
 if [ -z "$CONTROLLER_ID" ] || [ -z "$TARGET_ID" ]; then
     echo "Falling back to canister name-based calls..."
