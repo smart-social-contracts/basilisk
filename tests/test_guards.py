@@ -94,7 +94,7 @@ class TestControllerAccess:
     def test_controller_can_call_status(self, canister_reachable, canister, network):
         """Unguarded endpoint should always work."""
         r = subprocess.run(
-            ["icp", "canister", "call", canister, "status", "-n", network],
+            ["icp", "canister", "call", canister, "status", "()", "-n", network],
             capture_output=True, text=True, timeout=30,
         )
         assert r.returncode == 0
@@ -117,30 +117,27 @@ class TestNonControllerRejection:
     @pytest.fixture(autouse=True)
     def setup_non_controller_identity(self, canister_reachable):
         """Create a temporary non-controller identity for testing."""
-        # Create temp identity (ignore error if already exists)
         subprocess.run(
-            ["icp", "identity", "new", self.TEMP_IDENTITY],
+            ["icp", "identity", "new", self.TEMP_IDENTITY, "--storage", "plaintext"],
             capture_output=True, text=True,
         )
         yield
         subprocess.run(
-            ["icp", "identity", "use", "ci-deploy"],
+            ["icp", "identity", "default", "ci-deploy"],
             capture_output=True, text=True,
         )
         subprocess.run(
-            ["icp", "identity", "remove", self.TEMP_IDENTITY],
+            ["icp", "identity", "delete", self.TEMP_IDENTITY],
             capture_output=True, text=True,
         )
 
-    def _call_as_non_controller(self, canister, network, method, args=""):
+    def _call_as_non_controller(self, canister, network, method, args="()"):
         """Call a canister method using the non-controller identity."""
         cmd = [
-            "icp", "canister", "call", canister, method,
+            "icp", "canister", "call", canister, method, args,
             "-n", network,
             "--identity", self.TEMP_IDENTITY,
         ]
-        if args:
-            cmd.append(args)
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         return r
 
