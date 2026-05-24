@@ -100,24 +100,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
         run: |
-          TEMPLATE_FLAG=""
+          RELEASE_ASSETS=""
           if [ -f "${{ runner.temp }}/cpython_canister_template.wasm" ]; then
-            TEMPLATE_FLAG="${{ runner.temp }}/cpython_canister_template.wasm"
+            RELEASE_ASSETS="${{ runner.temp }}/cpython_canister_template.wasm"
             echo "✅ Including template WASM in release"
           else
             echo "⚠️  No template WASM to include"
+          fi
+
+          if [ -f "icp-cli/recipe/recipe.hbs" ]; then
+            RELEASE_ASSETS="$RELEASE_ASSETS icp-cli/recipe/recipe.hbs"
+            echo "✅ Including icp-cli recipe in release"
           fi
 
           if [ -n "$RELEASE_NOTES" ]; then
             gh release create "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --title "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --notes "$RELEASE_NOTES" \
-              $TEMPLATE_FLAG
+              $RELEASE_ASSETS
           else
             gh release create "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --title "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --generate-notes \
-              $TEMPLATE_FLAG
+              $RELEASE_ASSETS
           fi
 
   verify:

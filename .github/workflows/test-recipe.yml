@@ -1,0 +1,42 @@
+name: Recipe Test
+
+on:
+  pull_request:
+    paths:
+      - "icp-cli/**"
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  test-recipe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install icp-cli
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install basilisk from repo
+        run: pip install -e .
+
+      - name: Install ic-wasm
+        run: npm install -g @icp-sdk/ic-wasm
+
+      - name: Pre-download canister template
+        run: |
+          VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+          TEMPLATE_PATH="$HOME/.config/basilisk/${VERSION}/cpython_canister_template.wasm"
+          mkdir -p "$(dirname $TEMPLATE_PATH)"
+          curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm -o "$TEMPLATE_PATH"
+
+      - name: Run recipe test
+        run: ./icp-cli/tests/test_recipe.sh

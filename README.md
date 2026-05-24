@@ -77,13 +77,13 @@ icp canister call my_project greet '("World")'
 
 ### Using the recipe
 
-Instead of inline build steps, you can reference the [Basilisk recipe](recipes/python/) in your `icp.yaml`:
+Instead of inline build steps, you can reference the [Basilisk recipe](icp-cli/recipe/) in your `icp.yaml`:
 
 ```yaml
 canisters:
   - name: my_canister
     recipe:
-      type: "https://github.com/smart-social-contracts/basilisk/releases/download/recipe-python-v1.0.0/recipe.hbs"
+      type: "https://github.com/smart-social-contracts/basilisk/releases/latest/download/recipe.hbs"
       configuration:
         entry: src/main.py
         shrink: true
