@@ -1,5 +1,5 @@
 canisters:
-  - name: basilisk-hello-world
+  - name: "{{project-name}}"
     recipe:
       type: https://github.com/smart-social-contracts/basilisk/releases/latest/download/recipe.hbs
       configuration:

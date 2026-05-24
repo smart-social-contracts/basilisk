@@ -2,4 +2,5 @@
 .basilisk
 __pycache__
 *.pyc
+*.did
 venv
