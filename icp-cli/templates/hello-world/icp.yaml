@@ -1,6 +1,6 @@
 canisters:
   - name: basilisk-hello-world
     recipe:
-      type: file://../../recipe/recipe.hbs
+      type: https://github.com/smart-social-contracts/basilisk/releases/latest/download/recipe.hbs
       configuration:
         entry: src/main.py
