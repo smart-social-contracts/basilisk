@@ -150,5 +150,6 @@ jobs:
               timeout-minutes: 30
               env:
                   BASILISK_PREBUILT_WASMS: "1"
+                  ICP_CLI_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   pytest ${{ matrix.shard.tests }} -v --tb=short 2>&1

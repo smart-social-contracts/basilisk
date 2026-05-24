@@ -92,7 +92,7 @@ jobs:
                   echo "Starting canister..."
                   icp canister start "$CANISTER_ID" -n "$NETWORK"
                   echo "Verifying canister is reachable..."
-                  icp canister call "$CANISTER_ID" status -n "$NETWORK"
+                  icp canister call "$CANISTER_ID" status --candid ./shell_test.did -n "$NETWORK"
 
     ic-tests:
         needs: setup-ic-canister

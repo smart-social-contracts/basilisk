@@ -39,4 +39,6 @@ jobs:
           curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm -o "$TEMPLATE_PATH"
 
       - name: Run recipe test
+        env:
+          ICP_CLI_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./icp-cli/tests/test_recipe.sh
