@@ -2,7 +2,7 @@
 Basilisk Shell — minimal canister communication utilities.
 
 Provides ``canister_exec`` and ``_parse_candid`` for sending Python code
-to a canister and parsing the Candid-encoded response.
+to a canister via icp-cli and parsing the Candid-encoded response.
 
 The full interactive shell, magic commands, SFTP, and SSH server live in
 the ``ic-basilisk-toolkit`` package (``ic_basilisk_toolkit.shell``).
@@ -54,7 +54,7 @@ def _get_git_info() -> dict:
 # ---------------------------------------------------------------------------
 
 def _parse_candid(output: str) -> str:
-    """Parse a Candid-encoded string response from dfx into plain text."""
+    """Parse a Candid-encoded string response from icp into plain text."""
     output = output.strip()
     m = re.search(r'\(\s*"(.*)"\s*,?\s*\)', output, re.DOTALL)
     if m:
@@ -69,7 +69,7 @@ def _parse_candid(output: str) -> str:
 # Canister communication
 # ---------------------------------------------------------------------------
 
-def _is_transient_dfx_error(stderr: str) -> bool:
+def _is_transient_error(stderr: str) -> bool:
     s = (stderr or "").lower()
     transient_markers = [
         "temporary failure in name resolution",
@@ -88,13 +88,13 @@ def _is_transient_dfx_error(stderr: str) -> bool:
     return any(m in s for m in transient_markers)
 
 
-# Module-level identity — set once in main(), used by all dfx commands.
+# Module-level identity — set once in main(), used by all icp commands.
 _IDENTITY: str | None = None
 
 
-def _dfx_call_cmd(network: str = None, *, extra_flags: list[str] | None = None) -> list[str]:
-    """Build the common `dfx canister call [--identity ...] [--network ...]` prefix."""
-    cmd = ["dfx", "canister", "call"]
+def _icp_call_cmd(network: str = None, *, extra_flags: list[str] | None = None) -> list[str]:
+    """Build the common `icp canister call [--identity ...] [--network ...]` prefix."""
+    cmd = ["icp", "canister", "call"]
     if _IDENTITY:
         cmd.extend(["--identity", _IDENTITY])
     if extra_flags:
@@ -104,7 +104,7 @@ def _dfx_call_cmd(network: str = None, *, extra_flags: list[str] | None = None) 
     return cmd
 
 
-def _run_dfx_with_retries(
+def _run_with_retries(
     cmd: list[str],
     *,
     timeout_s: int,
@@ -123,7 +123,7 @@ def _run_dfx_with_retries(
         last = r
         if r.returncode == 0:
             return r
-        if not _is_transient_dfx_error(r.stderr):
+        if not _is_transient_error(r.stderr):
             return r
         if attempt >= attempts - 1:
             return r
@@ -135,15 +135,15 @@ def _run_dfx_with_retries(
 def canister_exec(code: str, canister: str, network: str = None) -> str:
     """Send Python code to the canister and return the output."""
     escaped = code.replace('"', '\\"').replace("\n", "\\n")
-    cmd = _dfx_call_cmd(network)
+    cmd = _icp_call_cmd(network)
     cmd.extend([canister, "__shell__", f'("{escaped}")'])
 
     try:
-        r = _run_dfx_with_retries(cmd, timeout_s=120)
+        r = _run_with_retries(cmd, timeout_s=120)
         if r.returncode != 0:
-            return f"[dfx error] {r.stderr.strip()}"
+            return f"[icp error] {r.stderr.strip()}"
         return _parse_candid(r.stdout)
     except subprocess.TimeoutExpired:
         return "[error] canister call timed out (120s)"
     except FileNotFoundError:
-        return "[error] dfx not found — install the DFINITY SDK"
+        return "[error] icp not found — install icp-cli from https://cli.internetcomputer.org"

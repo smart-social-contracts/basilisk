@@ -5,7 +5,7 @@ Basilisk canisters expose two standardized endpoints for AI agents.
 ## `__browse__` — Read-only data access (query, free, instant)
 
 ```bash
-dfx canister call <canister> __browse__ '("{\"action\": \"<action>\", ...}")'
+icp canister call <canister> __browse__ '("{\"action\": \"<action>\", ...}")'
 ```
 
 | Action | Params | Returns |
@@ -21,7 +21,7 @@ Default limit: 100. Max: 10000. All responses are JSON.
 ## `__shell__` — Python execution (update, controller-only)
 
 ```bash
-dfx canister call <canister> __shell__ '("print(1 + 1)")'
+icp canister call <canister> __shell__ '("print(1 + 1)")'
 ```
 
 Full CPython exec. Per-principal namespace persistence. `ic` and `basilisk` pre-injected.

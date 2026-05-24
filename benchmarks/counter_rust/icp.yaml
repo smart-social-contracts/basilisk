@@ -1,0 +1,3 @@
+canisters:
+  - name: benchmark_counter
+    recipe: "@dfinity/rust"

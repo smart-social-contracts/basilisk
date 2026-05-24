@@ -1,0 +1,7 @@
+canisters:
+  - name: benchmark_counter
+    build:
+      steps:
+        - type: script
+          commands:
+            - "echo 'WASM built externally via basilisk'"

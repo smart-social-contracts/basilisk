@@ -1,0 +1,47 @@
+{{! A recipe for building a Python canister with Basilisk }}
+{{! `entry: string` The Python entry point (default: src/main.py) }}
+{{! `candid: string` Optional path to a .did file (auto-generated if omitted) }}
+{{! `shrink: boolean` Optimizes the wasm with ic-wasm }}
+{{! `compress: boolean` Gzip the output wasm }}
+{{! `metadata: [name: string, value: string]` Custom metadata key-value pairs }}
+
+build:
+  steps:
+    - type: script
+      commands:
+        - command -v python3 >/dev/null 2>&1 || { echo >&2 "python3 not found. Install Python 3.10+ to build Basilisk canisters."; exit 1; }
+        - python3 -c "import basilisk" 2>/dev/null || { echo >&2 "ic-basilisk not found. Run pip install ic-basilisk"; exit 1; }
+        - command -v ic-wasm >/dev/null 2>&1 || { echo >&2 "ic-wasm not found. To install ic-wasm, see https://github.com/dfinity/ic-wasm"; exit 1; }
+        {{#if compress}}
+        - command -v gzip >/dev/null 2>&1 || { echo >&2 "gzip not found. Please install gzip to compress build output."; exit 1; }
+        {{/if}}
+
+    - type: script
+      commands:
+        - CANISTER_CANDID_PATH={{#if candid}}"./{{ candid }}"{{else}}"./${ICP_CANISTER_NAME}.did"{{/if}} python3 -m basilisk "${ICP_CANISTER_NAME}" "{{#if entry}}{{ entry }}{{else}}src/main.py{{/if}}"
+        - cp ".basilisk/${ICP_CANISTER_NAME}/${ICP_CANISTER_NAME}.wasm" "$ICP_WASM_OUTPUT_PATH"
+
+    - type: script
+      commands:
+        - ic-wasm "$ICP_WASM_OUTPUT_PATH" -o "$ICP_WASM_OUTPUT_PATH" metadata "template:type" -d "basilisk-python" --keep-name-section
+        {{#if candid}}
+        - ic-wasm "$ICP_WASM_OUTPUT_PATH" -o "$ICP_WASM_OUTPUT_PATH" metadata "candid:service" -f "{{ candid }}" -v public --keep-name-section
+        {{/if}}
+        {{#if metadata}}
+        {{#each metadata}}
+        - ic-wasm "$ICP_WASM_OUTPUT_PATH" -o "$ICP_WASM_OUTPUT_PATH" metadata "{{ name }}" -d "{{ value }}" --keep-name-section
+        {{/each}}
+        {{/if}}
+
+    {{#if shrink}}
+    - type: script
+      commands:
+        - ic-wasm "$ICP_WASM_OUTPUT_PATH" -o "$ICP_WASM_OUTPUT_PATH" shrink --keep-name-section
+    {{/if}}
+
+    {{#if compress}}
+    - type: script
+      commands:
+        - gzip --no-name "$ICP_WASM_OUTPUT_PATH"
+        - mv "${ICP_WASM_OUTPUT_PATH}.gz" "$ICP_WASM_OUTPUT_PATH"
+    {{/if}}

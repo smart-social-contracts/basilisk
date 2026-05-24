@@ -1,0 +1,5 @@
+.icp
+.basilisk
+__pycache__
+*.pyc
+venv

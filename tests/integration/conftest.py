@@ -2,7 +2,7 @@
 Shared pytest fixtures for Basilisk integration tests.
 
 These tests build and deploy example canisters to a local PocketIC replica,
-then call canister methods via `dfx canister call` to verify behavior.
+then call canister methods via `icp canister call` to verify behavior.
 
 Usage:
     pytest tests/integration/ -v
@@ -30,51 +30,62 @@ EXAMPLES_DIR = os.path.join(REPO_ROOT, "tests", "fixtures")
 # Session-scoped replica
 # ---------------------------------------------------------------------------
 
+_CURRENT_NETWORK_DIR: str = ""
+
+
 @pytest.fixture(scope="session")
-def replica(tmp_path_factory):
-    """Start a shared PocketIC replica for the entire test session.
+def replica():
+    """Marker fixture that integration tests depend on.
 
-    Uses a *persistent* local network so the replica state is stored
-    globally (~/.local/share/dfx/) rather than per-project.  This lets
-    dfx commands run from any example directory and still find the
-    running PocketIC instance.
+    icp-cli networks are project-local and bind to the same port (8000),
+    so only one can run at a time.  _ensure_network stops any previous
+    fixture's network before starting the next one.
     """
-    dfx_config_dir = os.path.expanduser("~/.config/dfx")
-    os.makedirs(dfx_config_dir, exist_ok=True)
-    networks_json = os.path.join(dfx_config_dir, "networks.json")
-    wrote_networks = False
-    if not os.path.exists(networks_json):
-        with open(networks_json, "w") as f:
-            json.dump({"local": {"type": "persistent", "replica": {"subnet_type": "system"}}}, f)
-        wrote_networks = True
+    yield
 
-    dfx_home = str(tmp_path_factory.mktemp("dfx_home"))
-    # DEVNULL for both stdout AND stderr: PocketIC inherits pipe FDs from
-    # its parent (dfx), keeping them open indefinitely.  With DEVNULL there
-    # are no pipes, so subprocess.run() returns as soon as dfx CLI exits.
+    if _CURRENT_NETWORK_DIR:
+        subprocess.run(
+            ["icp", "network", "stop"],
+            cwd=_CURRENT_NETWORK_DIR,
+            capture_output=True,
+            text=True,
+        )
+
+
+def _ensure_network(example_dir):
+    """Start the local network for a fixture directory.
+
+    Stops the previous fixture's network first since icp-cli binds to
+    a fixed port.
+    """
+    global _CURRENT_NETWORK_DIR
+
+    if _CURRENT_NETWORK_DIR == example_dir:
+        return
+
+    if _CURRENT_NETWORK_DIR:
+        subprocess.run(
+            ["icp", "network", "stop"],
+            cwd=_CURRENT_NETWORK_DIR,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        _CURRENT_NETWORK_DIR = ""
+
     result = subprocess.run(
-        ["dfx", "start", "--clean", "--background", "--pocketic"],
-        cwd=dfx_home,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=300,
+        ["icp", "network", "start", "-d"],
+        cwd=example_dir,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"dfx start --pocketic failed (exit code {result.returncode})")
-
-    yield "local"
-
-    subprocess.run(
-        ["dfx", "stop"],
-        cwd=dfx_home,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    if wrote_networks:
-        try:
-            os.remove(networks_json)
-        except OSError:
-            pass
+        err = result.stderr[-500:] if result.stderr else ""
+        raise RuntimeError(
+            f"icp network start failed in {example_dir}: {err}"
+        )
+    _CURRENT_NETWORK_DIR = example_dir
 
 
 # ---------------------------------------------------------------------------
@@ -85,38 +96,30 @@ def replica(tmp_path_factory):
 _USE_PREBUILT = os.environ.get("BASILISK_PREBUILT_WASMS", "") == "1"
 
 # Global mapping: canister_id -> {"name": str, "example_dir": str}
-# Populated by deploy_example() so call_canister() can use canister NAME
-# (which lets dfx read the candid from dfx.json and auto-detect query/update).
 _CANDID_MAP: dict = {}
 
 
-def deploy_example(example_name, replica_host="127.0.0.1:8000"):
+def deploy_example(example_name, replica_fixture=None):
     """Build and deploy an example canister, returning a dict of {name: canister_id}.
 
-    For single-canister examples, returns e.g. {"counter": "bkyz2-..."}.
-    For multi-canister examples, returns all canisters.
-
-    If BASILISK_PREBUILT_WASMS=1 is set, deploys pre-built WASMs from
-    .basilisk/<name>/<name>.wasm instead of running the full build.
+    Starts a project-local network in the fixture directory if needed.
     """
     example_dir = os.path.join(EXAMPLES_DIR, example_name)
     if not os.path.isdir(example_dir):
         raise FileNotFoundError(f"Example directory not found: {example_dir}")
 
-    dfx_json_path = os.path.join(example_dir, "dfx.json")
-    with open(dfx_json_path) as f:
-        dfx_config = json.load(f)
-
-    canister_names = list(dfx_config.get("canisters", {}).keys())
+    canister_configs = _read_canister_config(example_dir)
+    canister_names = list(canister_configs.keys())
     if not canister_names:
-        raise ValueError(f"No canisters defined in {dfx_json_path}")
+        raise ValueError(f"No canisters defined in {example_dir}")
+
+    _ensure_network(example_dir)
 
     if _USE_PREBUILT:
-        _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config)
+        _deploy_prebuilt(example_dir, example_name, canister_names, canister_configs)
     else:
         _deploy_with_build(example_dir, example_name, canister_names)
 
-    # Read canister IDs and register name→ID mapping
     canister_ids = {}
     for name in canister_names:
         cid = _get_canister_id(example_dir, name)
@@ -130,10 +133,44 @@ def deploy_example(example_name, replica_host="127.0.0.1:8000"):
     return canister_ids
 
 
+def _read_canister_config(example_dir):
+    """Read canister configuration from icp.yaml.
+
+    Returns a dict of {canister_name: {"main": str}}.
+    """
+    icp_yaml_path = os.path.join(example_dir, "icp.yaml")
+
+    if os.path.exists(icp_yaml_path):
+        import yaml
+        with open(icp_yaml_path) as f:
+            config = yaml.safe_load(f)
+        result = {}
+        for canister in config.get("canisters", []):
+            name = canister["name"]
+            main_file = _extract_main_from_icp_yaml(canister)
+            result[name] = {"main": main_file}
+        return result
+
+    raise FileNotFoundError(f"No icp.yaml in {example_dir}")
+
+
+def _extract_main_from_icp_yaml(canister_config):
+    """Extract the Python entry point from icp.yaml build commands."""
+    for step in canister_config.get("build", {}).get("steps", []):
+        for cmd in step.get("commands", []):
+            if "python" in cmd and "basilisk" in cmd:
+                parts = cmd.split()
+                # Pattern: ... python3 -m basilisk <name> <main>
+                for i, part in enumerate(parts):
+                    if part == "basilisk" and i + 2 < len(parts):
+                        return parts[i + 2]
+    return ""
+
+
 def _deploy_with_build(example_dir, example_name, canister_names):
-    """Full build + deploy via dfx deploy (slow — compiles WASM from source)."""
+    """Full build + deploy via icp deploy."""
     result = subprocess.run(
-        ["dfx", "deploy"],
+        ["icp", "deploy"],
         cwd=example_dir,
         capture_output=True,
         text=True,
@@ -143,37 +180,27 @@ def _deploy_with_build(example_dir, example_name, canister_names):
         _wait_for_canisters(example_dir, canister_names, timeout=3600)
 
 
-def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
+def _deploy_prebuilt(example_dir, example_name, canister_names, canister_configs):
     """Deploy pre-built WASMs without running the build step.
 
-    Uses dfx canister create + dfx canister install --wasm for each canister.
-    Expects a persistent-network PocketIC already running (started by the
-    replica fixture).  The WASMs must exist at .basilisk/<name>/<name>.wasm.
+    Uses icp canister create + icp canister install --wasm for each canister.
     """
-    # Patch dfx.json to include candid paths so dfx can auto-detect
-    # query vs update methods when calling by canister name.
-    _patch_dfx_json_candid(example_dir, canister_names)
-
-    # Create all canisters (allocates IDs)
-    result = subprocess.run(
-        ["dfx", "canister", "create", "--all"],
-        cwd=example_dir,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"dfx canister create --all failed for {example_name}: {result.stderr[-300:]}"
+    for name in canister_names:
+        result = subprocess.run(
+            ["icp", "canister", "create", name],
+            cwd=example_dir,
+            capture_output=True,
+            text=True,
+            timeout=60,
         )
-    # Install each canister from pre-built WASM.
-    # Some canisters need init args — install those that don't depend on
-    # other canisters first, then install dependent ones with resolved IDs.
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"icp canister create {name} failed for {example_name}: {result.stderr[-300:]}"
+            )
+
     installed = set()
     remaining = list(canister_names)
 
-    # Up to 2 passes: first pass installs canisters without inter-canister
-    # dependencies, second pass installs the rest with resolved IDs.
     for _pass in range(2):
         still_remaining = []
         for name in remaining:
@@ -189,9 +216,9 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
                 still_remaining.append(name)
                 continue
 
-            cmd = ["dfx", "canister", "install", name, "--wasm", wasm_path]
+            cmd = ["icp", "canister", "install", name, "--wasm", wasm_path, "-y"]
             if init_arg:
-                cmd.extend(["--argument", init_arg])
+                cmd.extend(["--args", init_arg])
 
             result = subprocess.run(
                 cmd,
@@ -202,7 +229,7 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
             )
             if result.returncode != 0:
                 raise RuntimeError(
-                    f"dfx canister install {name} failed: {result.stderr[-300:]}"
+                    f"icp canister install {name} failed: {result.stderr[-300:]}"
                 )
             installed.add(name)
 
@@ -211,16 +238,11 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, dfx_config):
             break
 
     if remaining:
-        raise RuntimeError(
-            f"Could not resolve init args for: {remaining}"
-        )
+        raise RuntimeError(f"Could not resolve init args for: {remaining}")
 
 
+_DEFER = object()
 
-_DEFER = object()  # sentinel: defer install to next pass (dependency not yet ready)
-
-# Known init args for canisters that require them.
-# Value is either a static candid string or a callable(example_dir, installed_set) -> str|None|_DEFER.
 _KNOWN_INIT_ARGS = {
     "complex_init": '(record { "Hello"; record { id = "user1" } })',
     "init": '(record { id = "user1" }, variant { Fire }, principal "aaaaa-aa")',
@@ -234,73 +256,27 @@ def _get_init_arg(example_dir, canister_name, installed):
 
     Returns _DEFER if the canister depends on another that hasn't been installed yet.
     """
-    # Check static known args first
     if canister_name in _KNOWN_INIT_ARGS:
         return _KNOWN_INIT_ARGS[canister_name]
 
-    # Handle multi-canister init dependencies:
-    # canister needs another canister's ID as init arg.
     dep = _INIT_DEPS.get(canister_name)
     if dep:
         dep_name, arg_template = dep
         if dep_name not in installed:
             return _DEFER
-        # Get the dependency's canister ID
         dep_id = _get_canister_id(example_dir, dep_name)
         if not dep_id:
             return _DEFER
         return arg_template.format(dep_id)
 
-    # Check if the .did file declares init args
-    did_path = os.path.join(example_dir, ".basilisk", canister_name, f"{canister_name}.did")
-    if os.path.exists(did_path):
-        try:
-            with open(did_path) as f:
-                content = f.read()
-            # If the service has "init : (...)" with non-empty args, it needs init args
-            # but we don't have them → let install try without args (may fail)
-            pass
-        except OSError:
-            pass
-
     return None
 
 
-# Inter-canister init dependencies: canister_name -> (dep_canister, arg_template)
 _INIT_DEPS = {
     "rejections": ("some_service", '(principal "{}")'),
     "intermediary": ("cycles", '(principal "{}")'),
     "canister1": ("canister2", '(principal "{}")'),
 }
-
-
-def _patch_dfx_json_candid(example_dir, canister_names):
-    """Rewrite dfx.json canister entries as type 'custom' with candid/wasm paths.
-
-    dfx ignores the 'candid' field for unknown canister types like 'basilisk'.
-    Changing to 'custom' lets dfx read the .did file and auto-detect
-    query vs update methods when calling by name.
-    """
-    dfx_json_path = os.path.join(example_dir, "dfx.json")
-    with open(dfx_json_path) as f:
-        config = json.load(f)
-
-    modified = False
-    for name in canister_names:
-        did_path = f".basilisk/{name}/{name}.did"
-        wasm_path = f".basilisk/{name}/{name}.wasm"
-        abs_did = os.path.join(example_dir, did_path)
-        canister_cfg = config.get("canisters", {}).get(name, {})
-        if os.path.exists(abs_did) and canister_cfg.get("type") != "custom":
-            canister_cfg["type"] = "custom"
-            canister_cfg["candid"] = did_path
-            canister_cfg["wasm"] = wasm_path
-            canister_cfg["build"] = ""
-            modified = True
-
-    if modified:
-        with open(dfx_json_path, "w") as f:
-            json.dump(config, f, indent=4)
 
 
 def _wait_for_canisters(example_dir, canister_names, timeout=3600):
@@ -312,7 +288,7 @@ def _wait_for_canisters(example_dir, canister_names, timeout=3600):
         for name in canister_names:
             try:
                 status = subprocess.run(
-                    ["dfx", "canister", "status", name],
+                    ["icp", "canister", "status", name],
                     cwd=example_dir,
                     capture_output=True,
                     text=True,
@@ -330,29 +306,35 @@ def _wait_for_canisters(example_dir, canister_names, timeout=3600):
 
 
 def _get_canister_id(example_dir, canister_name):
-    """Get canister ID, trying `dfx canister id` first then the JSON file."""
-    # Prefer dfx canister id — works regardless of where IDs are stored
+    """Get canister ID from .icp/cache/mappings/local.ids.json."""
+    ids_file = os.path.join(example_dir, ".icp", "cache", "mappings", "local.ids.json")
+    if os.path.exists(ids_file):
+        try:
+            with open(ids_file) as f:
+                ids = json.load(f)
+            cid = ids.get(canister_name)
+            if isinstance(cid, str):
+                return cid
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Fallback: parse icp canister status output
     try:
         result = subprocess.run(
-            ["dfx", "canister", "id", canister_name],
+            ["icp", "canister", "status", canister_name],
             cwd=example_dir,
             capture_output=True,
             text=True,
             timeout=15,
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+        if result.returncode == 0:
+            m = re.search(r'Canister Id:\s*(\S+)', result.stdout)
+            if m:
+                return m.group(1)
     except (subprocess.TimeoutExpired, OSError):
         pass
 
-    # Fallback: read from .dfx/local/canister_ids.json
-    ids_file = os.path.join(example_dir, ".dfx", "local", "canister_ids.json")
-    if not os.path.exists(ids_file):
-        return None
-    with open(ids_file) as f:
-        ids = json.load(f)
-    entry = ids.get(canister_name, {})
-    return entry.get("local")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -360,27 +342,14 @@ def _get_canister_id(example_dir, canister_name):
 # ---------------------------------------------------------------------------
 
 def call_canister(canister_id, method, args=None, *, example_dir=None, update=False):
-    """Call a canister method via dfx and return the parsed result.
+    """Call a canister method via icp-cli and return the parsed result.
 
-    Args:
-        canister_id: The canister ID string.
-        method: The method name to call.
-        args: Optional Candid argument string, e.g. '("hello")'.
-        example_dir: Working directory for dfx (needed for local replica).
-        update: If True, force update call. By default dfx auto-detects.
-
-    Returns:
-        The raw Candid response string from dfx.
+    Runs from the fixture directory so the project-local network is used.
+    icp-cli auto-detects query vs update from the candid interface.
     """
-    # Use canister NAME (not ID) so dfx reads dfx.json and finds the candid
-    # interface, enabling proper query/update auto-detection.
     info = _CANDID_MAP.get(canister_id)
     target = info["name"] if info else canister_id
-    cmd = ["dfx", "canister", "call", target, method]
-    if args:
-        cmd.append(args)
-    if update:
-        cmd.append("--update")
+    cmd = ["icp", "canister", "call", target, method, args or "()"]
 
     cwd = (info["example_dir"] if info else None) or example_dir or EXAMPLES_DIR
     result = subprocess.run(
@@ -393,7 +362,7 @@ def call_canister(canister_id, method, args=None, *, example_dir=None, update=Fa
 
     if result.returncode != 0:
         raise RuntimeError(
-            f"dfx canister call failed: {result.stderr.strip()}"
+            f"icp canister call failed: {result.stderr.strip()}"
         )
 
     return result.stdout.strip()
@@ -403,9 +372,7 @@ def call_canister_expect_trap(canister_id, method, args=None, *, example_dir=Non
     """Call a canister method expecting it to trap. Returns the error message."""
     info = _CANDID_MAP.get(canister_id)
     target = info["name"] if info else canister_id
-    cmd = ["dfx", "canister", "call", target, method]
-    if args:
-        cmd.append(args)
+    cmd = ["icp", "canister", "call", target, method, args or "()"]
 
     cwd = (info["example_dir"] if info else None) or example_dir or EXAMPLES_DIR
     result = subprocess.run(
@@ -443,35 +410,28 @@ def parse_candid_text(response):
     if not response:
         return None
 
-    # Remove outer parens
     if response.startswith("(") and response.endswith(")"):
         inner = response[1:-1].strip()
     else:
         inner = response
 
-    # Text
     if inner.startswith('"') and inner.endswith('"'):
         return inner[1:-1]
 
-    # Boolean
     if inner == "true":
         return True
     if inner == "false":
         return False
 
-    # Null
     if inner == "null":
         return None
 
-    # Nat/Int with type annotation
     m = re.match(r'^(-?\d[\d_]*)\s*:\s*\w+$', inner)
     if m:
         return int(m.group(1).replace("_", ""))
 
-    # Plain integer
     m = re.match(r'^(-?\d[\d_]*)$', inner)
     if m:
         return int(m.group(1).replace("_", ""))
 
-    # Return raw for complex types (vec, record, variant)
     return inner

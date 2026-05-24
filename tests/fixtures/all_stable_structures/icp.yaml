@@ -1,0 +1,8 @@
+canisters:
+  - name: all_stable
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=.basilisk/all_stable/all_stable.did python3 -m basilisk all_stable src/main.py
+            - cp .basilisk/all_stable/all_stable.wasm "$ICP_WASM_OUTPUT_PATH"

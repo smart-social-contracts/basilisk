@@ -7,8 +7,8 @@ The test suite is split into three workflows based on **where** they run:
 | Workflow | File | Runs on | Trigger |
 |---|---|---|---|
 | **IC Tests** | `test-shell.yml` | Live IC mainnet canister | PR, push to main, manual |
-| **Local Tests** | `test-integration.yml` | Local dfx replica | PR, push to main, manual |
-| **Upgrade Test** | `test-upgrade.yml` | Local dfx replica | PR, push to main |
+| **Local Tests** | `test-integration.yml` | Local icp-cli replica | PR, push to main, manual |
+| **Upgrade Test** | `test-upgrade.yml` | Local icp-cli replica | PR, push to main |
 
 On push to main, `test-all.yml` orchestrates all three (plus the CPython WASM template build).
 
@@ -42,12 +42,12 @@ PYTHONPATH=. python -m pytest tests/test_shell.py -v
 
 ## Local Tests (`test-integration.yml`)
 
-Tests canister compilation and API correctness for 42 example canisters on a local dfx replica.
+Tests canister compilation and API correctness for 42 example canisters on a local icp-cli replica.
 
 **Architecture:** build-once + deploy-only.
 1. A single runner builds all example WASMs via `scripts/build_all_wasms.py`
 2. Pre-built WASMs are uploaded as a GitHub artifact
-3. Six test shards download the WASMs, deploy via `dfx canister install --wasm`, and run tests
+3. Six test shards download the WASMs, deploy via `icp canister install --wasm`, and run tests
 
 **Test files** (in `tests/integration/`):
 
@@ -60,13 +60,13 @@ Tests canister compilation and API correctness for 42 example canisters on a loc
 | multi-canister | cycles, heartbeat, management_canister, notify_raw, service |
 | motoko | 12 Motoko interop examples (calc, counter, echo, etc.) |
 
-**Example fixtures** are in `tests/fixtures/`. Each fixture has a `dfx.json` and Python source files.
+**Example fixtures** are in `tests/fixtures/`. Each fixture has an `icp.yaml` and Python source files.
 
 **Running locally:**
 ```bash
 pip install -e .
-python -m basilisk install-dfx-extension
-dfx start --clean --background
+python -m basilisk install-icp-extension
+icp network start --clean -d
 
 # Build all WASMs (slow, ~minutes):
 python scripts/build_all_wasms.py
@@ -104,7 +104,7 @@ Tests decentralized canister upgrades using the IC chunked code upload API (`upl
 tests/
   conftest.py              # Shared fixtures for IC tests
   test_*.py                # IC test files (3 shards)
-  test_canister/           # Shell test canister source + dfx.json
+  test_canister/           # Shell test canister source + icp.yaml
   integration/
     conftest.py            # Shared fixtures for local tests
     test_*.py              # Local test files (42 examples)

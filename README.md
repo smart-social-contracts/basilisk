@@ -50,7 +50,7 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 
 ### Prerequisites
 
-- [dfx](https://internetcomputer.org/docs/building-apps/getting-started/install) (IC SDK)
+- [icp-cli](https://docs.internetcomputer.org/docs/getting-started/install-cli) (`curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh`)
 - Python 3.10+
 
 ### Install
@@ -62,17 +62,31 @@ pip install ic-basilisk
 ### Create and deploy
 
 ```bash
-# 1. Scaffold a new project
-basilisk new my_project
-cd my_project
+# 1. Scaffold a new project from the Basilisk template
+icp new my_project --git https://github.com/smart-social-contracts/basilisk --subfolder templates/hello-world
 
-# 2. Start the local replica and deploy
-dfx start --background
-dfx deploy
+# 2. Deploy to the local replica
+cd my_project
+icp network start -d
+icp deploy
 
 # 3. Call your canister
-dfx canister call my_project greet '("World")'
-# ("Hello, World! The counter is at 0.")
+icp canister call my_project greet '("World")'
+# ("Hello, World!")
+```
+
+### Using the recipe
+
+Instead of inline build steps, you can reference the [Basilisk recipe](icp-cli/recipe/) in your `icp.yaml`:
+
+```yaml
+canisters:
+  - name: my_canister
+    recipe:
+      type: "https://github.com/smart-social-contracts/basilisk/releases/latest/download/recipe.hbs"
+      configuration:
+        entry: src/main.py
+        shrink: true
 ```
 
 ## Built-in AI/Agent Endpoints
@@ -85,20 +99,20 @@ __basilisk_features__ = ["shell", "browse"]
 
 **`__shell__`** — full Python execution (controller-only `@update`):
 ```bash
-dfx canister call my_canister __shell__ '("print(1 + 1)")'
+icp canister call my_canister __shell__ '("print(1 + 1)")'
 # ("2\n")
 ```
 
 **`__browse__`** — read-only data introspection (public `@query`, instant, free):
 ```bash
 # Discover data schema
-dfx canister call my_canister __browse__ '("{\"action\": \"schema\"}")'
+icp canister call my_canister __browse__ '("{\"action\": \"schema\"}")'
 
 # Read keys from a stable map (paginated, default limit=100)
-dfx canister call my_canister __browse__ '("{\"action\": \"keys\", \"map\": \"users\"}")'
+icp canister call my_canister __browse__ '("{\"action\": \"keys\", \"map\": \"users\"}")'
 
 # Get a specific value
-dfx canister call my_canister __browse__ '("{\"action\": \"get\", \"map\": \"users\", \"key\": \"alice\"}")'
+icp canister call my_canister __browse__ '("{\"action\": \"get\", \"map\": \"users\", \"key\": \"alice\"}")'
 ```
 
 Both endpoints can be overridden with custom implementations (e.g. custom guards, filtered data access). If you define `__shell__` or `__browse__` yourself, the compiler uses yours instead of the default.

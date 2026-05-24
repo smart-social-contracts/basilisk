@@ -18,7 +18,6 @@ on:
         type: string
 env:
     PYTHON_VERSION: "3.13"
-    DFX_VERSION: "0.30.2"
 
 jobs:
   publish:
@@ -101,24 +100,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
         run: |
-          TEMPLATE_FLAG=""
+          RELEASE_ASSETS=""
           if [ -f "${{ runner.temp }}/cpython_canister_template.wasm" ]; then
-            TEMPLATE_FLAG="${{ runner.temp }}/cpython_canister_template.wasm"
+            RELEASE_ASSETS="${{ runner.temp }}/cpython_canister_template.wasm"
             echo "✅ Including template WASM in release"
           else
             echo "⚠️  No template WASM to include"
+          fi
+
+          if [ -f "icp-cli/recipe/recipe.hbs" ]; then
+            RELEASE_ASSETS="$RELEASE_ASSETS icp-cli/recipe/recipe.hbs"
+            echo "✅ Including icp-cli recipe in release"
           fi
 
           if [ -n "$RELEASE_NOTES" ]; then
             gh release create "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --title "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --notes "$RELEASE_NOTES" \
-              $TEMPLATE_FLAG
+              $RELEASE_ASSETS
           else
             gh release create "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --title "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
               --generate-notes \
-              $TEMPLATE_FLAG
+              $RELEASE_ASSETS
           fi
 
   verify:
@@ -135,8 +139,8 @@ jobs:
               set -e
 
               apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
-              DFXVM_INIT_YES=true DFX_VERSION=0.30.2 sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)" > /dev/null 2>&1
-              export PATH="$HOME/.local/share/dfx/bin:$PATH"
+              curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh > /dev/null 2>&1
+              export PATH="$HOME/.cargo/bin:$PATH"
 
               # Wait for PyPI propagation
               echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
@@ -151,15 +155,15 @@ jobs:
               basilisk --version | grep -q "${VERSION}" || { echo "::error::Version mismatch"; exit 1; }
 
               # Scaffold, build, deploy locally, and test
-              basilisk new smoke_test && cd smoke_test
-              dfx start --background
-              dfx deploy
+              icp new smoke_test --template python && cd smoke_test
+              icp network start -d
+              icp deploy
 
-              RESULT=$(dfx canister call smoke_test status "()")
+              RESULT=$(icp canister call smoke_test status "()")
               echo "status: ${RESULT}"
               echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
 
-              dfx stop
+              icp network stop
 
               echo "✅ Local smoke test passed"
             '

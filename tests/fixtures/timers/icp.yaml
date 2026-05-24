@@ -1,0 +1,8 @@
+canisters:
+  - name: timers
+    build:
+      steps:
+        - type: script
+          commands:
+            - CANISTER_CANDID_PATH=.basilisk/timers/timers.did python3 -m basilisk timers src/main.py
+            - cp .basilisk/timers/timers.wasm "$ICP_WASM_OUTPUT_PATH"

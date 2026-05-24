@@ -14,9 +14,7 @@ on:
 
 env:
   PYTHON_VERSION: "3.13"
-  DFX_VERSION: "0.31.0"
   DEPLOYER_CANISTER_ID: "3dwln-xiaaa-aaaag-ayrva-cai"
-  DFX_WARNING: "-mainnet_plaintext_identity"
 
 jobs:
   upload:
@@ -31,11 +29,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install dfx
+      - name: Install icp-cli
         run: |
-          DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} \
-            sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)" > /dev/null 2>&1
-          echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Import deployer identity
         env:
@@ -46,10 +43,10 @@ jobs:
             exit 1
           fi
           echo "$IC_IDENTITY_PEM" > /tmp/deployer_identity.pem
-          dfx identity import deployer-ci /tmp/deployer_identity.pem --storage-mode plaintext
-          dfx identity use deployer-ci
+          icp identity import --from-pem /tmp/deployer_identity.pem --storage plaintext deployer-ci
+          icp identity default deployer-ci
           rm /tmp/deployer_identity.pem
-          echo "Identity principal: $(dfx identity get-principal)"
+          echo "Identity principal: $(icp identity get-principal)"
 
       - name: Determine version
         id: version

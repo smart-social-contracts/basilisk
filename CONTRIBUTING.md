@@ -12,11 +12,11 @@ pip install -e ".[test]"
 
 ## Running Tests
 
-### Local integration tests (requires dfx)
+### Local integration tests (requires icp-cli)
 
 ```bash
-# Install dfx: https://internetcomputer.org/docs/current/developer-docs/setup/install/
-dfx start --clean --background
+# Install icp-cli: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+icp network start --clean -d
 
 # Build all example WASMs (slow, ~minutes first time)
 python scripts/build_all_wasms.py

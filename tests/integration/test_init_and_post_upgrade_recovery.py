@@ -3,7 +3,7 @@
 import subprocess
 import os
 import pytest
-from .conftest import call_canister, parse_candid_text, _get_canister_id, EXAMPLES_DIR, _USE_PREBUILT, _CANDID_MAP, _patch_dfx_json_candid
+from .conftest import call_canister, parse_candid_text, _get_canister_id, EXAMPLES_DIR, _USE_PREBUILT, _CANDID_MAP, _ensure_network
 
 EXAMPLE = "init_and_post_upgrade_recovery"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
@@ -16,27 +16,24 @@ def _wasm_path():
 
 @pytest.fixture(scope="module")
 def canister(replica):
+    _ensure_network(EXAMPLE_DIR)
     if _USE_PREBUILT:
-        # Patch dfx.json so dfx can find the candid interface
-        _patch_dfx_json_candid(EXAMPLE_DIR, [CANISTER_NAME])
-        # Create canister + install pre-built WASM with init argument
         subprocess.run(
-            ["dfx", "canister", "create", CANISTER_NAME],
+            ["icp", "canister", "create", CANISTER_NAME],
             cwd=EXAMPLE_DIR, capture_output=True, text=True, timeout=60,
         )
         result = subprocess.run(
-            ["dfx", "canister", "install", CANISTER_NAME, "--wasm", _wasm_path(), "--argument", "(false)"],
+            ["icp", "canister", "install", CANISTER_NAME, "--wasm", _wasm_path(), "--args", "(false)", "-y"],
             cwd=EXAMPLE_DIR, capture_output=True, text=True, timeout=120,
         )
         assert result.returncode == 0, f"install failed: {result.stderr}"
     else:
         subprocess.run(
-            ["dfx", "deploy", CANISTER_NAME, "--argument", "(false)"],
+            ["icp", "deploy", CANISTER_NAME, "--args", "(false)"],
             cwd=EXAMPLE_DIR, capture_output=True, text=True, timeout=1800,
         )
     cid = _get_canister_id(EXAMPLE_DIR, CANISTER_NAME)
     assert cid, f"Failed to deploy {CANISTER_NAME}"
-    # Register so call_canister uses canister name (enables candid auto-detection)
     _CANDID_MAP[cid] = {"name": CANISTER_NAME, "example_dir": EXAMPLE_DIR}
     return cid
 
@@ -50,14 +47,14 @@ def test_init_succeeded(canister):
 def test_post_upgrade_succeeds(canister):
     if _USE_PREBUILT:
         result = subprocess.run(
-            ["dfx", "canister", "install", CANISTER_NAME, "--wasm", _wasm_path(),
-             "--argument", "(false)", "--mode", "upgrade"],
+            ["icp", "canister", "install", CANISTER_NAME, "--wasm", _wasm_path(),
+             "--args", "(false)", "--mode", "upgrade", "-y"],
             cwd=EXAMPLE_DIR, capture_output=True, text=True, timeout=120,
         )
         assert result.returncode == 0, f"upgrade failed: {result.stderr}"
     else:
         subprocess.run(
-            ["dfx", "deploy", "--upgrade-unchanged", CANISTER_NAME, "--argument", "(false)"],
+            ["icp", "deploy", CANISTER_NAME, "--args", "(false)"],
             cwd=EXAMPLE_DIR, capture_output=True, text=True, timeout=1800,
         )
     result = parse_candid_text(call_canister(canister, "get_message", example_dir=EXAMPLE_DIR))

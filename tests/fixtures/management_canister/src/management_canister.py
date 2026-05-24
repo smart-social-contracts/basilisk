@@ -41,7 +41,7 @@ def execute_create_canister() -> Async[ExecuteCreateCanisterResult]:
             50_000_000_000_000
         )
     )
-    # TODO in Azle the amount we send is much smaller, I think something changed from dfx 11 to dfx 12, look into it
+    # TODO in Azle the amount we send is much smaller, look into it
 
     def handle_ok(
         create_canister_result: CreateCanisterResult,

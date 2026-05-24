@@ -14,7 +14,6 @@ jobs:
             WASI_SDK_VERSION: "24"
             WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
             PYTHON_VERSION: "3.13"
-            DFX_VERSION: "0.30.2"
         steps:
             - uses: actions/checkout@v4
 
@@ -23,15 +22,10 @@ jobs:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-cpython-v4-${{ hashFiles('basilisk/cargotoml.py') }}
 
-            - uses: actions/cache@v4
-              with:
-                  path: ~/.cache/dfinity
-                  key: basilisk-dfx-${{ env.DFX_VERSION }}
-
-            - name: Install dfx
+            - name: Install icp-cli
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+                  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
             - name: Install WASI SDK
               run: |
@@ -65,12 +59,6 @@ jobs:
                   python -m venv venv
                   source venv/bin/activate
                   pip install ../../../
-
-            - name: Install basilisk dfx extension
-              working-directory: tests/fixtures/upgrade_test
-              run: |
-                  source venv/bin/activate
-                  python -m basilisk install-dfx-extension
 
             - name: Run upgrade test
               working-directory: tests/fixtures/upgrade_test

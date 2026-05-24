@@ -32,17 +32,15 @@ jobs:
         runs-on: ubuntu-latest
         env:
             PYTHON_VERSION: "3.13"
-            DFX_VERSION: "0.30.2"
             WASI_SDK_VERSION: "24"
             WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
-            DFX_WARNING: -mainnet_plaintext_identity
         steps:
             - uses: actions/checkout@v4
 
-            - name: Install dfx
+            - name: Install icp-cli
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+                  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
             - name: Set up Python
               uses: actions/setup-python@v5
@@ -55,6 +53,7 @@ jobs:
 
             - name: Install WASI SDK
               run: |
+                  mkdir -p ~/.local/share
                   curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
@@ -85,21 +84,6 @@ jobs:
               working-directory: benchmarks/counter
               run: source venv/bin/activate && pip install ../..
 
-            - name: Install dfx extension (CPython)
-              working-directory: benchmarks/counter
-              run: source venv/bin/activate && python -m basilisk install-dfx-extension
-
-            - name: Configure system subnet (local)
-              if: github.event.inputs.network == 'local'
-              run: |
-                  mkdir -p ~/.config/dfx
-                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/dfx/networks.json
-
-            - name: Start local replica
-              if: github.event.inputs.network == 'local'
-              working-directory: benchmarks/counter
-              run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
-
             - name: Import IC identity
               if: github.event.inputs.network == 'ic'
               run: |
@@ -108,9 +92,9 @@ jobs:
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
+                  icp identity default ci-deploy
 
             - name: Run full benchmark
               shell: bash -l {0}
@@ -133,16 +117,13 @@ jobs:
     benchmark-rust:
         if: github.event.inputs.backend == 'rust' || github.event.inputs.backend == 'all'
         runs-on: ubuntu-latest
-        env:
-            DFX_VERSION: "0.30.2"
-            DFX_WARNING: -mainnet_plaintext_identity
         steps:
             - uses: actions/checkout@v4
 
-            - name: Install dfx
+            - name: Install icp-cli
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
+                  curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+                  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
             - name: Install Rust + wasm32 target
               run: |
@@ -157,16 +138,10 @@ jobs:
                       benchmarks/counter_rust/target
                   key: bench-rust-${{ hashFiles('benchmarks/counter_rust/Cargo.toml') }}
 
-            - name: Configure system subnet (local)
-              if: github.event.inputs.network == 'local'
-              run: |
-                  mkdir -p ~/.config/dfx
-                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/dfx/networks.json
-
             - name: Start local replica
               if: github.event.inputs.network == 'local'
               working-directory: benchmarks/counter_rust
-              run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
+              run: icp network start -d
 
             - name: Import IC identity
               if: github.event.inputs.network == 'ic'
@@ -176,9 +151,9 @@ jobs:
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
+                  icp identity default ci-deploy
 
             - name: Run full benchmark
               working-directory: benchmarks/counter_rust
@@ -199,27 +174,18 @@ jobs:
     benchmark-motoko:
         if: github.event.inputs.backend == 'motoko' || github.event.inputs.backend == 'all'
         runs-on: ubuntu-latest
-        env:
-            DFX_VERSION: "0.30.2"
-            DFX_WARNING: -mainnet_plaintext_identity
         steps:
             - uses: actions/checkout@v4
 
-            - name: Install dfx
+            - name: Install icp-cli
               run: |
-                  DFXVM_INIT_YES=true DFX_VERSION=${{ env.DFX_VERSION }} sh -ci "$(curl -fsSL https://sdk.dfinity.org/install.sh)"
-                  echo "$HOME/.local/share/dfx/bin" >> $GITHUB_PATH
-
-            - name: Configure system subnet (local)
-              if: github.event.inputs.network == 'local'
-              run: |
-                  mkdir -p ~/.config/dfx
-                  echo '{"local":{"type":"ephemeral","replica":{"subnet_type":"system"}}}' > ~/.config/dfx/networks.json
+                  curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+                  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
             - name: Start local replica
               if: github.event.inputs.network == 'local'
               working-directory: benchmarks/counter_motoko
-              run: dfx start --clean --background --host 127.0.0.1:8000 --pocketic
+              run: icp network start -d
 
             - name: Import IC identity
               if: github.event.inputs.network == 'ic'
@@ -229,9 +195,9 @@ jobs:
                     exit 1
                   fi
                   echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
-                  dfx identity import ci-deploy /tmp/ci-identity.pem --storage-mode plaintext 2>/dev/null || true
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
-                  dfx identity use ci-deploy
+                  icp identity default ci-deploy
 
             - name: Run full benchmark
               working-directory: benchmarks/counter_motoko

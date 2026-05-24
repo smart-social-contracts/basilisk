@@ -58,7 +58,7 @@ Basilisk compiles Python code into WebAssembly canisters that run on the Interne
 
 - [ ] Apply `guard_against_non_controllers` to all admin/sensitive endpoints
 - [ ] Reject the anonymous principal (`2vxsx-fae`) in authentication-sensitive endpoints
-- [ ] Add a backup controller to your canister (`dfx canister update-settings --add-controller`)
+- [ ] Add a backup controller to your canister (`icp canister update-settings --add-controller`)
 - [ ] Monitor cycles balance and set appropriate `freezing_threshold`
 - [ ] Do not store secrets (API keys, private keys) in canister state
 - [ ] Implement per-caller locking for async operations that mutate financial state

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build all example canister WASMs in a single pass.
 
-Reads each example's dfx.json, runs `python -m basilisk <name> <main>` for
-every canister, and collects the output WASMs + .did files.
+Reads each example's icp.yaml, runs
+`python -m basilisk <name> <main>` for every canister, and collects
+the output WASMs + .did files.
 
 Usage:
     python scripts/build_all_wasms.py [example_dir ...]
@@ -10,11 +11,15 @@ Usage:
 If no arguments given, builds ALL examples listed in the CI matrix.
 """
 
-import json
 import os
 import subprocess
 import sys
 import time
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 EXAMPLES_DIR = os.path.join(REPO_ROOT, "tests", "fixtures")
@@ -80,21 +85,44 @@ ALL_EXAMPLES = [
 ]
 
 
+def _read_canister_config(example_dir):
+    """Read canister config from icp.yaml, returning {name: {"main": str}}."""
+    icp_yaml_path = os.path.join(example_dir, "icp.yaml")
+
+    if os.path.exists(icp_yaml_path):
+        if yaml is None:
+            raise ImportError("PyYAML is required to read icp.yaml — pip install pyyaml")
+        with open(icp_yaml_path) as f:
+            config = yaml.safe_load(f)
+        result = {}
+        for canister in config.get("canisters", []):
+            name = canister["name"]
+            main_file = _extract_main_from_build(canister)
+            result[name] = {"main": main_file}
+        return result
+
+    return {}
+
+
+def _extract_main_from_build(canister_config):
+    """Extract Python entry point from icp.yaml build commands."""
+    for step in canister_config.get("build", {}).get("steps", []):
+        for cmd in step.get("commands", []):
+            if "python" in cmd and "basilisk" in cmd:
+                parts = cmd.split()
+                for i, part in enumerate(parts):
+                    if part == "basilisk" and i + 2 < len(parts):
+                        return parts[i + 2]
+    return ""
+
+
 def build_example(example_name: str) -> bool:
     """Build all canisters in a single example directory. Returns True on success."""
     example_dir = os.path.join(EXAMPLES_DIR, example_name)
-    dfx_json_path = os.path.join(example_dir, "dfx.json")
 
-    if not os.path.exists(dfx_json_path):
-        print(f"  SKIP {example_name}: no dfx.json")
-        return False
-
-    with open(dfx_json_path) as f:
-        dfx_config = json.load(f)
-
-    canisters = dfx_config.get("canisters", {})
+    canisters = _read_canister_config(example_dir)
     if not canisters:
-        print(f"  SKIP {example_name}: no canisters in dfx.json")
+        print(f"  SKIP {example_name}: no icp.yaml")
         return False
 
     all_ok = True
@@ -104,11 +132,7 @@ def build_example(example_name: str) -> bool:
             print(f"  SKIP {example_name}/{canister_name}: no main entry")
             continue
 
-        # basilisk requires CANISTER_CANDID_PATH (normally set by dfx).
-        # Compute the .did output path the same way dfx would.
-        candid_path = canister_config.get("candid", "")
-        if not candid_path:
-            candid_path = f".basilisk/{canister_name}/{canister_name}.did"
+        candid_path = f".basilisk/{canister_name}/{canister_name}.did"
 
         env = os.environ.copy()
         env["CANISTER_CANDID_PATH"] = candid_path
@@ -130,9 +154,18 @@ def build_example(example_name: str) -> bool:
             print(f"    stderr: {result.stderr[-500:]}")
             all_ok = False
         else:
-            # Check output WASM exists
             wasm_path = os.path.join(example_dir, ".basilisk", canister_name, f"{canister_name}.wasm")
+            did_path = os.path.join(example_dir, candid_path)
             if os.path.exists(wasm_path):
+                if os.path.exists(did_path):
+                    subprocess.run(
+                        ["ic-wasm", wasm_path, "-o", wasm_path,
+                         "metadata", "candid:service", "-f", did_path,
+                         "-v", "public", "--keep-name-section"],
+                        cwd=example_dir,
+                        capture_output=True,
+                        timeout=30,
+                    )
                 size_mb = os.path.getsize(wasm_path) / (1024 * 1024)
                 print(f"    OK {size_mb:.1f} MB ({elapsed:.1f}s)")
             else:
