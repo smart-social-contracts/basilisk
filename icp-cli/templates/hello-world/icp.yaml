@@ -1,0 +1,6 @@
+canisters:
+  - name: basilisk-hello-world
+    recipe:
+      type: file://../../recipes/python/recipe.hbs
+      configuration:
+        entry: src/main.py
