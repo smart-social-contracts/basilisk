@@ -14,6 +14,36 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 
 **Live demo:** [https://ic-basilisk.tech/](https://ic-basilisk.tech/).
 
+## Quick Start
+
+### Prerequisites
+
+- [icp-cli](https://docs.internetcomputer.org/docs/getting-started/install-cli) (`curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh`)
+- Python 3.10+
+
+
+### "Hello World" with icp-cli
+
+To create a simple "Hello World" project with icp-cli, run:
+
+```bash
+# 1. Scaffold a new project from the Basilisk template
+icp new my_project --git https://github.com/smart-social-contracts/basilisk --subfolder icp-cli/templates/hello-world
+
+# 2. Install dependencies and deploy to the local replica
+cd my_project
+# Optional: python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+icp network start -d
+icp deploy
+
+# 3. Call your canister
+icp canister call my_project greet '("World")'
+# ("Hello, World!")
+```
+
+Alternatively, you can install Basilisk directly: `pip install ic-basilisk`
+
 ## Features
 
 - **Based on CPython 3.13**, compiled to WASM — deploy in seconds with a pre-built template, no Rust toolchain needed
@@ -44,49 +74,6 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 ├─────────────────────────────────────────────────────────┤
 │              Internet Computer (ICP)                    │
 └─────────────────────────────────────────────────────────┘
-```
-
-## Quick Start
-
-### Prerequisites
-
-- [icp-cli](https://docs.internetcomputer.org/docs/getting-started/install-cli) (`curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh`)
-- Python 3.10+
-
-### Install
-
-```bash
-pip install ic-basilisk
-```
-
-### Create and deploy
-
-```bash
-# 1. Scaffold a new project from the Basilisk template
-icp new my_project --git https://github.com/smart-social-contracts/basilisk --subfolder templates/hello-world
-
-# 2. Deploy to the local replica
-cd my_project
-icp network start -d
-icp deploy
-
-# 3. Call your canister
-icp canister call my_project greet '("World")'
-# ("Hello, World!")
-```
-
-### Using the recipe
-
-Instead of inline build steps, you can reference the [Basilisk recipe](icp-cli/recipe/) in your `icp.yaml`:
-
-```yaml
-canisters:
-  - name: my_canister
-    recipe:
-      type: "https://github.com/smart-social-contracts/basilisk/releases/latest/download/recipe.hbs"
-      configuration:
-        entry: src/main.py
-        shrink: true
 ```
 
 ## Built-in AI/Agent Endpoints
