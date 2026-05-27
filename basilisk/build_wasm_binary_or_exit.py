@@ -21,6 +21,22 @@ TEMPLATE_DOWNLOAD_URL_FALLBACK = (
 )
 
 
+def ensure_rust_dependencies(paths: Paths) -> None:
+    """Install Rust toolchain and build tools only when building the template from source.
+
+    The default template path (download pre-built wasm + Python injection) does not use
+    cargo, wasi2ic, or candid-extractor.
+    """
+    install_script = os.path.join(paths["compiler"], "install_rust_dependencies.sh")
+    result = subprocess.run(
+        [install_script, basilisk.__version__, basilisk.__rust_version__],
+        check=False,
+    )
+    if result.returncode != 0:
+        print(red("Failed to install Basilisk Rust build dependencies."))
+        sys.exit(1)
+
+
 @timed_inline
 def build_wasm_binary_or_exit(
     paths: Paths, canister_name: str, cargo_env: dict[str, str], verbose: bool = False
@@ -338,6 +354,8 @@ def build_template_from_source(
     wasi2ic is needed to convert WASI entry points to IC canister format.
     wasm-opt is NOT run here as it can corrupt the binary.
     """
+    ensure_rust_dependencies(paths)
+
     compiler_dir = os.path.dirname(basilisk.__file__) + "/compiler"
     template_cargo_toml = f"{compiler_dir}/cpython_canister_template/Cargo.toml"
 
