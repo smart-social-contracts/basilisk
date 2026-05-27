@@ -9,11 +9,11 @@ build:
   steps:
     - type: script
       commands:
-        - command -v python3 >/dev/null 2>&1 || { echo >&2 ""; echo >&2 "❌ python3 not found. Install Python 3.10+ to build Basilisk canisters."; echo >&2 ""; exit 1; }
-        - python3 -c "import basilisk" 2>/dev/null || { echo >&2 ""; echo >&2 "❌ ic-basilisk not found. Run: pip install -r requirements.txt"; echo >&2 ""; exit 1; }
-        - command -v ic-wasm >/dev/null 2>&1 || { echo >&2 ""; echo >&2 "❌ ic-wasm not found. To install ic-wasm, see https://github.com/dfinity/ic-wasm"; echo >&2 ""; exit 1; }
+        - command -v python3 >/dev/null 2>&1 || { echo >&2 "python3 not found. Install Python 3.10+ to build Basilisk canisters."; exit 1; }
+        - python3 -c "import basilisk" 2>/dev/null || { echo >&2 "ic-basilisk not found. Run pip install -r requirements.txt"; exit 1; }
+        - command -v ic-wasm >/dev/null 2>&1 || { echo >&2 "ic-wasm not found. To install ic-wasm, see https://github.com/dfinity/ic-wasm"; exit 1; }
         {{#if compress}}
-        - command -v gzip >/dev/null 2>&1 || { echo >&2 ""; echo >&2 "❌ gzip not found. Please install gzip to compress build output."; echo >&2 ""; exit 1; }
+        - command -v gzip >/dev/null 2>&1 || { echo >&2 "gzip not found. Please install gzip to compress build output."; exit 1; }
         {{/if}}
 
     - type: script
