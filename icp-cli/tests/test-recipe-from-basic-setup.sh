@@ -16,7 +16,7 @@ pip install -e "$REPO_ROOT"
 cp -r "$REPO_ROOT/icp-cli/templates/hello-world" /tmp/test-project
 rm -rf /tmp/test-project/.icp /tmp/test-project/.basilisk
 sed -i 's/{{project-name}}/hello/g' /tmp/test-project/icp.yaml
-LOCAL_RECIPE="$REPO_ROOT/icp-cli/recipe/recipe.hbs"
+LOCAL_RECIPE="file://$REPO_ROOT/icp-cli/recipe/recipe.hbs"
 sed -i "s|https://github.com/.*/recipe.hbs|$LOCAL_RECIPE|" /tmp/test-project/icp.yaml
 cd /tmp/test-project
 
