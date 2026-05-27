@@ -1,9 +1,15 @@
 name: Recipe Test
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "icp-cli/**"
+      - "basilisk/**"
   pull_request:
     paths:
       - "icp-cli/**"
+      - "basilisk/**"
   workflow_dispatch:
 
 jobs:
