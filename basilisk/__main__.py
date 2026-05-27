@@ -41,7 +41,6 @@ import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
 import sys
 import time
 import site
@@ -59,14 +58,6 @@ def main():
     args = parse_args_or_exit(sys.argv)
     paths = create_paths(args)
     is_verbose = args["flags"]["verbose"] or os.environ.get("BASILISK_VERBOSE") == "true"
-
-    subprocess.run(
-        [
-            f"{paths['compiler']}/install_rust_dependencies.sh",
-            basilisk.__version__,
-            basilisk.__rust_version__,
-        ]
-    )
 
     canister_name = args["canister_name"]
 
