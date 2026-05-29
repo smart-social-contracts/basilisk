@@ -737,7 +737,7 @@ def _basilisk_post_upgrade_wrapper():
         from ic_python_db import Database as _DB
         _db = _DB.get_instance()
         _db.check_upgrade_compatibility()
-    except ImportError:
+    except (ImportError, AttributeError):
         pass
     except Exception as _e:
         _basilisk_ic.trap(f"Upgrade rejected: {{_e}}")
