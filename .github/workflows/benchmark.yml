@@ -75,7 +75,7 @@ jobs:
                   VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
                   TEMPLATE_DIR="$HOME/.config/basilisk/${VERSION}"
                   mkdir -p "${TEMPLATE_DIR}"
-                  curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython_canister_template.wasm \
+                  curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm \
                     -o "${TEMPLATE_DIR}/cpython_canister_template.wasm"
                   echo "Template wasm: $(wc -c < "${TEMPLATE_DIR}/cpython_canister_template.wasm") bytes"
 

@@ -46,7 +46,7 @@ jobs:
                   if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ] || [ ! -f "${CPYTHON_DIR}/lib/libz.a" ]; then
                     mkdir -p "${CPYTHON_DIR}"
                     echo "Downloading CPython wasm artifacts..."
-                    curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
+                    curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
                     tar -xzf /tmp/cpython-wasm.tar.gz -C "${CPYTHON_DIR}"
                     echo "CPython wasm installed to ${CPYTHON_DIR}"
                   else

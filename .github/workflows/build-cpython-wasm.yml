@@ -50,13 +50,43 @@ jobs:
                     echo "should_build=false" >> $GITHUB_OUTPUT
                   fi
 
+    # Guard against source-tree reproducibility drift (zero tolerance).
+    #
+    # Clones the pinned CPython tag FRESH (never from cache), applies the repo
+    # patches, and verifies the resulting tree is byte-exactly pristine+patches.
+    # This catches the failure class found in the subinterpreter Step-0 audit:
+    # uncommitted, load-bearing modifications living only in a build cache
+    # (e.g. frozen encodings) with nothing in the repository. The main build
+    # job ALSO runs this verification via build_cpython_wasm.sh, so a stale
+    # cache with unpatched drift fails the build too.
+    verify-source-tree:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        env:
+            CPYTHON_VERSION: "3.13.0"
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Fresh clone of pinned CPython (no cache)
+              run: |
+                  git clone --depth 1 --branch "v${CPYTHON_VERSION}" \
+                    https://github.com/python/cpython.git /tmp/cpython-fresh
+
+            - name: Apply patches and verify zero drift
+              run: |
+                  bash basilisk/compiler/cpython/apply_patches.sh \
+                    /tmp/cpython-fresh \
+                    basilisk/compiler/cpython/patches \
+                    --verify-exact
+
     build-cpython-wasm:
-        needs: check-changes
+        needs: [check-changes, verify-source-tree]
         if: needs.check-changes.outputs.should-build == 'true'
         runs-on: ubuntu-latest
         timeout-minutes: 60
         env:
             CPYTHON_VERSION: "3.13.0"
+            ARTIFACT_REVISION: "ic1" # keep in sync with install_cpython_wasm.sh
             WASI_SDK_VERSION: "24"
         steps:
             - uses: actions/checkout@v4
@@ -67,12 +97,16 @@ jobs:
                   path: ~/.cache/basilisk/cpython
                   key: cpython-zlib-source-${{ env.CPYTHON_VERSION }}
 
+            # Cache key MUST include the patch set and patch pipeline, not just
+            # the build script: the patches (frozen encodings, teardown-leak
+            # backports, instruction metering) change the produced libpython.
+            # A key that misses them would serve a stale, unpatched artifact.
             - name: Cache CPython wasm build
               uses: actions/cache@v4
               id: cpython-wasm-cache
               with:
                   path: ~/cpython-wasm-output
-                  key: cpython-wasm-${{ env.CPYTHON_VERSION }}-wasi-sdk-${{ env.WASI_SDK_VERSION }}-${{ hashFiles('basilisk/compiler/cpython/build_cpython_wasm.sh') }}
+                  key: cpython-wasm-${{ env.CPYTHON_VERSION }}-${{ env.ARTIFACT_REVISION }}-wasi-sdk-${{ env.WASI_SDK_VERSION }}-${{ hashFiles('basilisk/compiler/cpython/build_cpython_wasm.sh', 'basilisk/compiler/cpython/apply_patches.sh', 'basilisk/compiler/cpython/patches/**') }}
 
             - name: Install WASI SDK
               if: steps.cpython-wasm-cache.outputs.cache-hit != 'true'
@@ -114,10 +148,12 @@ jobs:
               if: github.ref == 'refs/heads/main'
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}
-                  name: CPython ${{ env.CPYTHON_VERSION }} wasm32-wasip1
+                  tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}-${{ env.ARTIFACT_REVISION }}
+                  name: CPython ${{ env.CPYTHON_VERSION }} wasm32-wasip1 (${{ env.ARTIFACT_REVISION }})
                   body: |
-                      Pre-built CPython ${{ env.CPYTHON_VERSION }} static library for wasm32-wasip1.
+                      Pre-built CPython ${{ env.CPYTHON_VERSION }} static library for wasm32-wasip1,
+                      with the Basilisk IC patch set revision ${{ env.ARTIFACT_REVISION }}
+                      (basilisk/compiler/cpython/patches/) applied.
                       Used by `install_cpython_wasm.sh` during basilisk canister builds.
                       
                       Contents:
@@ -136,6 +172,7 @@ jobs:
         timeout-minutes: 30
         env:
             CPYTHON_VERSION: "3.13.0"
+            ARTIFACT_REVISION: "ic1" # keep in sync with install_cpython_wasm.sh
             WASI_SDK_VERSION: "24"
         steps:
             - uses: actions/checkout@v4
@@ -201,7 +238,7 @@ jobs:
               if: github.ref == 'refs/heads/main'
               uses: softprops/action-gh-release@v2
               with:
-                  tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}
+                  tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}-${{ env.ARTIFACT_REVISION }}
                   files: ${{ runner.temp }}/cpython_canister_template.wasm
                   draft: false
                   prerelease: false

@@ -87,13 +87,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The build-cpython-wasm.yml CI uploads the template to cpython-wasm-3.13.0 release.
+          # The build-cpython-wasm.yml CI uploads the template to cpython-wasm-3.13.0-ic1 release.
           # Download it so we can attach it to the versioned release (v{version}),
           # which is where find_template_wasm() looks for it.
-          gh release download cpython-wasm-3.13.0 \
+          gh release download cpython-wasm-3.13.0-ic1 \
             --pattern 'cpython_canister_template.wasm' \
             --dir "${{ runner.temp }}" \
-            --clobber || echo "⚠️  Template WASM not found in cpython-wasm-3.13.0 release (skipping)"
+            --clobber || echo "⚠️  Template WASM not found in cpython-wasm-3.13.0-ic1 release (skipping)"
 
       - name: Create GitHub Release
         env:

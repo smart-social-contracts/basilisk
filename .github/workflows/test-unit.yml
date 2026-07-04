@@ -30,4 +30,29 @@ jobs:
               run: pip install pytest
 
             - name: Run unit tests
-              run: python -m pytest tests/test_bundle.py -v
+              # test_subinterpreter_stubs self-skips when the host CPython
+              # build (builddir/build/libpython3.13.a) is absent.
+              run: python -m pytest tests/test_bundle.py tests/test_apply_patches.py tests/test_subinterpreter_stubs.py tests/test_capability_intersection.py tests/test_result_validation.py -v
+
+    # Reproducibility guard: the repo's CPython patches must apply cleanly to
+    # a FRESH clone of the pinned tag, and the patched tree must contain no
+    # modifications beyond the patch files (zero drift). Runs on every PR so
+    # patch changes cannot merge in a state that only works against someone's
+    # local build cache.
+    verify-cpython-patches:
+        runs-on: ubuntu-latest
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Fresh clone of pinned CPython (no cache)
+              run: |
+                  git clone --depth 1 --branch v3.13.0 \
+                    https://github.com/python/cpython.git /tmp/cpython-fresh
+
+            - name: Apply patches and verify zero drift
+              run: |
+                  bash basilisk/compiler/cpython/apply_patches.sh \
+                    /tmp/cpython-fresh \
+                    basilisk/compiler/cpython/patches \
+                    --verify-exact
