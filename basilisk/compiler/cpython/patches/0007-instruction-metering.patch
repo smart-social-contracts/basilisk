@@ -1,0 +1,172 @@
+diff --git a/Include/internal/pycore_interp.h b/Include/internal/pycore_interp.h
+index 45d85b2b..d0fdc600 100644
+--- a/Include/internal/pycore_interp.h
++++ b/Include/internal/pycore_interp.h
+@@ -275,6 +275,19 @@ struct _is {
+     /* the initial PyInterpreterState.threads.head */
+     _PyThreadStateImpl _initial_thread;
+     Py_ssize_t _interactive_src_count;
++
++    /* --- BASILISK instruction metering (ic-metering patch) -----------
++     * Deterministic per-interpreter bytecode budget, checked in the
++     * DISPATCH() macro of the ceval loop (Python/ceval_macros.h).
++     * budget == 0 means metering is disabled (the default; the main
++     * interpreter is never metered). Enabled by the sandbox spawn
++     * primitive for subinterpreters only, via _PyBasilisk_MeterEnable().
++     * Appended at the very end of struct _is so every static
++     * initializer / offset assumption elsewhere is unaffected. */
++    uint64_t basilisk_meter_budget;
++    uint64_t basilisk_meter_used;
++    PyObject *basilisk_meter_exc;   /* strong ref; owned by this interp */
++    int basilisk_meter_killed;      /* hard-kill latch: force no-handler unwind */
+ };
+ 
+ 
+diff --git a/Python/ceval.c b/Python/ceval.c
+index 351ddd26..c0fd4efe 100644
+--- a/Python/ceval.c
++++ b/Python/ceval.c
+@@ -618,6 +618,80 @@ PyEval_EvalFrameEx(PyFrameObject *f, int throwflag)
+ 
+ #include "ceval_macros.h"
+ 
++/* --- BASILISK instruction metering (ic-metering patch) ----------------
++ * See the BASILISK_METER_CHECK() comment in ceval_macros.h for the hook.
++ * These functions are the host-facing control surface, called by the
++ * sandbox spawn/teardown primitive (basilisk_sandbox.c). They are plain
++ * exported symbols in the static archive; no header changes needed for
++ * out-of-tree callers, which declare them `extern`. */
++
++void
++_PyBasilisk_MeterEnable(PyThreadState *tstate, uint64_t budget,
++                        PyObject *exc_type)
++{
++    PyInterpreterState *interp = tstate->interp;
++    Py_XSETREF(interp->basilisk_meter_exc, Py_XNewRef(exc_type));
++    interp->basilisk_meter_used = 0;
++    interp->basilisk_meter_killed = 0;
++    interp->basilisk_meter_budget = budget;
++}
++
++/* Must be called with the metered interpreter ACTIVE (the exception type
++ * object belongs to it and is released here). */
++void
++_PyBasilisk_MeterDisable(PyThreadState *tstate)
++{
++    PyInterpreterState *interp = tstate->interp;
++    interp->basilisk_meter_budget = 0;
++    interp->basilisk_meter_used = 0;
++    interp->basilisk_meter_killed = 0;
++    Py_CLEAR(interp->basilisk_meter_exc);
++}
++
++uint64_t
++_PyBasilisk_MeterUsed(PyThreadState *tstate)
++{
++    return tstate->interp->basilisk_meter_used;
++}
++
++/* Grace margin (in bytecode instructions) granted AFTER the soft budget
++ * is first exceeded. Within the grace window the sandbox may catch
++ * BudgetExceeded to run bounded cleanup. Past it, the meter hard-kills:
++ * it bypasses every in-frame exception handler (the DISPATCH macro jumps
++ * to `exit_unwind`, not `error`), popping frames one dispatch at a time so
++ * a BudgetExceeded caught inside a loop cannot livelock. */
++#define BASILISK_METER_GRACE 100000ULL
++
++/* Called from BASILISK_METER_CHECK() when the budget is exceeded.
++ * Returns 1 for a soft trip (catchable), 2 for a hard trip (uncatchable
++ * unwind). Always leaves a Python exception set. */
++int
++_PyBasilisk_MeterTrip(PyThreadState *tstate)
++{
++    PyInterpreterState *interp = tstate->interp;
++    PyObject *exc = interp->basilisk_meter_exc;
++    if (exc == NULL) {
++        exc = PyExc_RuntimeError;
++    }
++    uint64_t over = interp->basilisk_meter_used - interp->basilisk_meter_budget;
++    if (over > BASILISK_METER_GRACE) {
++        /* Hard kill: past grace. Use a fresh RuntimeError (never the
++         * sandbox-nameable BudgetExceeded) and latch basilisk_meter_killed
++         * so exception_unwind ignores all handlers and the stack unwinds
++         * out completely. */
++        interp->basilisk_meter_killed = 1;
++        _PyErr_Format(tstate, PyExc_RuntimeError,
++                      "instruction budget (%llu) exhausted; sandbox "
++                      "terminated after grace period",
++                      (unsigned long long)interp->basilisk_meter_budget);
++        return 1;
++    }
++    _PyErr_Format(tstate, exc,
++                  "instruction budget (%llu) exhausted",
++                  (unsigned long long)interp->basilisk_meter_budget);
++    return 1;
++}
++
+ int _Py_CheckRecursiveCallPy(
+     PyThreadState *tstate)
+ {
+@@ -876,7 +950,13 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, _PyInterpreterFrame *frame, int
+             /* We can't use frame->instr_ptr here, as RERAISE may have set it */
+             int offset = INSTR_OFFSET()-1;
+             int level, handler, lasti;
+-            if (get_exception_handler(_PyFrame_GetCode(frame), offset, &level, &handler, &lasti) == 0) {
++            /* BASILISK hard-kill: once the meter has hard-tripped, refuse
++             * to hand control to ANY in-frame exception handler, so a
++             * sandbox `except:`/`except BudgetExceeded:` loop cannot keep
++             * swallowing the kill. Unwinding still runs the normal
++             * stack-clearing below, keeping tstate->exc_info consistent. */
++            if (tstate->interp->basilisk_meter_killed ||
++                get_exception_handler(_PyFrame_GetCode(frame), offset, &level, &handler, &lasti) == 0) {
+                 // No handlers, so exit.
+                 assert(_PyErr_Occurred(tstate));
+ 
+diff --git a/Python/ceval_macros.h b/Python/ceval_macros.h
+index 1ab83856..b365f774 100644
+--- a/Python/ceval_macros.h
++++ b/Python/ceval_macros.h
+@@ -105,9 +105,43 @@ do { \
+ #endif
+ 
+ 
++/* --- BASILISK instruction metering (ic-metering patch) ----------------
++ * Deterministic bytecode-instruction budget, counted once per DISPATCH().
++ * Cost for unmetered interpreters (budget == 0, always true for the main
++ * interpreter) is a single load+branch per instruction. When the metered
++ * interpreter exceeds its budget, _PyBasilisk_MeterTrip() raises the
++ * interpreter's registered BudgetExceeded exception (or RuntimeError as
++ * fallback) and we jump to the standard `error` unwind path — the same
++ * label every instruction body already uses, at a point where frame and
++ * stack_pointer are in a consistent state (end of an instruction).
++ * Instruction count, never wall-clock: identical code + inputs trip at
++ * the identical instruction on every replica. Once tripped, the check
++ * keeps re-raising on every subsequent dispatch, so a sandboxed
++ * `except:` cannot resume useful execution. */
++/* Returns 1 for a SOFT trip (raise the catchable BudgetExceeded so a
++ * sandbox handler may observe it once, for bounded cleanup) or 2 for a
++ * HARD trip (past the grace margin — code kept running after the soft
++ * trip). Both take the normal `error` path so stack/exc-info bookkeeping
++ * stays consistent; the hard trip additionally sets interp->
++ * basilisk_meter_killed, which forces the exception_unwind machinery to
++ * treat EVERY frame as handler-less (see the killed check in ceval.c).
++ * That guarantees the whole stack unwinds instead of a caught-in-a-loop
++ * BudgetExceeded livelocking. */
++extern int _PyBasilisk_MeterTrip(PyThreadState *tstate);
++
++#define BASILISK_METER_CHECK() \
++    do { \
++        uint64_t _b5k_budget = tstate->interp->basilisk_meter_budget; \
++        if (_b5k_budget != 0 && \
++                ++tstate->interp->basilisk_meter_used > _b5k_budget) { \
++            if (_PyBasilisk_MeterTrip(tstate) != 0) { goto error; } \
++        } \
++    } while (0)
++
+ /* Do interpreter dispatch accounting for tracing and instrumentation */
+ #define DISPATCH() \
+     { \
++        BASILISK_METER_CHECK(); \
+         NEXTOPARG(); \
+         PRE_DISPATCH_GOTO(); \
+         DISPATCH_GOTO(); \

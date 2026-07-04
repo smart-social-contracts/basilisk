@@ -12,6 +12,12 @@
 set -euo pipefail
 
 CPYTHON_VERSION="3.13.0"
+# Revision of the IC patch set baked into the published artifact
+# (basilisk/compiler/cpython/patches/). Bump whenever the patches change so
+# consumers can never pick up a stale prebuilt libpython:
+#   ic1 = 0001..0007 (determinism, frozen encodings, teardown-leak backports,
+#         instruction metering)
+ARTIFACT_REVISION="ic1"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 basilisk_version_dir="$1"
@@ -30,7 +36,7 @@ if [ -d "${cpython_wasm_dir}" ] && [ -f "${cpython_wasm_dir}/lib/libpython3.13.a
 fi
 
 # Try to download pre-built artifacts first
-DOWNLOAD_URL="https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-${CPYTHON_VERSION}/cpython-wasm32-wasip1.tar.gz"
+DOWNLOAD_URL="https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-${CPYTHON_VERSION}-${ARTIFACT_REVISION}/cpython-wasm32-wasip1.tar.gz"
 
 log_info "Attempting to download pre-built CPython wasm32-wasip1..."
 mkdir -p "${cpython_wasm_dir}"

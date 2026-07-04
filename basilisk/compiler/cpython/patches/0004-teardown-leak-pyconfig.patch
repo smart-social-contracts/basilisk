@@ -1,0 +1,13 @@
+diff --git a/Python/pystate.c b/Python/pystate.c
+index 66fd392c..efdd7c19 100644
+--- a/Python/pystate.c
++++ b/Python/pystate.c
+@@ -989,6 +989,8 @@ PyInterpreterState_Delete(PyInterpreterState *interp)
+ 
+     _PyObject_FiniState(interp);
+ 
++    PyConfig_Clear(&interp->config);
++
+     free_interpreter(interp);
+ }
+ 

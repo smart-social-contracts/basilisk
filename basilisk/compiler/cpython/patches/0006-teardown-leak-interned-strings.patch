@@ -1,0 +1,40 @@
+diff --git a/Objects/unicodeobject.c b/Objects/unicodeobject.c
+index 5a6ae78f..bc31f4a4 100644
+--- a/Objects/unicodeobject.c
++++ b/Objects/unicodeobject.c
+@@ -15330,7 +15330,35 @@ _PyUnicode_ClearInterned(PyInterpreterState *interp)
+              * This should remain disabled (`Py_DEBUG` only) until there is a
+              * strict guarantee that no memory will be left after
+              * `Py_Finalize`.
++             *
++             * BASILISK ic-subinterp-teardown-leak backport: for
++             * NON-MAIN interpreters we demote unconditionally, as upstream
++             * main (post-gh-113993) does for every interpreter. Rationale:
++             * a subinterpreter with its own obmalloc that finalizes with
++             * ANY live blocks leaks its entire arena set (see
++             * _PyInterpreterState_FinalizeAllocatedBlocks), and the
++             * dominant survivors are exactly these immortalized interned
++             * strings (code-object names interned via marshal during
++             * frozen imports). The caveat in the comment above concerns
++             * runtime re-initialization after Py_Finalize in the same
++             * process, which only involves the MAIN interpreter — that
++             * path keeps the stock 3.13.0 (Py_DEBUG-only) behavior.
+              */
++            if (!_Py_IsMainInterpreter(interp)) {
++                // Restore the two references (key and value) ignored
++                // by PyUnicode_InternInPlace(); clear_interned_dict's
++                // PyDict_Clear will drop them and free the string.
++                _Py_SetMortal(s, 2);
++#ifdef Py_REF_DEBUG
++                /* let's be pedantic with the ref total */
++                _Py_IncRefTotal(_PyThreadState_GET());
++                _Py_IncRefTotal(_PyThreadState_GET());
++#endif
++#ifdef INTERNED_STATS
++                total_length += PyUnicode_GET_LENGTH(s);
++#endif
++                break;
++            }
+ #ifdef Py_DEBUG
+             // Skip the Immortal Instance check and restore
+             // the two references (key and value) ignored

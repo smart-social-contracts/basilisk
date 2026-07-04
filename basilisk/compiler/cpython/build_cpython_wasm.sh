@@ -95,21 +95,21 @@ clone_cpython() {
 }
 
 apply_ic_patches() {
-    local patches_dir
-    patches_dir="$(cd "$(dirname "$0")" && pwd)/patches"
+    local script_dir
+    script_dir="$(cd "$(dirname "$0")" && pwd)"
 
-    if [ ! -d "${patches_dir}" ]; then
-        log_warn "No patches directory found at ${patches_dir}, skipping IC-specific patches"
-        return
-    fi
-
+    # Delegates to apply_patches.sh, which is FATAL on any patch that neither
+    # applies nor is already applied. Never reintroduce `|| true` here: the
+    # patches are load-bearing (frozen encodings for subinterpreter spawning,
+    # instruction metering for sandboxed code) and a silently-unpatched tree
+    # builds a libpython that looks fine but lacks security-critical behavior.
+    #
+    # --verify-exact additionally rejects any source tree whose modifications
+    # are not exactly the repo's patch files. This guards against the failure
+    # mode found in the Step-0 audit: uncommitted, load-bearing edits living
+    # only in a build cache (frozen encodings) with nothing in the repo.
     log_info "Applying IC-specific patches..."
-    for patch_file in "${patches_dir}"/*.patch; do
-        if [ -f "${patch_file}" ]; then
-            log_info "  Applying $(basename "${patch_file}")"
-            (cd "${CPYTHON_DIR}" && git apply "${patch_file}" 2>/dev/null || true)
-        fi
-    done
+    "${script_dir}/apply_patches.sh" "${CPYTHON_DIR}" "${script_dir}/patches" --verify-exact
 }
 
 build_zlib_wasi() {
@@ -200,7 +200,10 @@ configure_wasm_build() {
     log_info "Configuring CPython for wasm32-wasip1..."
 
     local CFLAGS="-D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_MMAN -D_WASI_EMULATED_GETPID"
-    CFLAGS="${CFLAGS} -DPYTHONHASHSEED=0"  # Deterministic hash seed for IC
+    # NOTE: hash determinism is NOT configured here. A -DPYTHONHASHSEED=0
+    # define used to live in these CFLAGS but was a no-op (no C source reads
+    # such a macro; PYTHONHASHSEED is an env var only). The real control is
+    # use_hash_seed=1/hash_seed=0 in cpython_init_helper.c.
     CFLAGS="${CFLAGS} -fPIC -O2"
     if [ -n "${ZLIB_PREFIX}" ] && [ -d "${ZLIB_PREFIX}/include" ]; then
         CFLAGS="${CFLAGS} -I${ZLIB_PREFIX}/include"
@@ -221,6 +224,14 @@ configure_wasm_build() {
             RANLIB="${RANLIB}"
             CFLAGS="${CFLAGS}"
             LDFLAGS="${LDFLAGS}"
+            # clock() DOES exist in wasi-libc (via -lwasi-emulated-process-clocks,
+            # which is in LDFLAGS above), but autoconf's generic probe declares it
+            # as `char clock();` — the mismatched wasm signature fails wasm-ld
+            # validation ("function body type must match, on (call $__clock)"),
+            # so the probe reports "no" and timemodule.c then fails to compile
+            # (py_clock is Python 3's required fallback, gh-66814). Seed the
+            # cache: this is a probe artifact, not a real absence.
+            ac_cv_func_clock=yes
         )
 
         if [ -f "${CONFIG_SITE}" ]; then
@@ -270,6 +281,10 @@ disable_unsupported_modules() {
     # readline: requires GNU readline
     # nis: NIS/YP client (obsolete, not on WASI)
     # ossaudiodev, _crypt: not on WASI
+    # _lzma, _bz2: require liblzma/libbz2, not built for wasi-sysroot.
+    #   Must be disabled EXPLICITLY: configure probes the HOST's pkg-config,
+    #   so on a dev machine with liblzma-dev installed the wasm build would
+    #   otherwise try (and fail) to compile them against wasi headers.
     cat >> "${setup_local}" <<'EOF'
 
 # Disabled for wasm32-wasip1 (no underlying libraries available)
@@ -287,6 +302,8 @@ readline
 nis
 ossaudiodev
 _crypt
+_lzma
+_bz2
 EOF
 
     log_info "Disabled unsupported modules in Setup.local"

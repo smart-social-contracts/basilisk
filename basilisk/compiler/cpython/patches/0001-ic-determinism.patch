@@ -1,17 +1,24 @@
+diff --git a/Python/bootstrap_hash.c b/Python/bootstrap_hash.c
+index 92f2301..281a9c8 100644
 --- a/Python/bootstrap_hash.c
 +++ b/Python/bootstrap_hash.c
-@@ -1,5 +1,12 @@
- /* Internet Computer determinism patch:
-  * Force hash seed to 0 for deterministic execution on the IC.
-  * The IC is a replicated state machine that requires all nodes to produce
-  * identical results. Python's hash randomization (PYTHONHASHSEED) would
-  * cause non-determinism across replicas.
+@@ -1,3 +1,19 @@
++/* Internet Computer determinism note (Basilisk):
++ * The IC is a replicated state machine: all replicas must produce identical
++ * results, so Python's per-process hash randomization must be disabled.
 + *
-+ * This patch is applied at compile time via -DPYTHONHASHSEED=0.
-+ * Additionally, we disable any runtime sources of non-determinism:
-+ * - Random hash seed generation
-+ * - Use of /dev/urandom for hash seeding
-+ * - getrandom() syscall for hash seeding
++ * This is enforced in basilisk_cpython/src/cpython_init_helper.c by setting
++ * use_hash_seed=1 and hash_seed=0 on the PyConfig, which makes
++ * _Py_HashRandomization_Init() below zero out _Py_HashSecret instead of
++ * drawing entropy. (A historical -DPYTHONHASHSEED=0 compile flag was a
++ * no-op: no C source reads such a macro — PYTHONHASHSEED exists only as an
++ * environment variable, which the isolated config ignores.)
 + *
-+ * The canister will seed its own RNG via ic_cdk::api::management_canister::main::raw_rand()
-  */
++ * If entropy IS drawn on wasm32-wasip1 (e.g. by os.urandom()), py_getentropy
++ * below resolves to WASI random_get, served by ic-wasi-polyfill's
++ * deterministic RNG (fixed zero seed at canister start, reseeded from
++ * raw_rand() shortly after init).
++ */
+ #include "Python.h"
+ #include "pycore_fileutils.h"     // _Py_fstat_noraise()
+ #include "pycore_initconfig.h"

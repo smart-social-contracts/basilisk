@@ -1,0 +1,20 @@
+diff --git a/Python/codecs.c b/Python/codecs.c
+index 9c0a3fa..83bff5d 100644
+--- a/Python/codecs.c
++++ b/Python/codecs.c
+@@ -1504,9 +1504,13 @@ _PyCodec_InitRegistry(PyInterpreterState *interp)
+     // search functions, so this is done after everything else is initialized.
+     PyObject *mod = PyImport_ImportModule("encodings");
+     if (mod == NULL) {
+-        return PyStatus_Error("Failed to import encodings module");
++        /* On WASI/IC, encodings may not be available. Clear the error
++         * and continue — basic string operations still work with the
++         * built-in UTF-8 codec. */
++        PyErr_Clear();
++    } else {
++        Py_DECREF(mod);
+     }
+-    Py_DECREF(mod);
+ 
+     return PyStatus_Ok();
+ }
