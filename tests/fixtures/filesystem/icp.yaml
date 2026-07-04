@@ -6,3 +6,12 @@ canisters:
           commands:
             - CANISTER_CANDID_PATH=.basilisk/filesystem/filesystem.did python3 -m basilisk filesystem src/main.py
             - cp .basilisk/filesystem/filesystem.wasm "$ICP_WASM_OUTPUT_PATH"
+
+
+# Non-default gateway port so test networks can coexist with other
+# icp-cli projects running on this host (port 8000 is first-come-first-served).
+networks:
+  - name: local
+    mode: managed
+    gateway:
+      port: 8010

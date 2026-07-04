@@ -1,11 +1,12 @@
 canisters:
-  - name: date
+  - name: subinterpreter
     build:
       steps:
         - type: script
           commands:
-            - CANISTER_CANDID_PATH=.basilisk/date/date.did python3 -m basilisk date src/main.py
-            - cp .basilisk/date/date.wasm "$ICP_WASM_OUTPUT_PATH"
+            - CANISTER_CANDID_PATH=.basilisk/subinterpreter/subinterpreter.did python3 -m basilisk subinterpreter src/main.py
+            - cp .basilisk/subinterpreter/subinterpreter.wasm "$ICP_WASM_OUTPUT_PATH"
+
 
 # Non-default gateway port so test networks can coexist with other
 # icp-cli projects running on this host (port 8000 is first-come-first-served).

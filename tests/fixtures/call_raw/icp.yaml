@@ -6,3 +6,11 @@ canisters:
           commands:
             - CANISTER_CANDID_PATH=.basilisk/call_raw/call_raw.did python3 -m basilisk call_raw src/main.py
             - cp .basilisk/call_raw/call_raw.wasm "$ICP_WASM_OUTPUT_PATH"
+
+# Non-default gateway port so test networks can coexist with other
+# icp-cli projects running on this host (port 8000 is first-come-first-served).
+networks:
+  - name: local
+    mode: managed
+    gateway:
+      port: 8010
