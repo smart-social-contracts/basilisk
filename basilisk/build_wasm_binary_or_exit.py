@@ -14,10 +14,12 @@ TEMPLATE_DOWNLOAD_URL = (
     "/v{version}/cpython_canister_template.wasm"
 )
 
-# Fallback: CI uploads the template to the cpython-wasm release (not versioned)
+# Fallback: CI uploads the template to the cpython-wasm release (not versioned
+# by basilisk release; the -ic suffix tracks the IC patch-set revision, keep it
+# in sync with ARTIFACT_REVISION in basilisk/compiler/cpython/install_cpython_wasm.sh)
 TEMPLATE_DOWNLOAD_URL_FALLBACK = (
     "https://github.com/smart-social-contracts/basilisk/releases/download"
-    "/cpython-wasm-3.13.0/cpython_canister_template.wasm"
+    "/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm"
 )
 
 

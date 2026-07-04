@@ -451,3 +451,18 @@ extern "C" {
 pub unsafe fn PyModule_Create(module: *mut PyModuleDef) -> *mut PyObject {
     PyModule_Create2(module, PYTHON_API_VERSION)
 }
+
+// === Subinterpreter sandbox primitive (basilisk_sandbox.c) ===
+//
+// The sandbox is a C-level built-in module (`_basilisk_sandbox`, registered
+// in cpython_config.c's inittab) that spawns and tears down ISOLATED
+// subinterpreters for untrusted extension / rule-module code. Its Python API
+// (spawn_subinterpreter / close_subinterpreter / approve_hash / ...) is only
+// importable from the MAIN interpreter — the module's Py_mod_exec slot
+// refuses initialization anywhere else. See docs/SUBINTERPRETER_AUDIT.md.
+extern "C" {
+    /// Module init for `_basilisk_sandbox` (multi-phase; returns the
+    /// PyModuleDef). Exposed so Rust host code could register or introspect
+    /// the module; normally reached via the inittab, not called directly.
+    pub fn PyInit__basilisk_sandbox() -> *mut PyObject;
+}

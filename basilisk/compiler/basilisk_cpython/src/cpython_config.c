@@ -30,15 +30,31 @@ extern PyObject* PyInit_atexit(void);
 extern PyObject* PyInit_errno(void);
 extern PyObject* PyInit_gc(void);
 
+/* --- Shared slot table for stateless multi-phase (PEP 489) stub modules ---
+ *
+ * All Basilisk stub modules use multi-phase init and declare
+ * Py_MOD_PER_INTERPRETER_GIL_SUPPORTED so they are importable inside
+ * isolated subinterpreters (the sandbox primitive). Single-phase modules
+ * (m_size = -1, PyModule_Create in PyInit_*) are REFUSED by the import
+ * system under check_multi_interp_extensions=1 — which the sandbox config
+ * mandates. Keep every stub here multi-phase.
+ */
+static PyModuleDef_Slot _basilisk_stateless_stub_slots[] = {
+    {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
+    {0, NULL}
+};
+
 /* Minimal _signal stub — signalmodule.o removed to save ~179K.
  * All stubs in C to guarantee correct ABI (especially PyStatus).
+ * Multi-phase (PEP 489), stateless: safe in subinterpreters.
  */
 static PyMethodDef _signal_stub_methods[] = {{NULL, NULL, 0, NULL}};
 static struct PyModuleDef _signal_stub_module = {
-    PyModuleDef_HEAD_INIT, "_signal", NULL, -1, _signal_stub_methods
+    PyModuleDef_HEAD_INIT, "_signal", NULL, 0, _signal_stub_methods,
+    _basilisk_stateless_stub_slots, NULL, NULL, NULL
 };
 static PyObject* PyInit__signal(void) {
-    return PyModule_Create(&_signal_stub_module);
+    return PyModuleDef_Init(&_signal_stub_module);
 }
 
 /* Signal internal stubs */
@@ -83,9 +99,19 @@ void _PyPerfTrampoline_FreeArenas(void) {}
 #include <stdio.h>
 #include <string.h>
 
-/* --- stat_result type (PyStructSequence matching CPython's os.stat_result) --- */
+/* --- per-module state (PEP 489/3121) ---
+ * The stat_result type lives in per-module-instance state rather than a C
+ * static, so each (sub)interpreter importing posix gets its own type object.
+ * A C-static type here was the audit's flagged isolation leak. */
+typedef struct {
+    PyObject *StatResultType;
+} posix_state;
 
-static PyTypeObject *StatResultType = NULL;
+static inline posix_state* get_posix_state(PyObject *module) {
+    void *state = PyModule_GetState(module);
+    assert(state != NULL);
+    return (posix_state *)state;
+}
 
 static PyStructSequence_Field stat_result_fields[] = {
     {"st_mode",  "protection bits"},
@@ -108,8 +134,8 @@ static PyStructSequence_Desc stat_result_desc = {
     10
 };
 
-static PyObject* _make_stat_result(const struct stat *st) {
-    PyObject *v = PyStructSequence_New(StatResultType);
+static PyObject* _make_stat_result(PyTypeObject *stat_result_type, const struct stat *st) {
+    PyObject *v = PyStructSequence_New(stat_result_type);
     if (!v) return NULL;
     PyStructSequence_SET_ITEM(v, 0, PyLong_FromLong(st->st_mode));
     PyStructSequence_SET_ITEM(v, 1, PyLong_FromUnsignedLongLong(st->st_ino));
@@ -164,7 +190,8 @@ static PyObject* _posix_stat(PyObject *self, PyObject *args, PyObject *kwargs) {
         return NULL;
     }
 
-    return _make_stat_result(&st);
+    /* self is the module object for module-level functions */
+    return _make_stat_result((PyTypeObject *)get_posix_state(self)->StatResultType, &st);
 }
 
 /* --- posix.lstat(path, *, dir_fd=None) --- */
@@ -192,7 +219,7 @@ static PyObject* _posix_lstat(PyObject *self, PyObject *args, PyObject *kwargs) 
         return NULL;
     }
 
-    return _make_stat_result(&st);
+    return _make_stat_result((PyTypeObject *)get_posix_state(self)->StatResultType, &st);
 }
 
 /* --- posix.getcwd() --- */
@@ -339,27 +366,60 @@ static PyMethodDef _posix_stub_methods[] = {
     {"fspath",  _posix_fspath,               METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}
 };
-static struct PyModuleDef _posix_stub_module = {
-    PyModuleDef_HEAD_INIT, "posix", NULL, -1, _posix_stub_methods
-};
-static PyObject* PyInit_posix(void) {
-    /* Create stat_result type */
-    StatResultType = PyStructSequence_NewType(&stat_result_desc);
-    if (StatResultType == NULL)
-        return NULL;
+static int posix_exec(PyObject *module) {
+    posix_state *state = get_posix_state(module);
 
-    PyObject *module = PyModule_Create(&_posix_stub_module);
-    if (!module) return NULL;
+    /* Per-module stat_result type: a fresh heap type per interpreter. */
+    PyTypeObject *stat_result_type = PyStructSequence_NewType(&stat_result_desc);
+    if (stat_result_type == NULL) {
+        return -1;
+    }
+    state->StatResultType = (PyObject *)stat_result_type;
 
     /* Add stat_result type to module (needed by os.stat) */
-    Py_INCREF(StatResultType);
-    if (PyModule_AddObject(module, "stat_result", (PyObject *)StatResultType) < 0) {
-        Py_DECREF(StatResultType);
-        Py_DECREF(module);
-        return NULL;
+    Py_INCREF(stat_result_type);
+    if (PyModule_AddObject(module, "stat_result", (PyObject *)stat_result_type) < 0) {
+        Py_DECREF(stat_result_type);
+        return -1;
     }
 
-    return module;
+    return 0;
+}
+
+static int posix_traverse(PyObject *module, visitproc visit, void *arg) {
+    posix_state *state = (posix_state *)PyModule_GetState(module);
+    if (state) {
+        Py_VISIT(state->StatResultType);
+    }
+    return 0;
+}
+
+static int posix_clear(PyObject *module) {
+    posix_state *state = (posix_state *)PyModule_GetState(module);
+    if (state) {
+        Py_CLEAR(state->StatResultType);
+    }
+    return 0;
+}
+
+static void posix_free(void *module) {
+    posix_clear((PyObject *)module);
+}
+
+static PyModuleDef_Slot _posix_stub_slots[] = {
+    {Py_mod_exec, posix_exec},
+    {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
+    {0, NULL}
+};
+
+static struct PyModuleDef _posix_stub_module = {
+    PyModuleDef_HEAD_INIT, "posix", NULL, sizeof(posix_state),
+    _posix_stub_methods, _posix_stub_slots,
+    posix_traverse, posix_clear, posix_free
+};
+
+static PyObject* PyInit_posix(void) {
+    return PyModuleDef_Init(&_posix_stub_module);
 }
 
 /* PyOS_FSPath — converts path-like object to string/bytes. */
@@ -387,43 +447,68 @@ PyObject* PyOS_FSPath(PyObject *path) {
 }
 
 /* Minimal _operator stub — _operator.o removed to save ~256K.
- * Pure Python fallback in operator.py handles all functionality. */
+ * Pure Python fallback in operator.py handles all functionality.
+ * Multi-phase (PEP 489), stateless: safe in subinterpreters. */
 static PyMethodDef _operator_stub_methods[] = {{NULL, NULL, 0, NULL}};
 static struct PyModuleDef _operator_stub_module = {
-    PyModuleDef_HEAD_INIT, "_operator", NULL, -1, _operator_stub_methods
+    PyModuleDef_HEAD_INIT, "_operator", NULL, 0, _operator_stub_methods,
+    _basilisk_stateless_stub_slots, NULL, NULL, NULL
 };
 static PyObject* PyInit__operator(void) {
-    return PyModule_Create(&_operator_stub_module);
+    return PyModuleDef_Init(&_operator_stub_module);
 }
 
 /* Minimal _collections stub — _collectionsmodule.o removed to save ~265K.
- * Pure Python fallback in collections/__init__.py handles deque, OrderedDict. */
+ * Pure Python fallback in collections/__init__.py handles deque, OrderedDict.
+ * Multi-phase (PEP 489), stateless: safe in subinterpreters. */
 static PyMethodDef _collections_stub_methods[] = {{NULL, NULL, 0, NULL}};
 static struct PyModuleDef _collections_stub_module = {
-    PyModuleDef_HEAD_INIT, "_collections", NULL, -1, _collections_stub_methods
+    PyModuleDef_HEAD_INIT, "_collections", NULL, 0, _collections_stub_methods,
+    _basilisk_stateless_stub_slots, NULL, NULL, NULL
 };
 static PyObject* PyInit__collections(void) {
-    return PyModule_Create(&_collections_stub_module);
+    return PyModuleDef_Init(&_collections_stub_module);
 }
 
 /* Minimal _sre stub — sre.o removed to save ~334K.
- * If user code needs regex, pure Python re fallback would be needed. */
+ * Functionally empty by decision (see docs/SUBINTERPRETER_AUDIT.md §D3):
+ * restoring real regex is a tracked follow-up pending evidence of need.
+ * Multi-phase (PEP 489), stateless: importable (but inert) in
+ * subinterpreters. */
 static PyMethodDef _sre_stub_methods[] = {{NULL, NULL, 0, NULL}};
 static struct PyModuleDef _sre_stub_module = {
-    PyModuleDef_HEAD_INIT, "_sre", NULL, -1, _sre_stub_methods
+    PyModuleDef_HEAD_INIT, "_sre", NULL, 0, _sre_stub_methods,
+    _basilisk_stateless_stub_slots, NULL, NULL, NULL
 };
 static PyObject* PyInit__sre(void) {
-    return PyModule_Create(&_sre_stub_module);
+    return PyModuleDef_Init(&_sre_stub_module);
 }
 
 /* Minimal _thread stub — _threadmodule.o removed to save ~252K.
- * IC is single-threaded. _thread MUST be in _inittab (required by importlib
- * bootstrap in CPython 3.13). Provides no-op Lock/RLock using a static type
- * (avoids PyType_FromSpec which corrupts interpreter state during early init). */
+ * IC is single-threaded. _thread MUST be in _inittab: importlib._bootstrap's
+ * _setup() imports it with no fallback, in EVERY interpreter — including
+ * subinterpreters, which makes this module a hard prerequisite for the
+ * sandbox spawn primitive.
+ *
+ * Multi-phase (PEP 489) with a per-module HEAP lock type created via
+ * PyType_FromSpec in the Py_mod_exec slot. The previous single-phase version
+ * used a static PyTypeObject with a comment claiming PyType_FromSpec
+ * "corrupts interpreter state during early init"; that observation dated
+ * from main-interpreter bootstrap experiments with the OLD init sequence.
+ * Under multi-phase init the exec slot runs via importlib after the type
+ * machinery is fully ready (in both main and subinterpreters), which is the
+ * standard, supported pattern — validated by the host-embedded test harness
+ * (test_subinterpreter_harness.c). If a wasm-only corruption ever
+ * reproduces, diagnose before reverting to a static type: a static type is
+ * exactly the PEP 554 cross-interpreter leak this work removes. */
 
 typedef struct {
     PyObject_HEAD
 } _thread_lock_object;
+
+typedef struct {
+    PyObject *lock_type;
+} _thread_state;
 
 static PyObject* _lock_acquire(PyObject *self, PyObject *args, PyObject *kwargs) {
     Py_RETURN_TRUE;
@@ -439,32 +524,47 @@ static PyObject* _lock_exit(PyObject *self, PyObject *args) {
     Py_RETURN_FALSE;
 }
 
+static void _lock_dealloc(PyObject *self) {
+    /* Heap-type instances own a strong reference to their type. */
+    PyTypeObject *tp = Py_TYPE(self);
+    tp->tp_free(self);
+    Py_DECREF(tp);
+}
+
 static PyMethodDef _lock_methods[] = {
     {"acquire",     (PyCFunction)_lock_acquire, METH_VARARGS | METH_KEYWORDS, NULL},
     {"acquire_lock",(PyCFunction)_lock_acquire, METH_VARARGS | METH_KEYWORDS, NULL},
     {"release",     (PyCFunction)_lock_release, METH_VARARGS, NULL},
     {"release_lock",(PyCFunction)_lock_release, METH_VARARGS, NULL},
+    {"locked",      (PyCFunction)_lock_exit,    METH_NOARGS, NULL},
     {"__enter__",   (PyCFunction)_lock_enter,   METH_NOARGS, NULL},
     {"__exit__",    (PyCFunction)_lock_exit,    METH_VARARGS, NULL},
     {NULL, NULL, 0, NULL}
 };
 
-static PyObject* _lock_new(PyTypeObject *type, PyObject *args, PyObject *kwargs) {
-    PyObject *self = type->tp_alloc(type, 0);
-    return self;
-}
-
-static PyTypeObject _thread_lock_type = {
-    PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name = "_thread.lock",
-    .tp_basicsize = sizeof(_thread_lock_object),
-    .tp_flags = Py_TPFLAGS_DEFAULT,
-    .tp_methods = _lock_methods,
-    .tp_new = _lock_new,
+static PyType_Slot _lock_type_slots[] = {
+    {Py_tp_dealloc, _lock_dealloc},
+    {Py_tp_methods, _lock_methods},
+    {Py_tp_new, PyType_GenericNew},
+    {0, NULL}
 };
 
+static PyType_Spec _lock_type_spec = {
+    .name = "_thread.lock",
+    .basicsize = sizeof(_thread_lock_object),
+    .flags = Py_TPFLAGS_DEFAULT,
+    .slots = _lock_type_slots,
+};
+
+static inline _thread_state* get_thread_state(PyObject *module) {
+    void *state = PyModule_GetState(module);
+    assert(state != NULL);
+    return (_thread_state *)state;
+}
+
 static PyObject* _thread_allocate_lock(PyObject *self, PyObject *args) {
-    return _lock_new(&_thread_lock_type, NULL, NULL);
+    PyObject *lock_type = get_thread_state(self)->lock_type;
+    return PyObject_CallNoArgs(lock_type);
 }
 static PyObject* _thread_get_ident(PyObject *self, PyObject *args) {
     return PyLong_FromLong(1);
@@ -480,19 +580,66 @@ static PyMethodDef _thread_stub_methods[] = {
     {"_count",        _thread_count,         METH_NOARGS, NULL},
     {NULL, NULL, 0, NULL}
 };
-static struct PyModuleDef _thread_stub_module = {
-    PyModuleDef_HEAD_INIT, "_thread", NULL, -1, _thread_stub_methods
+
+static int _thread_exec(PyObject *module) {
+    _thread_state *state = get_thread_state(module);
+
+    PyObject *lock_type = PyType_FromSpec(&_lock_type_spec);
+    if (lock_type == NULL) {
+        return -1;
+    }
+    state->lock_type = lock_type;
+
+    Py_INCREF(lock_type);
+    if (PyModule_AddObject(module, "LockType", lock_type) < 0) {
+        Py_DECREF(lock_type);
+        return -1;
+    }
+    Py_INCREF(lock_type);
+    if (PyModule_AddObject(module, "RLock", lock_type) < 0) {
+        Py_DECREF(lock_type);
+        return -1;
+    }
+    if (PyModule_AddObject(module, "TIMEOUT_MAX", PyFloat_FromDouble(1e15)) < 0) {
+        return -1;
+    }
+    return 0;
+}
+
+static int _thread_traverse(PyObject *module, visitproc visit, void *arg) {
+    _thread_state *state = (_thread_state *)PyModule_GetState(module);
+    if (state) {
+        Py_VISIT(state->lock_type);
+    }
+    return 0;
+}
+
+static int _thread_clear(PyObject *module) {
+    _thread_state *state = (_thread_state *)PyModule_GetState(module);
+    if (state) {
+        Py_CLEAR(state->lock_type);
+    }
+    return 0;
+}
+
+static void _thread_free(void *module) {
+    _thread_clear((PyObject *)module);
+}
+
+static PyModuleDef_Slot _thread_stub_slots[] = {
+    {Py_mod_exec, _thread_exec},
+    {Py_mod_multiple_interpreters, Py_MOD_PER_INTERPRETER_GIL_SUPPORTED},
+    {0, NULL}
 };
+
+static struct PyModuleDef _thread_stub_module = {
+    PyModuleDef_HEAD_INIT, "_thread", NULL, sizeof(_thread_state),
+    _thread_stub_methods, _thread_stub_slots,
+    _thread_traverse, _thread_clear, _thread_free
+};
+
 static PyObject* PyInit__thread(void) {
-    if (PyType_Ready(&_thread_lock_type) < 0) return NULL;
-    PyObject *module = PyModule_Create(&_thread_stub_module);
-    if (!module) return NULL;
-    Py_INCREF(&_thread_lock_type);
-    PyModule_AddObject(module, "LockType", (PyObject*)&_thread_lock_type);
-    Py_INCREF(&_thread_lock_type);
-    PyModule_AddObject(module, "RLock", (PyObject*)&_thread_lock_type);
-    PyModule_AddObject(module, "TIMEOUT_MAX", PyFloat_FromDouble(1e15));
-    return module;
+    return PyModuleDef_Init(&_thread_stub_module);
 }
 
 /* NOTE: Non-essential modules removed for wasm size reduction.
@@ -509,6 +656,11 @@ extern PyObject* PyMarshal_Init(void);
 extern PyObject* PyInit__imp(void);
 extern PyObject* _PyWarnings_Init(void);
 
+/* Subinterpreter sandbox primitive (basilisk_sandbox.c). Its Py_mod_exec
+ * slot refuses to initialize anywhere but the MAIN interpreter, so listing
+ * it in the (global) inittab does not expose it to sandboxed code. */
+extern PyObject* PyInit__basilisk_sandbox(void);
+
 struct _inittab _PyImport_Inittab[] = {
     /* Core modules for Py_Initialize */
     {"posix", PyInit_posix},
@@ -522,7 +674,7 @@ struct _inittab _PyImport_Inittab[] = {
     {"_stat", PyInit__stat},
     {"_string", PyInit__string},
     {"_struct", PyInit__struct},
-    {"_thread", PyInit__thread},  /* stub — _threadmodule.o removed, static type Lock/RLock */
+    {"_thread", PyInit__thread},  /* stub — _threadmodule.o removed; multi-phase, heap Lock/RLock type */
     {"_typing", PyInit__typing},
     {"_weakref", PyInit__weakref},
     {"atexit", PyInit_atexit},
@@ -534,6 +686,10 @@ struct _inittab _PyImport_Inittab[] = {
 
     /* JSON C accelerator — restored for fast serialization */
     {"_json", PyInit__json},
+
+    /* Sandbox spawn/teardown primitive — main interpreter ONLY (enforced
+     * by the module's own exec-slot guard) */
+    {"_basilisk_sandbox", PyInit__basilisk_sandbox},
 
     /* Internal modules (always needed by interpreter core) */
     {"marshal", PyMarshal_Init},

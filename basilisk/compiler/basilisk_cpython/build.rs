@@ -212,13 +212,41 @@ fn build_trimmed_libpython(lib_dir: &std::path::Path, include_dir: &std::path::P
         .expect("Failed to run WASI SDK clang for cpython_config.c");
     assert!(status.success(), "Failed to compile cpython_config.c");
 
+    // 1b. Compile the subinterpreter sandbox primitive (spawn/teardown of
+    //     isolated subinterpreters for untrusted code; see
+    //     docs/SUBINTERPRETER_AUDIT.md).
+    let sandbox_src = manifest_dir.join("src/basilisk_sandbox.c");
+    let sandbox_obj = out_dir.join("basilisk_sandbox.o");
+    let status = std::process::Command::new(clang)
+        .args([
+            "-c", &sandbox_src.to_string_lossy(),
+            "-o", &sandbox_obj.to_string_lossy(),
+            "-I", &include_dir.to_string_lossy(),
+            "-O2",
+            "--target=wasm32-wasip1",
+            "-D_WASI_EMULATED_SIGNAL",
+            "-D_WASI_EMULATED_PROCESS_CLOCKS",
+            "-D_WASI_EMULATED_MMAN",
+            "-D_WASI_EMULATED_GETPID",
+        ])
+        .status()
+        .expect("Failed to run WASI SDK clang for basilisk_sandbox.c");
+    assert!(status.success(), "Failed to compile basilisk_sandbox.c");
+    println!("cargo:rerun-if-changed={}", sandbox_src.display());
+
     // 2. Copy the original archive to OUT_DIR
     std::fs::copy(&original_lib, &trimmed_lib)
         .expect("Failed to copy libpython3.13.a to OUT_DIR");
 
-    // 3. Replace config.o in the copy with our custom one
+    // 3. Replace config.o in the copy with our custom one, and add the
+    //    sandbox module object.
     let status = std::process::Command::new(&ar)
-        .args(["r", &trimmed_lib.to_string_lossy(), &config_obj.to_string_lossy()])
+        .args([
+            "r",
+            &trimmed_lib.to_string_lossy(),
+            &config_obj.to_string_lossy(),
+            &sandbox_obj.to_string_lossy(),
+        ])
         .status()
         .expect("Failed to run llvm-ar to replace config.o");
     assert!(status.success(), "Failed to replace config.o in libpython3.13-trimmed.a");

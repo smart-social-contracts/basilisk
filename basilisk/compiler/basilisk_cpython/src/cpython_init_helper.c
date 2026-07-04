@@ -63,8 +63,42 @@ int basilisk_cpython_init(void) {
     config.site_import = 0;
     config.pathconfig_warnings = 0;
     config._is_python_build = 0;
-    /* Enable importlib but defer main init to avoid hanging path config */
-    config._init_main = 0;
+
+    /* Run FULL init (core + main), not just core.
+     *
+     * Historically _init_main was 0 and _Py_InitializeMain was skipped for
+     * two reasons that no longer hold:
+     *   - path configuration hung on WASI -> avoided below by presetting
+     *     module_search_paths_set=1 with an empty path list, which skips
+     *     path computation entirely (there is no filesystem stdlib anyway);
+     *   - the fs-encoding setup needed the 'encodings' package, which was
+     *     not importable -> the entire encodings package is now frozen into
+     *     libpython (patch 0002-freeze-encodings).
+     *
+     * Completing main init matters beyond codecs: it is what sets
+     * runtime->initialized, without which Py_NewInterpreterFromConfig —
+     * the sandbox spawn primitive in basilisk_sandbox.c — refuses with
+     * "Py_Initialize must be called first". */
+    config._init_main = 1;
+    config.module_search_paths_set = 1;
+
+    /* IC determinism: force a fixed (zeroed) string-hash secret.
+     *
+     * The isolated config defaults to use_hash_seed=0 ("draw a random
+     * seed"), which on wasm32-wasip1 resolves to getentropy() -> WASI
+     * random_get -> ic-wasi-polyfill's StdRng. That happens to be
+     * deterministic across replicas (the polyfill RNG starts from a fixed
+     * seed and raw_rand-based reseeding only lands after init), but replica
+     * consensus must not hinge on a polyfill implementation detail.
+     * Setting use_hash_seed=1 + hash_seed=0 zeroes _Py_HashSecret by
+     * specification (see _Py_HashRandomization_Init), making str/bytes
+     * hashing deterministic by construction.
+     *
+     * Note: the historical -DPYTHONHASHSEED=0 compile flag was a no-op —
+     * no C source reads such a macro; PYTHONHASHSEED only exists as an env
+     * var, which the isolated config ignores (use_environment=0). */
+    config.use_hash_seed = 1;
+    config.hash_seed = 0;
 
     fprintf(stderr, "[basilisk] cpython_init: calling Py_InitializeFromConfig\n");
     PyStatus status = Py_InitializeFromConfig(&config);
