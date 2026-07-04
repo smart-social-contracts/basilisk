@@ -15,6 +15,12 @@ Python pytest integration tests for Basilisk example canisters. These replace th
 
 ## Running Locally
 
+**Identity:** the tests deploy with the *default* `icp` identity. Use a plain
+local key identity (canonical on dev machines: `my_dev_identity_1`), not an
+Internet-Identity-backed one — II delegations expire and have repeatedly
+broken long test runs mid-session. Check with `icp identity default`; in CI
+the workflow imports a `ci-deploy` key from secrets instead.
+
 ```bash
 # All integration tests (requires icp-cli, basilisk, WASI SDK installed)
 pytest tests/integration/ -v

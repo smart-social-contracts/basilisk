@@ -73,19 +73,45 @@ def _ensure_network(example_dir):
         )
         _CURRENT_NETWORK_DIR = ""
 
-    result = subprocess.run(
-        ["icp", "network", "start", "-d"],
-        cwd=example_dir,
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    result = _start_network(example_dir)
+    if result.returncode != 0:
+        err = (result.stderr or "") + (result.stdout or "")
+        if "already running" in err:
+            # Leftover network from a previous run of this same fixture
+            # (e.g. an aborted pytest session): adopt it.
+            _CURRENT_NETWORK_DIR = example_dir
+            return
+        # Port held by another icp-cli project's network (typically a sibling
+        # fixture from an aborted run, since fixtures share a gateway port):
+        # stop that network and retry once.
+        m = re.search(
+            r"in use by the local network of the project at '([^']+)'", err
+        )
+        if m and os.path.abspath(m.group(1)).startswith(EXAMPLES_DIR + os.sep):
+            subprocess.run(
+                ["icp", "network", "stop"],
+                cwd=m.group(1),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            result = _start_network(example_dir)
     if result.returncode != 0:
         err = result.stderr[-500:] if result.stderr else ""
         raise RuntimeError(
             f"icp network start failed in {example_dir}: {err}"
         )
     _CURRENT_NETWORK_DIR = example_dir
+
+
+def _start_network(example_dir):
+    return subprocess.run(
+        ["icp", "network", "start", "-d"],
+        cwd=example_dir,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +203,19 @@ def _deploy_with_build(example_dir, example_name, canister_names):
         timeout=1800,
     )
     if result.returncode != 0:
+        # Identity problems (e.g. an expired Internet-Identity delegation on
+        # the default identity) can never be fixed by waiting — fail loudly
+        # instead of burning an hour in _wait_for_canisters. Use a local key
+        # identity as the default (see tests/integration/README.md).
+        err = (result.stderr or "") + (result.stdout or "")
+        if "identity" in err.lower() and (
+            "expired" in err.lower() or "failed to load" in err.lower()
+        ):
+            raise RuntimeError(
+                f"icp deploy failed with an identity error for {example_name}; "
+                f"fix the default icp identity (see tests/integration/README.md): "
+                f"{err[-500:]}"
+            )
         _wait_for_canisters(example_dir, canister_names, timeout=3600)
 
 
