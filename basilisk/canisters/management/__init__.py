@@ -229,7 +229,7 @@ management_canister = ManagementCanister(Principal.from_str("aaaaa-aa"))
 setattr(ManagementCanister, '_arg_types', {
     'create_canister': 'record { settings : opt record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
     'update_settings': 'record { canister_id : principal; settings : record { controllers : opt vec principal; compute_allocation : opt nat; memory_allocation : opt nat; freezing_threshold : opt nat } }',
-    'install_code': 'record { mode : variant { install : null; reinstall : null; upgrade : null }; canister_id : principal; wasm_module : blob; arg : blob }',
+    'install_code': 'record { mode : variant { install : null; reinstall : null; upgrade : opt record { skip_pre_upgrade : opt bool; wasm_memory_persistence : opt variant { keep : null; replace : null } } }; canister_id : principal; wasm_module : blob; arg : blob }',
     'uninstall_code': 'record { canister_id : principal }',
     'start_canister': 'record { canister_id : principal }',
     'stop_canister': 'record { canister_id : principal }',
@@ -250,7 +250,7 @@ setattr(ManagementCanister, '_arg_types', {
     'upload_chunk': 'record { canister_id : principal; chunk : blob }',
     'clear_chunk_store': 'record { canister_id : principal }',
     'stored_chunks': 'record { canister_id : principal }',
-    'install_chunked_code': 'record { mode : variant { install : null; reinstall : null; upgrade : null }; target_canister : principal; store_canister : opt principal; chunk_hashes_list : vec record { hash : blob }; wasm_module_hash : blob; arg : blob }',
+    'install_chunked_code': 'record { mode : variant { install : null; reinstall : null; upgrade : opt record { skip_pre_upgrade : opt bool; wasm_memory_persistence : opt variant { keep : null; replace : null } } }; target_canister : principal; store_canister : opt principal; chunk_hashes_list : vec record { hash : blob }; wasm_module_hash : blob; arg : blob }',
     'take_canister_snapshot': 'record { canister_id : principal; replace_snapshot : opt blob }',
     'load_canister_snapshot': 'record { canister_id : principal; snapshot_id : blob; sender_canister_version : opt nat64 }',
     'delete_canister_snapshot': 'record { canister_id : principal; snapshot_id : blob }',

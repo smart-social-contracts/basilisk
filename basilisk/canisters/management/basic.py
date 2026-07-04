@@ -40,10 +40,20 @@ class InstallCodeArgs(Record):
     arg: blob
 
 
+class WasmMemoryPersistence(Variant, total=False):
+    keep: null
+    replace: null
+
+
+class CanisterUpgradeOptions(Record):
+    skip_pre_upgrade: Opt[bool]
+    wasm_memory_persistence: Opt[WasmMemoryPersistence]
+
+
 class InstallCodeMode(Variant, total=False):
     install: null
     reinstall: null
-    upgrade: null
+    upgrade: Opt[CanisterUpgradeOptions]
 
 
 class UninstallCodeArgs(Record):
