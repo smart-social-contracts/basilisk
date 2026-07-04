@@ -54,6 +54,7 @@ Alternatively, you can install Basilisk directly: `pip install ic-basilisk`
 - **Persistent storage** — Rust-backed stable data structures (`StableBTreeMap`, `StableBTreeSet`, `StableVec`, `StableLog`, `StableCell`, `StableMinHeap`) powered by `ic-stable-structures` with tagged binary encoding — data persists across canister upgrades with no serialization step. Supports explicit type hints (`nat8`, `int32`, etc.) for compact, correctly-ordered keys and values
 - **Filesystem** — standard `open()` and `os` calls, automatically persisted to stable memory across upgrades
 - **IC system APIs** — `ic.caller()`, `ic.time()`, `ic.canister_balance()`, inter-canister calls, timers, and Candid types (`Principal`, `Record`, `Variant`, etc.)
+- **Sandboxed execution** — run untrusted Python (extensions, rule modules) in an isolated CPython subinterpreter with a capability-gated host bridge, a deterministic instruction budget, and validated plain-data results. See [Sandboxing Untrusted Code](#sandboxing-untrusted-code)
 
 > **Interactive shell, ORM, Schema Upgrade Checking, file transfer, task management, wallet, and more** are provided by
 > [ic-basilisk-toolkit](https://github.com/smart-social-contracts/ic-basilisk-toolkit)
@@ -103,6 +104,48 @@ icp canister call my_canister __browse__ '("{\"action\": \"get\", \"map\": \"use
 ```
 
 Both endpoints can be overridden with custom implementations (e.g. custom guards, filtered data access). If you define `__shell__` or `__browse__` yourself, the compiler uses yours instead of the default.
+
+## Sandboxing Untrusted Code
+
+Run untrusted or semi-trusted Python (user-supplied extensions, rule modules) inside an **isolated CPython subinterpreter**. The sandbox has its own heap and GIL, an empty `sys.path`, and cannot import the privileged host surface — code inside it can only compute and talk back through a capability-gated `rpc()` bridge you control. Data crossing the boundary is **plain data only** (`None`/`bool`/`int`/`float`/`str`/`list`/`dict`), deep-copied in both directions; no live object references cross.
+
+Key properties:
+
+- **Content-hash allow-list** — a subinterpreter only runs source whose SHA-256 you explicitly approved host-side.
+- **Deterministic instruction budget** — sandboxed code is metered in the interpreter's dispatch loop (bytecode instructions, never wall-clock); exceeding the budget raises `BudgetExceeded`. The main interpreter is never metered.
+- **Isolation by construction** — `_basilisk_ic` and the spawn primitive itself are refused fail-closed inside the sandbox; the dangerous native surface (real filesystem, sockets, subprocesses) is simply absent, not denylisted.
+
+### Simple example
+
+```python
+import _basilisk_sandbox as sandbox
+from basilisk import update
+
+# Untrusted extension code (imagine a user uploaded this).
+EXTENSION = """
+def score(numbers=None):
+    numbers = numbers or []
+    return {"total": sum(numbers), "count": len(numbers)}
+"""
+
+@update
+def run_extension() -> str:
+    # 1. Approve the exact source by its content hash (host-side allow-list).
+    content_hash = sandbox.sha256(EXTENSION)
+    sandbox.approve_hash(content_hash)
+
+    # 2. Spawn an isolated subinterpreter running that source.
+    handle = sandbox.spawn_subinterpreter(EXTENSION, content_hash)
+
+    # 3. Call a function in it — args and result cross as plain data only.
+    result = sandbox.call_in_subinterpreter(handle, "score", {"numbers": [1, 2, 3]})
+
+    # 4. Tear it down (fresh-per-use by design; no pooling).
+    sandbox.close_subinterpreter(handle)
+    return str(result)  # {'total': 6, 'count': 3}
+```
+
+For privileged operations, spawn with a **capability** and an `rpc` handler (`basilisk.sandbox.build_capability` / `spawn_sandboxed`), and validate anything the sandbox proposes to write with the two-pass validator + atomic commit (`basilisk.sandbox.commit_result`). See [docs/SUBINTERPRETER_AUDIT.md](docs/SUBINTERPRETER_AUDIT.md) for the full security model, capability intersection, result validation, and the `bool`/`int`/`float` type-checking notes.
 
 ### CPython vs RustPython
 
@@ -168,14 +211,6 @@ In the shadow of the Tower of the Bank for International Settlements — where t
 
 The fountains still flow in Basel. And now, so does Python on the IC. Great power requires great responsibility. Handle with care.
 
-## Disclaimer
-
-Basilisk may have unknown security vulnerabilities due to the following:
-
-- Limited or no production deployments on the IC
-- No extensive automated property tests
-- No independent security reviews/audits
-
 ## Security
 
 See [SECURITY.md](SECURITY.md).
@@ -188,6 +223,17 @@ For detailed architecture notes, see [CPYTHON_MIGRATION_NOTES.md](docs/CPYTHON_M
 
 Feel free to open [issues](https://github.com/smart-social-contracts/basilisk/issues).
 
+## Disclaimer
+
+**This software is not production-ready.** Do not deploy to mainnet or use with real assets or canister state you cannot afford to lose.
+
+Basilisk is in early development (alpha). It may contain bugs, breaking changes, and unknown security vulnerabilities. It has not undergone an independent security audit. **Use at your own risk.**
+
+- Not recommended for production deployments on the Internet Computer
+- No extensive automated property tests
+- No guarantee of correctness, availability, or security
+- APIs and behavior may change without notice
+
 ## License
 
-See [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).

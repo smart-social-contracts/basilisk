@@ -8,7 +8,7 @@ which uses CPython 3.13 compiled to `wasm32-wasip1`.
 1. **CPython is cross-compiled once** — The standard CPython 3.13 C source code is compiled
    using the WASI SDK (a clang-based toolchain) to produce `libpython3.13.a`, a static library
    targeting `wasm32-wasip1`. This is a ~30-minute build done once and published as a
-   [pre-built artifact](https://github.com/smart-social-contracts/basilisk/releases/tag/cpython-wasm-3.13.0)
+   [pre-built artifact](https://github.com/smart-social-contracts/basilisk/releases/tag/cpython-wasm-3.13.0-ic1)
    so developers don't have to rebuild it.
 
 2. **Basilisk generates a Rust canister** — When you run `python -m basilisk <name>`, basilisk
