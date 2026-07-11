@@ -3,8 +3,9 @@
 # then runs all test suites in parallel.
 #
 # IC tests use a live canister on IC mainnet (2i66l-saaaa-aaaas-qe3sq-cai).
-# The canister is started before tests and stopped after to save idle cycles.
-# Ensure the canister has enough cycles above its freezing threshold (~1.6 TC).
+# setup-ic-canister reinstalls WASM before tests; teardown stops the canister to
+# save idle cycles. IC_IDENTITY_PEM must be a controller, or set IC_CONTROLLER_PEM
+# (PEM identity that is a controller) so CI can re-grant access automatically.
 
 name: All Tests
 on:
@@ -56,11 +57,19 @@ jobs:
                   echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
             - name: Import identity
+              env:
+                  IC_IDENTITY_PEM: ${{ secrets.IC_IDENTITY_PEM }}
               run: |
-                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  if [ -z "$IC_IDENTITY_PEM" ]; then
+                    echo "::error::IC_IDENTITY_PEM secret is not set."
+                    exit 1
+                  fi
+                  umask 077
+                  printf '%s' "$IC_IDENTITY_PEM" > /tmp/ci-identity.pem
                   icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
                   icp identity default ci-deploy
+                  echo "Deploy principal: $(icp identity principal)"
 
             - name: Install basilisk and test dependencies
               run: |
@@ -82,17 +91,13 @@ jobs:
                   ls -la .basilisk/shell_test/shell_test.wasm
 
             - name: Reinstall canister with fresh WASM
-              working-directory: tests/test_canister
+              env:
+                  IC_IDENTITY_PEM: ${{ secrets.IC_IDENTITY_PEM }}
+                  IC_CONTROLLER_PEM: ${{ secrets.IC_CONTROLLER_PEM }}
+                  IC_IDENTITY_PEM_2: ${{ secrets.IC_IDENTITY_PEM_2 }}
+                  WASM_PATH: tests/test_canister/.basilisk/shell_test/shell_test.wasm
               run: |
-                  echo "Stopping canister $CANISTER_ID..."
-                  icp canister stop "$CANISTER_ID" -n "$NETWORK" 2>/dev/null || true
-                  sleep 3
-                  echo "Reinstalling canister with fresh WASM..."
-                  icp canister install "$CANISTER_ID" --mode reinstall -y -n "$NETWORK" --wasm .basilisk/shell_test/shell_test.wasm
-                  echo "Starting canister..."
-                  icp canister start "$CANISTER_ID" -n "$NETWORK"
-                  echo "Verifying canister is reachable..."
-                  icp canister call "$CANISTER_ID" status '()' -n "$NETWORK"
+                  bash scripts/ci_prepare_test_canister.sh
 
     ic-tests:
         needs: setup-ic-canister
@@ -114,16 +119,50 @@ jobs:
                   echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
             - name: Import identity
+              env:
+                  IC_IDENTITY_PEM: ${{ secrets.IC_IDENTITY_PEM }}
+                  IC_CONTROLLER_PEM: ${{ secrets.IC_CONTROLLER_PEM }}
+                  IC_IDENTITY_PEM_2: ${{ secrets.IC_IDENTITY_PEM_2 }}
               run: |
-                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  if [ -z "${IC_IDENTITY_PEM:-}" ]; then
+                    echo "::warning::IC_IDENTITY_PEM not set; skipping canister stop."
+                    exit 0
+                  fi
+                  umask 077
+                  printf '%s' "$IC_IDENTITY_PEM" > /tmp/ci-identity.pem
                   icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
                   rm /tmp/ci-identity.pem
                   icp identity default ci-deploy
+                  CONTROLLER_PEM="${IC_CONTROLLER_PEM:-${IC_IDENTITY_PEM_2:-}}"
+                  if [ -n "$CONTROLLER_PEM" ]; then
+                    printf '%s' "$CONTROLLER_PEM" > /tmp/ci-controller.pem
+                    icp identity import --from-pem /tmp/ci-controller.pem --storage plaintext ci-controller 2>/dev/null || true
+                    rm /tmp/ci-controller.pem
+                  fi
 
             - name: Stop canister
+              env:
+                  IC_IDENTITY_PEM: ${{ secrets.IC_IDENTITY_PEM }}
+                  IC_CONTROLLER_PEM: ${{ secrets.IC_CONTROLLER_PEM }}
+                  IC_IDENTITY_PEM_2: ${{ secrets.IC_IDENTITY_PEM_2 }}
               run: |
-                  echo "Stopping canister $CANISTER_ID on $NETWORK..."
-                  icp canister stop "$CANISTER_ID" -n "$NETWORK" || true
+                  if [ -z "${IC_IDENTITY_PEM:-}" ]; then
+                    exit 0
+                  fi
+                  DEPLOY_PRINCIPAL="$(icp identity principal)"
+                  MGMT_IDENTITY="ci-deploy"
+                  if ! icp canister status "$CANISTER_ID" -n "$NETWORK" 2>/dev/null | grep -q "$DEPLOY_PRINCIPAL"; then
+                    CONTROLLER_PEM="${IC_CONTROLLER_PEM:-${IC_IDENTITY_PEM_2:-}}"
+                    if [ -n "$CONTROLLER_PEM" ] && icp identity list 2>/dev/null | grep -q "ci-controller"; then
+                      icp identity default ci-controller
+                      MGMT_IDENTITY="ci-controller"
+                    else
+                      echo "::warning::Deploy identity is not a controller; leaving canister running."
+                      exit 0
+                    fi
+                  fi
+                  echo "Stopping canister $CANISTER_ID on $NETWORK via $MGMT_IDENTITY..."
+                  icp canister stop "$CANISTER_ID" -n "$NETWORK" --identity "$MGMT_IDENTITY" || true
 
     unit-tests:
         uses: ./.github/workflows/test-unit.yml

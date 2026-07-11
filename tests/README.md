@@ -27,7 +27,12 @@ Toolkit-specific IC tests (tasks, wallet, fx, crypto, vetkeys) live in [ic-basil
 | guards | `test_guards.py` | Guard metadata extraction, controller-only access |
 
 **Requirements:**
-- `IC_IDENTITY_PEM` secret (CI identity for mainnet calls)
+- `IC_IDENTITY_PEM` secret (CI identity for mainnet calls; principal `ah6ac-cc73l-...`)
+- `IC_CONTROLLER_PEM` secret (optional but recommended): PEM identity that is a
+  current controller of the test canister. When the deploy identity is not a
+  controller, setup uses this key to re-add `IC_IDENTITY_PEM` and perform
+  stop/install/start. One-time repair: `scripts/fix_test_canister_access.sh`
+  (run with `cycleops-ii` after `icp identity reauth cycleops-ii`).
 - The test canister must be deployed (handled by `test-all.yml`'s `setup-ic-canister` job)
 - A concurrency group (`ic-tests-mainnet`) prevents parallel runs from stomping on the shared canister
 - Each shard has a 20-minute timeout
