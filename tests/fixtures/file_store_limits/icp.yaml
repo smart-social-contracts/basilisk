@@ -1,3 +1,5 @@
+# Heavy file-store integration tests use 10T deploy_cycles — see
+# tests/integration/conftest.py (_DEPLOY_CYCLES).
 canisters:
   - name: file_store_limits
     build:

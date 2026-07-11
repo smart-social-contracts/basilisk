@@ -18,14 +18,32 @@ from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES
 
 EXAMPLE = "file_store_limits"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
+CANISTER_NAME = "file_store_limits"
+TOP_UP_AMOUNT = "5t"
+
+
+def _top_up_canister(amount=TOP_UP_AMOUNT):
+    """Top up the fixture canister so heavy file-store tests do not starve."""
+    result = subprocess.run(
+        ["icp", "canister", "top-up", CANISTER_NAME, "--amount", amount],
+        cwd=EXAMPLE_DIR,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        err = (result.stderr or "") + (result.stdout or "")
+        raise RuntimeError(f"icp canister top-up failed: {err[-500:]}")
 
 
 @pytest.fixture(scope="module")
 def canister(replica):
     ids = deploy_example(EXAMPLE)
     name = list(ids.keys())[0]
+    _top_up_canister()
     yield ids[name]
     # Cleanup after all tests in module
+    _top_up_canister()
     call_canister(ids[name], "cleanup_all_files", example_dir=EXAMPLE_DIR, update=True)
 
 
@@ -269,6 +287,7 @@ class TestUpgradeStress:
 
     def test_upgrade_with_many_files(self, canister):
         """Fill near limits, upgrade, verify all files survive."""
+        _top_up_canister()
         _call(canister, "cleanup_all_files")
 
         # Write 100 files of 10 KB each = 1 MB total
@@ -287,14 +306,7 @@ class TestUpgradeStress:
         if not os.path.exists(wasm_path):
             pytest.skip("WASM not available for upgrade test")
 
-        # Top up cycles — the stress writes drain a lot
-        subprocess.run(
-            ["icp", "canister", "top-up", "file_store_limits", "--amount", "1t"],
-            cwd=EXAMPLE_DIR,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
+        _top_up_canister()
 
         result = subprocess.run(
             ["icp", "canister", "install", "file_store_limits",

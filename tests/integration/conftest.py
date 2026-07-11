@@ -159,25 +159,39 @@ def deploy_example(example_name, replica_fixture=None):
     return canister_ids
 
 
+def _read_icp_yaml(example_dir):
+    """Load icp.yaml for a fixture directory."""
+    icp_yaml_path = os.path.join(example_dir, "icp.yaml")
+    if not os.path.exists(icp_yaml_path):
+        raise FileNotFoundError(f"No icp.yaml in {example_dir}")
+    import yaml
+    with open(icp_yaml_path) as f:
+        return yaml.safe_load(f) or {}
+
+
+# Examples that need more than icp-cli's default 2T create budget.
+_DEPLOY_CYCLES = {
+    "file_store_limits": "10t",
+}
+
+
+def _read_deploy_cycles(example_dir):
+    """Optional per-example deploy_cycles override."""
+    return _DEPLOY_CYCLES.get(os.path.basename(example_dir))
+
+
 def _read_canister_config(example_dir):
     """Read canister configuration from icp.yaml.
 
     Returns a dict of {canister_name: {"main": str}}.
     """
-    icp_yaml_path = os.path.join(example_dir, "icp.yaml")
-
-    if os.path.exists(icp_yaml_path):
-        import yaml
-        with open(icp_yaml_path) as f:
-            config = yaml.safe_load(f)
-        result = {}
-        for canister in config.get("canisters", []):
-            name = canister["name"]
-            main_file = _extract_main_from_icp_yaml(canister)
-            result[name] = {"main": main_file}
-        return result
-
-    raise FileNotFoundError(f"No icp.yaml in {example_dir}")
+    config = _read_icp_yaml(example_dir)
+    result = {}
+    for canister in config.get("canisters", []):
+        name = canister["name"]
+        main_file = _extract_main_from_icp_yaml(canister)
+        result[name] = {"main": main_file}
+    return result
 
 
 def _extract_main_from_icp_yaml(canister_config):
@@ -195,8 +209,12 @@ def _extract_main_from_icp_yaml(canister_config):
 
 def _deploy_with_build(example_dir, example_name, canister_names):
     """Full build + deploy via icp deploy."""
+    cmd = ["icp", "deploy"]
+    deploy_cycles = _read_deploy_cycles(example_dir)
+    if deploy_cycles:
+        cmd.extend(["--cycles", str(deploy_cycles)])
     result = subprocess.run(
-        ["icp", "deploy"],
+        cmd,
         cwd=example_dir,
         capture_output=True,
         text=True,
@@ -224,9 +242,13 @@ def _deploy_prebuilt(example_dir, example_name, canister_names, canister_configs
 
     Uses icp canister create + icp canister install --wasm for each canister.
     """
+    deploy_cycles = _read_deploy_cycles(example_dir)
     for name in canister_names:
+        create_cmd = ["icp", "canister", "create", name]
+        if deploy_cycles:
+            create_cmd.extend(["--cycles", str(deploy_cycles)])
         result = subprocess.run(
-            ["icp", "canister", "create", name],
+            create_cmd,
             cwd=example_dir,
             capture_output=True,
             text=True,
