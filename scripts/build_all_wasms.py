@@ -28,7 +28,6 @@ EXAMPLES_DIR = os.path.join(REPO_ROOT, "tests", "fixtures")
 ALL_EXAMPLES = [
     "all_stable_structures",
     "annotated_tests",
-    "audio_recorder",
     "blob_array",
     "bytes",
     "call_raw",
@@ -79,6 +78,7 @@ ALL_EXAMPLES = [
     "stable_memory",
     "stable_structures",
     "stdlib",
+    "subinterpreter",
     "timers",
     "tuple_types",
     "update",

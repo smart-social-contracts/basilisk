@@ -34,16 +34,17 @@ pytest tests/integration/test_counter.py tests/integration/test_query.py -v
 
 ## CI Workflow
 
-`test-integration.yml` runs these tests in 6 parallel shards:
+`test-integration.yml` runs these tests in 7 parallel shards:
 
 | Shard | Contents |
 |-------|----------|
 | `simple-a` | counter, query, update, date, primitive_types, annotated_tests, blob_array, bytes, complex_init, complex_types |
 | `simple-b` | guard_functions, filesystem, generators, timers, inspect_message, ic_api, imports, key_value_store, keywords, null_example |
-| `simple-c` | manual_reply, simple_erc20, simple_user_accounts, audio_recorder, principal, call_raw, init, optional_types, list_of_lists, tuple_types |
+| `simple-c` | manual_reply, simple_erc20, simple_user_accounts, principal, call_raw, init, optional_types, list_of_lists, tuple_types |
 | `advanced` | stable_memory, stable_structures, stdlib, randomness, rejections, outgoing_http_requests, init_and_post_upgrade_recovery |
 | `multi-canister` | cycles, heartbeat, management_canister, notify_raw, service |
 | `motoko` | calc, counter, echo, factorial, hello, hello-world, persistent-storage, phone-book, quicksort, simple-to-do, superheroes, whoami |
+| `sandbox` | subinterpreter (isolated subinterpreter sandbox: spawn, rpc, metering, validation, escape attempts, end-to-end) |
 
 ## Adding a New Test
 

@@ -47,7 +47,7 @@ Tests canister compilation and API correctness for 42 example canisters on a loc
 **Architecture:** build-once + deploy-only.
 1. A single runner builds all example WASMs via `scripts/build_all_wasms.py`
 2. Pre-built WASMs are uploaded as a GitHub artifact
-3. Six test shards download the WASMs, deploy via `icp canister install --wasm`, and run tests
+3. Seven test shards download the WASMs, deploy via `icp canister install --wasm`, and run tests
 
 **Test files** (in `tests/integration/`):
 
@@ -55,10 +55,11 @@ Tests canister compilation and API correctness for 42 example canisters on a loc
 |---|---|
 | simple-a | counter, query, update, date, primitive_types, annotated_tests, blob_array, bytes, complex_init, complex_types |
 | simple-b | guard_functions, filesystem, generators, timers, inspect_message, ic_api, imports, key_value_store, keywords, null_example |
-| simple-c | manual_reply, simple_erc20, simple_user_accounts, audio_recorder, principal, call_raw, init, optional_types, list_of_lists, tuple_types |
+| simple-c | manual_reply, simple_erc20, simple_user_accounts, principal, call_raw, init, optional_types, list_of_lists, tuple_types |
 | advanced | stable_memory, stable_structures, stdlib, randomness, rejections, outgoing_http_requests, init_and_post_upgrade_recovery |
 | multi-canister | cycles, heartbeat, management_canister, notify_raw, service |
 | motoko | 12 Motoko interop examples (calc, counter, echo, etc.) |
+| sandbox | subinterpreter (isolated subinterpreter sandbox) |
 
 **Example fixtures** are in `tests/fixtures/`. Each fixture has an `icp.yaml` and Python source files.
 

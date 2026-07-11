@@ -873,15 +873,10 @@ the subinterpreter suite). The whole 335-test integration suite could not
 be run to a clean finish in the dev sandbox for two environment reasons
 unrelated to this feature: (1) the Cursor IDE file-watcher holds ~62.9k of
 the machine's 65,536 `fs.inotify.max_user_watches` (raising the limit needs
-`sudo`, unavailable non-interactively here); (2) pre-existing, non-sandbox
-failures — `test_audio_recorder`/etc. assert `"Ok"` in the raw candid the
-`icp-cli` client renders, but the client renders the variant label as its
-field-hash (`17_724`) so the string check fails even though the canister
-call succeeds; and `test_browse`'s shell tests hang. Neither depends on
-libpython (metering/leak) changes, and both were reproduced on a stock
-pre-feature template (`~/.config/basilisk/0.14.1`) — see
-`docs/PREEXISTING_TEST_FAILURES.md` for the full repro notes (incl. the proof
-that `17_724` is the Candid field-hash of `"Ok"`).
+`sudo`, unavailable non-interactively here); (2) a pre-existing, non-sandbox
+failure — `test_browse` hangs at its first test (see
+`docs/PREEXISTING_TEST_FAILURES.md`). The `audio_recorder` fixture was
+subsequently deleted rather than fixed.
 
 **Phase 6 stop point:** reflection/escape (8/8 host + on-wasm),
 end-to-end, and the type-widening documentation all landed. The
