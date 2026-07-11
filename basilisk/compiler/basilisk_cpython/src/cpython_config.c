@@ -661,6 +661,9 @@ extern PyObject* _PyWarnings_Init(void);
  * it in the (global) inittab does not expose it to sandboxed code. */
 extern PyObject* PyInit__basilisk_sandbox(void);
 
+/* dynload_shlib.o removed — no shared library loading on WASI/IC */
+const char *_PyImport_DynLoadFiletab[] = { NULL };
+
 struct _inittab _PyImport_Inittab[] = {
     /* Core modules for Py_Initialize */
     {"posix", PyInit_posix},

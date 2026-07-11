@@ -308,7 +308,6 @@ xml_stub_ptr!(PyExpat_XML_GetInputContext, parser: *mut u8, offset: *mut i32, si
 // ---------------------------------------------------------------------------
 
 // dynload_shlib.o — shared library loading (N/A on WASI)
-#[no_mangle] pub static _PyImport_DynLoadFiletab: [*const c_char; 1] = [core::ptr::null()];
 #[no_mangle] pub unsafe extern "C" fn _PyImport_FindSharedFuncptr(_prefix: *const u8, _shortname: *const u8, _pathname: *const u8, _fqname: *const u8) -> *mut u8 { NULL }
 
 // myreadline.o — readline (N/A on IC)
