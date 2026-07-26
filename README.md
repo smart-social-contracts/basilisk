@@ -147,6 +147,8 @@ def run_extension() -> str:
 
 For privileged operations, spawn with a **capability** and an `rpc` handler (`basilisk.sandbox.build_capability` / `spawn_sandboxed`), and validate anything the sandbox proposes to write with the two-pass validator + atomic commit (`basilisk.sandbox.commit_result`). See [docs/SUBINTERPRETER_AUDIT.md](docs/SUBINTERPRETER_AUDIT.md) for the full security model, capability intersection, result validation, and the `bool`/`int`/`float` type-checking notes.
 
+**Overhead:** a call into an already-spawned sandbox costs ~10K instructions, boundary copies ~0.6K instructions per byte, metering 5–11%, and a full fresh-per-use spawn/call/close cycle ~55–100M instructions. Full numbers and amortization guidance in [docs/SANDBOX_BENCHMARKS.md](docs/SANDBOX_BENCHMARKS.md) ([`benchmarks/sandbox/`](benchmarks/sandbox/)).
+
 ### CPython vs RustPython
 
 |  | CPython 3.13 | RustPython |
@@ -183,9 +185,9 @@ These benchmarks use language-specific data structures (Python `dict`, `list`, `
 
 CPython is **6–10x faster** than RustPython across the board, with the gap largest for recursive function calls and list operations.
 
-> **Run it yourself:** trigger the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) from the Actions tab — select `cpython`, `rust`, `motoko`, or `all` as the backend, and `local` or `ic` as the network.
+> **Run it yourself:** trigger the [Benchmark workflow](https://github.com/smart-social-contracts/basilisk/actions/workflows/benchmark.yml) from the Actions tab — select `cpython`, `rust`, `motoko`, `sandbox`, or `all` as the backend, and `local` or `ic` as the network.
 
-The benchmark sources are in [`benchmarks/counter/`](benchmarks/counter/) (CPython), [`benchmarks/counter_rust/`](benchmarks/counter_rust/) (Rust), and [`benchmarks/counter_motoko/`](benchmarks/counter_motoko/) (Motoko).
+The benchmark sources are in [`benchmarks/counter/`](benchmarks/counter/) (CPython), [`benchmarks/counter_rust/`](benchmarks/counter_rust/) (Rust), and [`benchmarks/counter_motoko/`](benchmarks/counter_motoko/) (Motoko). The subinterpreter-sandbox overhead suite is in [`benchmarks/sandbox/`](benchmarks/sandbox/), with results in [docs/SANDBOX_BENCHMARKS.md](docs/SANDBOX_BENCHMARKS.md).
 
 
 ## Projects Using Basilisk

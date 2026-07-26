@@ -1,0 +1,8 @@
+canisters:
+  - name: benchmark_sandbox
+    build:
+      steps:
+        - type: script
+          commands:
+            - "echo 'WASM built externally via basilisk'"
+            - cp benchmark_sandbox.wasm "$ICP_WASM_OUTPUT_PATH"

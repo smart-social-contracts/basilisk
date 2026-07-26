@@ -11,6 +11,7 @@ on:
                     - cpython
                     - rust
                     - motoko
+                    - sandbox
                     - all
             network:
                 description: "Network to run benchmarks on"
@@ -112,6 +113,98 @@ jobs:
               with:
                   name: benchmark-cpython-${{ github.event.inputs.network }}
                   path: benchmarks/counter/benchmark_results_*.txt
+                  if-no-files-found: ignore
+
+    benchmark-sandbox:
+        if: github.event.inputs.backend == 'sandbox' || github.event.inputs.backend == 'all'
+        runs-on: ubuntu-latest
+        env:
+            PYTHON_VERSION: "3.13"
+            WASI_SDK_VERSION: "24"
+            WASI_SDK_PATH: /home/runner/.local/share/wasi-sdk
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install icp-cli
+              run: |
+                  curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh
+                  echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+
+            - name: Create venv
+              working-directory: benchmarks/sandbox
+              run: python -m venv venv
+
+            - name: Install WASI SDK
+              run: |
+                  mkdir -p ~/.local/share
+                  curl -LO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux ~/.local/share/wasi-sdk
+
+            - name: Install wasm-opt
+              run: |
+                  curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
+                  tar xzf /tmp/binaryen.tar.gz -C /tmp
+                  sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
+
+            - name: Cache basilisk cargo
+              uses: actions/cache@v4
+              with:
+                  path: ~/.config/basilisk
+                  key: basilisk-cargo-sandbox-bench-${{ hashFiles('basilisk/cargotoml.py') }}
+
+            - name: Download CPython canister template
+              run: |
+                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
+                  TEMPLATE_DIR="$HOME/.config/basilisk/${VERSION}"
+                  mkdir -p "${TEMPLATE_DIR}"
+                  curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm \
+                    -o "${TEMPLATE_DIR}/cpython_canister_template.wasm"
+                  echo "Template wasm: $(wc -c < "${TEMPLATE_DIR}/cpython_canister_template.wasm") bytes"
+
+            - name: Install Basilisk (CPython)
+              shell: bash -l {0}
+              working-directory: benchmarks/sandbox
+              run: source venv/bin/activate && pip install ../..
+
+            - name: Start local replica
+              if: github.event.inputs.network == 'local'
+              working-directory: benchmarks/sandbox
+              run: icp network start -d
+
+            - name: Import IC identity
+              if: github.event.inputs.network == 'ic'
+              run: |
+                  if [ -z "${{ secrets.IC_IDENTITY_PEM }}" ]; then
+                    echo "::error::IC_IDENTITY_PEM secret required for IC deployment"
+                    exit 1
+                  fi
+                  echo "${{ secrets.IC_IDENTITY_PEM }}" > /tmp/ci-identity.pem
+                  icp identity import --from-pem /tmp/ci-identity.pem --storage plaintext ci-deploy 2>/dev/null || true
+                  rm /tmp/ci-identity.pem
+                  icp identity default ci-deploy
+
+            - name: Run full benchmark
+              shell: bash -l {0}
+              working-directory: benchmarks/sandbox
+              timeout-minutes: 45
+              run: |
+                  source venv/bin/activate
+                  NETWORK="${{ github.event.inputs.network }}"
+                  RUNS="${{ github.event.inputs.runs || '5' }}"
+                  bash run_benchmark.sh --network "$NETWORK" --runs "$RUNS"
+
+            - name: Upload results
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: benchmark-sandbox-${{ github.event.inputs.network }}
+                  path: benchmarks/sandbox/benchmark_results_*.txt
                   if-no-files-found: ignore
 
     benchmark-rust:
