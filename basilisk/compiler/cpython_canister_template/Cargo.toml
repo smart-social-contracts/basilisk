@@ -14,6 +14,15 @@ crate-type = ["cdylib"]
 
 [features]
 default = []
+# Links Cedar in and exposes the _basilisk_cedar module. Off by default because
+# it costs ~899 KB gzipped, which canisters that do not authorize should not pay.
+# The template is published as two artifacts, plain and Cedar, selected in
+# dfx.json.
+#
+# The validator is included rather than evaluation alone: policies arrive at
+# runtime from third parties, so the canister cannot rely on a publisher's CI
+# having typechecked them.
+cedar = ["dep:cedar-policy"]
 
 [dependencies]
 ic-cdk = "0.13.5"
@@ -29,6 +38,7 @@ async-recursion = "1.0.0"
 ic-stable-structures = "0.6.5"
 slotmap = "1.0.6"
 ic-wasi-polyfill = { version = "0.6.1", features = ["transient"] }
+cedar-policy = { version = "4.12.0", optional = true }
 
 [patch.crates-io]
 num-bigint = { git = "https://github.com/rust-num/num-bigint", rev = "575cea47d21f969e541a7668751d4a82825d02bd" }

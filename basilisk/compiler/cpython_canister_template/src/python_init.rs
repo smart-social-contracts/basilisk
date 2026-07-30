@@ -34,6 +34,29 @@ pub fn cpython_full_init(python_code: &str) {
             )
         });
 
+    // Create and register the _basilisk_cedar native module. Panicking here is
+    // deliberate: a canister built on the Cedar artifact expects to authorize,
+    // and one that silently came up without the module would fail open or fail
+    // everywhere, both discovered late.
+    #[cfg(feature = "cedar")]
+    {
+        let cedar_module = crate::cedar_api::basilisk_cedar_create_module()
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Failed to create _basilisk_cedar module: {}",
+                    e.to_rust_err_string()
+                )
+            });
+        interpreter
+            .set_global("_basilisk_cedar", cedar_module)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Failed to register _basilisk_cedar: {}",
+                    e.to_rust_err_string()
+                )
+            });
+    }
+
     // Run frozen stdlib preamble first — makes json and other stdlib modules
     // available before the shim (which uses `import json` for StableBTreeMap).
     interpreter

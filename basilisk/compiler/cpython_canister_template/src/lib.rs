@@ -37,6 +37,8 @@ mod python_init;
 mod method_dispatch;
 mod wasm_data;
 mod stable_structures;
+#[cfg(feature = "cedar")]
+mod cedar_api;
 
 // Re-export from submodules
 use type_conversions::*;

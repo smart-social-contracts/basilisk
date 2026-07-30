@@ -227,6 +227,29 @@ jobs:
                   echo "Template wasm size: $(du -sh ${{ runner.temp }}/cpython_canister_template.wasm | cut -f1)"
                   ls -la ${{ runner.temp }}/cpython_canister_template.wasm
 
+            # A second artifact with Cedar linked in, for canisters that
+            # authorize. It is a separate build rather than a default because
+            # Cedar costs ~899 KB gzipped, which canisters that never authorize
+            # should not carry. Must run after the plain wasm has been copied
+            # out of target/, which the post-process step above does.
+            - name: Build canister template (Cedar)
+              run: |
+                  CPYTHON_WASM_DIR=~/cpython-wasm \
+                  WASI_SDK_PATH=/opt/wasi-sdk \
+                  cargo build \
+                    --manifest-path=basilisk/compiler/cpython_canister_template/Cargo.toml \
+                    --target=wasm32-wasip1 \
+                    --release \
+                    --features cedar
+
+            - name: Post-process Cedar template wasm
+              run: |
+                  TEMPLATE_SRC=basilisk/compiler/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm
+                  wasi2ic "$TEMPLATE_SRC" ${{ runner.temp }}/cpython_canister_template_cedar.wasm
+                  # Same wasm-opt caveat as the plain template above.
+                  echo "Cedar template wasm size: $(du -sh ${{ runner.temp }}/cpython_canister_template_cedar.wasm | cut -f1)"
+                  ls -la ${{ runner.temp }}/cpython_canister_template_cedar.wasm
+
             - name: Upload template artifact
               uses: actions/upload-artifact@v4
               with:
@@ -234,12 +257,21 @@ jobs:
                   path: ${{ runner.temp }}/cpython_canister_template.wasm
                   retention-days: 90
 
+            - name: Upload Cedar template artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: cpython-canister-template-cedar
+                  path: ${{ runner.temp }}/cpython_canister_template_cedar.wasm
+                  retention-days: 90
+
             - name: Add template to GitHub Release
               if: github.ref == 'refs/heads/main'
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}-${{ env.ARTIFACT_REVISION }}
-                  files: ${{ runner.temp }}/cpython_canister_template.wasm
+                  files: |
+                      ${{ runner.temp }}/cpython_canister_template.wasm
+                      ${{ runner.temp }}/cpython_canister_template_cedar.wasm
                   draft: false
                   prerelease: false
                   make_latest: false
