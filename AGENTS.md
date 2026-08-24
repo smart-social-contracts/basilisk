@@ -2,6 +2,12 @@
 
 Basilisk canisters expose two standardized endpoints for AI agents.
 
+## Do not deploy without confirmation
+
+**Do not deploy automatically.** The human triggers all deployments.
+
+If a change needs a deployment to take effect or to be verified, state that clearly in your reply (what, where, and why) and wait for explicit confirmation before running any deploy, install, upgrade, reinstall, rollout, seed, or publish-to-canister command.
+
 ## `__browse__` — Read-only data access (query, free, instant)
 
 ```bash
