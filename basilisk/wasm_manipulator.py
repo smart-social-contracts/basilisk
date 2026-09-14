@@ -207,7 +207,7 @@ def manipulate_wasm(
         "type_defs": type_defs or {},
         "lifecycle": lifecycle or {},
     }
-    method_meta_json = json.dumps(metadata).encode("utf-8")
+    method_meta_json = json.dumps(metadata, sort_keys=True).encode("utf-8")
 
     # Find placeholder function indices for patching
     placeholder_funcs = {}
@@ -959,7 +959,8 @@ def _build_type_registry(tree) -> Tuple[Dict[str, str], Dict[str, str]]:
             case_strs = []
             for case_name, ann in cases:
                 ct = resolve_annotation(ann)
-                case_strs.append(f"{_quote_field(case_name)} : {ct}")
+                # `Commit : ;` is invalid candid: a case with no payload is written bare.
+                case_strs.append(f"{_quote_field(case_name)} : {ct}" if ct else _quote_field(case_name))
             type_defs[name] = "variant { " + "; ".join(case_strs) + " }"
         elif name in raw_tuples:
             elements = raw_tuples[name]
