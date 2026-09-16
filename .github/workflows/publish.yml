@@ -87,13 +87,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The build-cpython-wasm.yml CI uploads the template to cpython-wasm-3.13.0-ic1 release.
-          # Download it so we can attach it to the versioned release (v{version}),
-          # which is where find_template_wasm() looks for it.
-          gh release download cpython-wasm-3.13.0-ic1 \
-            --pattern 'cpython_canister_template.wasm' \
-            --dir "${{ runner.temp }}" \
-            --clobber || echo "⚠️  Template WASM not found in cpython-wasm-3.13.0-ic1 release (skipping)"
+          # The build-cpython-wasm.yml CI uploads the templates to the cpython-wasm-3.13.0-ic1 release.
+          # Download them so we can attach them to the versioned release (v{version}):
+          # the plain template is where find_template_wasm() looks; the Cedar template
+          # is what downstream projects (realms) pin via BASILISK_TEMPLATE_WASM.
+          for asset in cpython_canister_template.wasm cpython_canister_template_cedar.wasm; do
+            gh release download cpython-wasm-3.13.0-ic1 \
+              --pattern "$asset" \
+              --dir "${{ runner.temp }}" \
+              --clobber || echo "⚠️  $asset not found in cpython-wasm-3.13.0-ic1 release (skipping)"
+          done
 
       - name: Create GitHub Release
         env:
@@ -101,12 +104,14 @@ jobs:
           RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
         run: |
           RELEASE_ASSETS=""
-          if [ -f "${{ runner.temp }}/cpython_canister_template.wasm" ]; then
-            RELEASE_ASSETS="${{ runner.temp }}/cpython_canister_template.wasm"
-            echo "✅ Including template WASM in release"
-          else
-            echo "⚠️  No template WASM to include"
-          fi
+          for asset in cpython_canister_template.wasm cpython_canister_template_cedar.wasm; do
+            if [ -f "${{ runner.temp }}/$asset" ]; then
+              RELEASE_ASSETS="$RELEASE_ASSETS ${{ runner.temp }}/$asset"
+              echo "✅ Including $asset in release"
+            else
+              echo "⚠️  No $asset to include"
+            fi
+          done
 
           if [ -f "icp-cli/recipe/recipe.hbs" ]; then
             RELEASE_ASSETS="$RELEASE_ASSETS icp-cli/recipe/recipe.hbs"
@@ -139,7 +144,8 @@ jobs:
               set -e
 
               apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
-              curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh > /dev/null 2>&1
+              # No quotes around =https: this whole script is inside a single-quoted bash -c string.
+              curl --proto =https --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh > /dev/null 2>&1
               export PATH="$HOME/.cargo/bin:$PATH"
 
               # Wait for PyPI propagation
