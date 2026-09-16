@@ -14,7 +14,7 @@ On push to main, `test-all.yml` orchestrates all three (plus the CPython WASM te
 
 ## IC Tests (`test-shell.yml`)
 
-Tests Basilisk CDK runtime features against a live canister on IC mainnet (`2i66l-saaaa-aaaas-qe3sq-cai`).
+Tests Basilisk CDK runtime features against a live canister on IC mainnet (`gfs5q-6qaaa-aaaae-ag5nq-cai`).
 
 Toolkit-specific IC tests (tasks, wallet, fx, crypto, vetkeys) live in [ic-basilisk-toolkit](https://github.com/smart-social-contracts/ic-basilisk-toolkit).
 
@@ -40,7 +40,7 @@ Toolkit-specific IC tests (tasks, wallet, fx, crypto, vetkeys) live in [ic-basil
 **Running locally:**
 ```bash
 pip install -e ".[test]"
-BASILISK_TEST_CANISTER=2i66l-saaaa-aaaas-qe3sq-cai \
+BASILISK_TEST_CANISTER=gfs5q-6qaaa-aaaae-ag5nq-cai \
 BASILISK_TEST_NETWORK=ic \
 PYTHONPATH=. python -m pytest tests/test_shell.py -v
 ```

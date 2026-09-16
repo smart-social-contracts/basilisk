@@ -25,7 +25,7 @@ on:
                 description: "Canister ID to test against"
                 required: false
                 type: string
-                default: "2i66l-saaaa-aaaas-qe3sq-cai"
+                default: "gfs5q-6qaaa-aaaae-ag5nq-cai"
             network:
                 description: "IC network"
                 required: false
@@ -49,7 +49,7 @@ jobs:
                     - shard: guards
                       pytest_args: tests/test_guards.py
         env:
-            BASILISK_TEST_CANISTER: ${{ inputs.canister || '2i66l-saaaa-aaaas-qe3sq-cai' }}
+            BASILISK_TEST_CANISTER: ${{ inputs.canister || 'gfs5q-6qaaa-aaaae-ag5nq-cai' }}
             BASILISK_TEST_NETWORK: ${{ inputs.network || 'ic' }}
         name: ic-tests (${{ matrix.shard }})
         timeout-minutes: 20

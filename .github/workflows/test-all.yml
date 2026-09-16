@@ -2,7 +2,7 @@
 # First builds the CPython WASM template (if template paths changed),
 # then runs all test suites in parallel.
 #
-# IC tests use a live canister on IC mainnet (2i66l-saaaa-aaaas-qe3sq-cai).
+# IC tests use a live canister on IC mainnet (gfs5q-6qaaa-aaaae-ag5nq-cai).
 # setup-ic-canister reinstalls WASM before tests; teardown stops the canister to
 # save idle cycles. IC_IDENTITY_PEM must be a controller, or set IC_CONTROLLER_PEM
 # (PEM identity that is a controller) so CI can re-grant access automatically.
@@ -41,7 +41,7 @@ jobs:
         if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         runs-on: ubuntu-latest
         env:
-            CANISTER_ID: 2i66l-saaaa-aaaas-qe3sq-cai
+            CANISTER_ID: gfs5q-6qaaa-aaaae-ag5nq-cai
             NETWORK: ic
         steps:
             - uses: actions/checkout@v4
@@ -110,7 +110,7 @@ jobs:
         if: always()
         runs-on: ubuntu-latest
         env:
-            CANISTER_ID: 2i66l-saaaa-aaaas-qe3sq-cai
+            CANISTER_ID: gfs5q-6qaaa-aaaae-ag5nq-cai
             NETWORK: ic
         steps:
             - name: Install icp-cli
