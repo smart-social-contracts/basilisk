@@ -103,5 +103,17 @@ icp canister start "$CANISTER_ID" -n "$NETWORK" --identity "$MGMT"
 
 icp identity default "$DEPLOY_IDENTITY"
 echo "Verifying canister is reachable..."
-icp canister call "$CANISTER_ID" status '()' -n "$NETWORK" --query
-echo "Test canister $CANISTER_ID is ready."
+# `canister start` returns once the update is certified, but a query can still
+# land on a replica that has not applied it yet and be rejected with IC0508
+# ("is stopped and therefore does not have a CallContextManager"). Retry.
+for attempt in $(seq 1 10); do
+    if icp canister call "$CANISTER_ID" status '()' -n "$NETWORK" --query; then
+        echo "Test canister $CANISTER_ID is ready."
+        exit 0
+    fi
+    echo "Canister not reachable yet (attempt $attempt/10); retrying in 3s..."
+    sleep 3
+done
+echo "::error::Canister $CANISTER_ID did not answer status after start."
+icp canister status "$CANISTER_ID" -n "$NETWORK" --identity "$MGMT" || true
+exit 1
