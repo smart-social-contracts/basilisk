@@ -14,7 +14,7 @@
 # IC_CONTROLLER_PEM (basilisk-ic-controller).
 set -euo pipefail
 
-CANISTER_ID="${CANISTER_ID:-2i66l-saaaa-aaaas-qe3sq-cai}"
+CANISTER_ID="${CANISTER_ID:-gfs5q-6qaaa-aaaae-ag5nq-cai}"
 NETWORK="${NETWORK:-ic}"
 DEPLOY_PRINCIPAL="${DEPLOY_PRINCIPAL:-ah6ac-cc73l-bb2zc-ni7bh-jov4q-roeyj-6k2ob-mkg5j-pequi-vuaa6-2ae}"
 CONTROLLER_PRINCIPAL="${CONTROLLER_PRINCIPAL:-iaxry-644yo-icgmh-ckljl-uj37l-un2qc-f6x3j-a2azi-jtec6-twdat-mae}"
