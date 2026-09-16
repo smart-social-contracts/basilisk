@@ -589,6 +589,25 @@ class StableBTreeMap(Generic[K, V]):
         """
         return _basilisk_ic.stable_b_tree_map_len(self.memory_id)  # type: ignore
 
+    def range(
+        self, start: K, end: Opt[K] = None, limit: int = 1000
+    ) -> Vec[Tuple[K, V]]:
+        """
+        Get an ordered page of key-value pairs with ``start <= key < end``.
+
+        This is a single B-tree walk, so a page costs one call into the
+        runtime instead of one ``get`` per key. Keys are ordered by their
+        stable encoding: ``str`` keys sort shorter-first, then bytewise
+        (``"a@9" < "a@10"``); unsigned key types (``nat8`` .. ``nat64``)
+        sort numerically.
+
+        :param start: First key of the range (inclusive).
+        :param end: Upper bound of the range (exclusive), or None for no bound.
+        :param limit: Maximum number of pairs to return.
+        :return: A list of (key, value) tuples in key order.
+        """
+        return _basilisk_ic.stable_b_tree_map_range(self.memory_id, start, end, limit)  # type: ignore
+
     def remove(self, key: K) -> Opt[V]:
         """
         Remove a key-value pair from the map.

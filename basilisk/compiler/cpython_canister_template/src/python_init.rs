@@ -683,6 +683,21 @@ class StableBTreeMap(metaclass=_StableBTreeMapMeta):
         return [(_decode_val(k), _decode_val(v)) for k, v in _basilisk_ic.smap_items(self._memory_id)]
     def len(self):
         return _basilisk_ic.smap_len(self._memory_id)
+    def range(self, start, end=None, limit=1000):
+        """Ordered page of (key, value) pairs with start <= key < end.
+
+        One B-tree descent plus a sequential walk, so a page costs one
+        FFI call instead of one ``get`` per key. ``end=None`` means no
+        upper bound. Keys are ordered by their stable encoding: for ``str``
+        keys that is shorter-first, then bytewise (so ``"a@9" < "a@10"``);
+        for unsigned key types (``nat8`` .. ``nat64``) it is numeric order.
+        """
+        if limit < 0:
+            raise ValueError("limit must be >= 0")
+        start_b = _encode(start, self._kt)
+        end_b = b'' if end is None else _encode(end, self._kt)
+        return [(_decode_val(k), _decode_val(v))
+                for k, v in _basilisk_ic.smap_range(self._memory_id, start_b, end_b, limit)]
 
 _mod.StableBTreeMap = StableBTreeMap
 

@@ -154,6 +154,26 @@ pub fn smap_items(id: u8) -> Vec<(Vec<u8>, Vec<u8>)> {
     })
 }
 
+/// Ordered page of entries with `start <= key < end`, at most `limit` items.
+///
+/// An empty `end` means "no upper bound". Keys are compared as raw encoded
+/// bytes, so the order is that of the Python-side tagged encoding
+/// (for `str` keys: shorter keys first, then bytewise). One B-tree descent
+/// plus a sequential leaf walk, instead of one descent per `get`.
+pub fn smap_range(id: u8, start: &[u8], end: &[u8], limit: usize) -> Vec<(Vec<u8>, Vec<u8>)> {
+    MAPS.with(|maps| {
+        let maps = maps.borrow();
+        let map = maps.get(&id).expect("smap not initialized");
+        let lo = SBytesU(start.to_vec());
+        let entries: Box<dyn Iterator<Item = (SBytesU, SBytesU)>> = if end.is_empty() {
+            Box::new(map.range(lo..))
+        } else {
+            Box::new(map.range(lo..SBytesU(end.to_vec())))
+        };
+        entries.take(limit).map(|(k, v)| (k.0, v.0)).collect()
+    })
+}
+
 // ---------------------------------------------------------------------------
 // BTreeSet
 // ---------------------------------------------------------------------------

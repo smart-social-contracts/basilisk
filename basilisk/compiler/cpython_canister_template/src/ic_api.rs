@@ -9,8 +9,10 @@ use slotmap::Key as _SlotMapKey;
 
 /// Create the _basilisk_ic Python module with all IC API bindings.
 pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyError> {
-    // Method table for the _basilisk_ic module
-    static mut METHODS: [ffi::PyMethodDef; 77] = unsafe { core::mem::zeroed() };
+    // Method table for the _basilisk_ic module.
+    // Must hold every add_method! below plus one null sentinel; grow it when
+    // adding a method (an off-by-one here traps canister_init with a bounds panic).
+    static mut METHODS: [ffi::PyMethodDef; 78] = unsafe { core::mem::zeroed() };
 
     unsafe {
         let methods = &mut METHODS;
@@ -82,6 +84,7 @@ pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyEr
         add_method!("smap_len", ic_smap_len, ffi::METH_O);
         add_method!("smap_keys", ic_smap_keys, ffi::METH_O);
         add_method!("smap_items", ic_smap_items, ffi::METH_O);
+        add_method!("smap_range", ic_smap_range, ffi::METH_VARARGS);
         add_method!("sset_init", ic_sset_init, ffi::METH_O);
         add_method!("sset_insert", ic_sset_insert, ffi::METH_VARARGS);
         add_method!("sset_remove", ic_sset_remove, ffi::METH_VARARGS);
@@ -108,6 +111,10 @@ pub fn basilisk_ic_create_module() -> Result<PyObjectRef, basilisk_cpython::PyEr
         add_method!("sheap_len", ic_sheap_len, ffi::METH_O);
 
         // Sentinel (null terminator)
+        assert!(
+            i < methods.len(),
+            "_basilisk_ic METHODS table too small: grow the array in ic_api.rs"
+        );
         methods[i] = core::mem::zeroed();
 
         // Create module
@@ -1359,10 +1366,8 @@ unsafe extern "C" fn ic_smap_keys(
     vec_bytes_to_pylist(crate::stable_structures::smap_keys(extract_mem_id(arg)))
 }
 
-unsafe extern "C" fn ic_smap_items(
-    _self: *mut ffi::PyObject, arg: *mut ffi::PyObject,
-) -> *mut ffi::PyObject {
-    let items = crate::stable_structures::smap_items(extract_mem_id(arg));
+/// Helper: build a Python list of `(bytes, bytes)` tuples from key/value pairs.
+unsafe fn pairs_to_pylist(items: Vec<(Vec<u8>, Vec<u8>)>) -> *mut ffi::PyObject {
     let list = ffi::PyList_New(items.len() as ffi::Py_ssize_t);
     for (i, (k, v)) in items.into_iter().enumerate() {
         let pk = PyObjectRef::from_bytes(&k).unwrap();
@@ -1371,6 +1376,25 @@ unsafe extern "C" fn ic_smap_items(
         ffi::PyList_SetItem(list, i as ffi::Py_ssize_t, tup.into_object().into_ptr());
     }
     list
+}
+
+unsafe extern "C" fn ic_smap_items(
+    _self: *mut ffi::PyObject, arg: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    pairs_to_pylist(crate::stable_structures::smap_items(extract_mem_id(arg)))
+}
+
+/// `smap_range(memory_id, start: bytes, end: bytes, limit: int) -> list[(bytes, bytes)]`
+/// Empty `end` means unbounded.
+unsafe extern "C" fn ic_smap_range(
+    _self: *mut ffi::PyObject, args: *mut ffi::PyObject,
+) -> *mut ffi::PyObject {
+    let t = basilisk_cpython::PyTuple::from_object_unchecked(args).expect("smap_range: tuple");
+    let id = extract_mem_id(t.get_item(0).unwrap().as_ptr());
+    let start = t.get_item(1).unwrap().extract_bytes().expect("smap_range: start bytes");
+    let end = t.get_item(2).unwrap().extract_bytes().expect("smap_range: end bytes");
+    let limit = t.get_item(3).unwrap().extract_u64().expect("smap_range: limit int") as usize;
+    pairs_to_pylist(crate::stable_structures::smap_range(id, &start, &end, limit))
 }
 
 // --- BTreeSet ---
