@@ -242,9 +242,19 @@ db.values()               # → ["wonderland"]
 db.items()                # → [("alice", "wonderland")]
 db.len()                  # → 1
 db.is_empty()             # → True/False
+db.range("a", "b", limit=50)  # → [("alice", "wonderland")]  (a <= key < b, in key order)
 ```
 
 **Rust backing**: `ic_stable_structures::BTreeMap<SBytes, SBytes, VM>` — supports unbounded keys/values, uses a single virtual memory.
+
+#### Paging with `range()`
+
+`keys()`, `values()` and `items()` copy the **whole map** into a Python list, so they are only suitable for small maps. `range(start, end=None, limit=1000)` returns one ordered page (`start <= key < end`) with a single B-tree descent and a sequential leaf walk — one FFI call per page instead of one `get()` per key. Pass `end=None` for no upper bound; pass the last returned key plus a suffix (or the next key you want) as the next `start` to continue.
+
+Range order is the byte order of the tagged encoding, which for `str` keys means **shorter keys first, then bytewise** (`"user@9" < "user@10"`, and `"user@10" < "user@2x"`). Two consequences:
+
+- A prefix such as `"user@"` is contiguous only among keys of the **same length**. To walk all `"user@<n>"` keys in numeric order, either zero-pad `n` to a fixed width, or issue one `range()` per digit count (`"user@1".."user@:"`, then `"user@10".."user@::"`, …).
+- Unsigned numeric key types (`nat8` .. `nat64`) sort numerically, so `range(10, 20)` on a `StableBTreeMap[nat64, ...]` does what you expect. The default `int` key is a signed big-endian `int64`, so negative keys sort **after** positive ones.
 
 ### StableBTreeSet
 

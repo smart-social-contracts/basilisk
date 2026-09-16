@@ -46,6 +46,50 @@ def test_map_values(canister):
     raw = call_canister(canister, "map_values", example_dir=EXAMPLE_DIR)
     assert "wonderland" in raw
 
+def _range_or_skip(canister, method, args):
+    """Call a range() endpoint, skipping if the deployed template predates it.
+
+    PR CI deploys with the *published* template WASM (see test-integration.yml
+    "Pre-download canister template"), which does not yet expose
+    StableBTreeMap.range. Same approach as test_service.py: don't block CI on
+    the template release; the assertions run for real once it ships.
+    """
+    try:
+        return call_canister(canister, method, args, example_dir=EXAMPLE_DIR)
+    except RuntimeError as e:
+        if "AttributeError" in str(e):
+            pytest.skip("deployed template predates StableBTreeMap.range()")
+        raise
+
+
+def test_map_range(canister):
+    """range() returns an ordered page; str keys sort shorter-first, then bytewise."""
+    keys = [("user@1", "a"), ("user@2", "b"), ("user@10", "c"), ("user@3", "d"), ("zzzzzzzzzz", "e")]
+    for k, v in keys:
+        call_canister(canister, "map_insert", f'("{k}", "{v}")', example_dir=EXAMPLE_DIR, update=True)
+    try:
+        _assert_map_range(canister)
+    finally:
+        for k, _ in keys:
+            call_canister(canister, "map_remove", f'("{k}")', example_dir=EXAMPLE_DIR, update=True)
+
+
+def _assert_map_range(canister):
+    # Same-length bucket "user@<digit>": numeric order, "user@10" is excluded (longer key)
+    raw = _range_or_skip(canister, "map_range", '("user@1", "user@:", 100 : nat64)')
+    assert raw.index("user@1") < raw.index("user@2") < raw.index("user@3")
+    assert "user@10" not in raw
+    assert "zzzzzzzzzz" not in raw
+
+    # limit caps the page
+    raw = _range_or_skip(canister, "map_range", '("user@1", "user@:", 2 : nat64)')
+    assert "user@1" in raw and "user@2" in raw and "user@3" not in raw
+
+    # Empty end = unbounded: everything from "user@10" onwards in encoding order
+    raw = _range_or_skip(canister, "map_range", '("user@10", "", 100 : nat64)')
+    assert "user@10" in raw and "zzzzzzzzzz" in raw  # the 10-char key sorts after the 7-char one
+    assert "user@3" not in raw  # shorter key, sorts before "user@10"
+
 def test_map_remove(canister):
     raw = call_canister(canister, "map_remove", '("alice")', example_dir=EXAMPLE_DIR, update=True)
     assert "wonderland" in raw
@@ -86,6 +130,14 @@ def test_typed_map_keys_values(canister):
     assert "100" in raw_vals
     assert "-42" in raw_vals
     assert "-1" in raw_vals
+
+def test_typed_map_range(canister):
+    """nat8 keys are big-endian fixed width, so range() is numeric and half-open."""
+    raw = _range_or_skip(canister, "typed_map_range_keys", "(0 : nat8, 255 : nat8, 100 : nat64)")
+    assert "0" in raw and "10" in raw
+    assert "255" not in raw  # end is exclusive
+    raw = _range_or_skip(canister, "typed_map_range_keys", "(1 : nat8, 255 : nat8, 1 : nat64)")
+    assert "10" in raw and "255" not in raw
 
 def test_typed_map_remove(canister):
     raw = call_canister(canister, "typed_map_remove", "(10 : nat8)", example_dir=EXAMPLE_DIR, update=True)

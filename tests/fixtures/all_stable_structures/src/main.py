@@ -14,6 +14,7 @@ from basilisk import (
     StableLog,
     StableCell,
     StableMinHeap,
+    Tuple,
     update,
     Vec,
 )
@@ -53,6 +54,11 @@ def map_keys() -> Vec[str]:
 def map_values() -> Vec[str]:
     return smap.values()
 
+@query
+def map_range(start: str, end: str, limit: nat64) -> Vec[Tuple[str, str]]:
+    # Empty end string means "no upper bound"
+    return smap.range(start, end or None, limit)
+
 
 # --- StableBTreeMap with explicit types: nat8 keys, int32 values (memory_id=1) ---
 typed_map = StableBTreeMap[nat8, int32](memory_id=1, max_key_size=200, max_value_size=10_000)
@@ -84,6 +90,10 @@ def typed_map_keys() -> Vec[nat64]:
 @query
 def typed_map_values() -> Vec[int32]:
     return typed_map.values()
+
+@query
+def typed_map_range_keys(start: nat8, end: nat8, limit: nat64) -> Vec[nat64]:
+    return [k for k, _ in typed_map.range(start, end, limit)]
 
 
 # --- StableBTreeSet (memory_id=10) ---
