@@ -91,7 +91,7 @@ icp canister call my_canister __shell__ '("print(1 + 1)")'
 # ("2\n")
 ```
 
-**`__browse__`** — read-only data introspection (public `@query`, instant, free):
+**`__browse__`** — read-only data introspection (controller-only `@query`, instant, free):
 ```bash
 # Discover data schema
 icp canister call my_canister __browse__ '("{\"action\": \"schema\"}")'
@@ -103,7 +103,7 @@ icp canister call my_canister __browse__ '("{\"action\": \"keys\", \"map\": \"us
 icp canister call my_canister __browse__ '("{\"action\": \"get\", \"map\": \"users\", \"key\": \"alice\"}")'
 ```
 
-Both endpoints can be overridden with custom implementations (e.g. custom guards, filtered data access). If you define `__shell__` or `__browse__` yourself, the compiler uses yours instead of the default.
+Both built-ins answer controllers only: `__browse__` returns every key and value in your stable structures. Both endpoints can be overridden with custom implementations (e.g. a different guard, filtered data access). If you define `__shell__` or `__browse__` yourself, the compiler uses yours instead of the default, guard included.
 
 ## Sandboxing Untrusted Code
 

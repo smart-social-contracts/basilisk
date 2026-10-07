@@ -46,7 +46,7 @@ Basilisk compiles Python code into WebAssembly canisters that run on the Interne
 
 2. **`__shell__` is an arbitrary code execution endpoint.** When enabled via `__basilisk_features__ = ["shell"]`, the built-in default is controller-only. Custom implementations MUST apply `guard_against_non_controllers` or equivalent. The built-in test canister and templates apply this guard by default.
 
-3. **`__browse__` exposes stable structure data as a public query by default.** When enabled via `__basilisk_features__ = ["browse"]`, any principal can read all keys and values in your canister's stable maps, sets, and vectors. If your canister stores sensitive data, provide a custom `__browse__` implementation with an appropriate guard. The built-in default has no access control.
+3. **`__browse__` reads every stable structure.** When enabled via `__basilisk_features__ = ["browse"]`, the built-in default returns all keys and values in your canister's stable maps, sets, and vectors, so since 0.16.0 it is controller-only (`guard_against_non_controllers`); earlier versions served it as a public query. A custom `__browse__` replaces the built-in along with its guard: apply one yourself unless the data is meant to be public.
 
 4. **Cross-canister calls are async and subject to interleaving.** Between `yield` points in async methods, other messages can execute and mutate state (TOCTOU). Implement per-caller locking for financial operations.
 

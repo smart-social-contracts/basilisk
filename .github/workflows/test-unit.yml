@@ -32,7 +32,7 @@ jobs:
             - name: Run unit tests
               # test_subinterpreter_stubs self-skips when the host CPython
               # build (builddir/build/libpython3.13.a) is absent.
-              run: python -m pytest tests/test_bundle.py tests/test_apply_patches.py tests/test_subinterpreter_stubs.py tests/test_capability_intersection.py tests/test_result_validation.py -v
+              run: python -m pytest tests/test_bundle.py tests/test_apply_patches.py tests/test_subinterpreter_stubs.py tests/test_capability_intersection.py tests/test_result_validation.py tests/test_builtin_endpoints.py -v
 
     # Reproducibility guard: the repo's CPython patches must apply cleanly to
     # a FRESH clone of the pinned tag, and the patched tree must contain no

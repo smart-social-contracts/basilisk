@@ -2,7 +2,7 @@
 
 Basilisk canisters expose two standardized endpoints for AI agents.
 
-## `__browse__` — Read-only data access (query, free, instant)
+## `__browse__` — Read-only data access (query, controller-only, free, instant)
 
 ```bash
 icp canister call <canister> __browse__ '("{\"action\": \"<action>\", ...}")'

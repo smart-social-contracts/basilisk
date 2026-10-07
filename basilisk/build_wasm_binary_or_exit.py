@@ -69,8 +69,6 @@ def build_with_template(
     from basilisk.wasm_manipulator import (
         manipulate_wasm,
         extract_methods_from_python,
-        extract_features_from_python,
-        extract_stable_structures_from_python,
         generate_candid_from_methods,
     )
 
@@ -158,39 +156,7 @@ def build_with_template(
             print(f"  Lifecycle hooks: {', '.join(lifecycle.keys())}")
 
     # 3b. Inject __shell__ and __browse__ if opted in via __basilisk_features__.
-    features = extract_features_from_python(python_source)
-    user_method_names = {m["name"] for m in methods}
-
-    if features and verbose:
-        print(f"  __basilisk_features__: {features}")
-
-    if "shell" in features and "__shell__" not in user_method_names:
-        python_source += _generate_default_shell_code()
-        methods.append({
-            "name": "__basilisk_controller_guard__",
-            "method_type": "_guard",  # internal, not a canister method
-        })
-        methods.append({
-            "name": "__shell__",
-            "method_type": "update",
-            "params": [{"name": "code", "candid_type": "text"}],
-            "returns": "text",
-            "guard": "__basilisk_controller_guard__",
-        })
-        if verbose:
-            print("  Injected built-in __shell__ (update, controller-only)")
-
-    if "browse" in features and "__browse__" not in user_method_names:
-        stable_structures = extract_stable_structures_from_python(python_source)
-        python_source += _generate_default_browse_code(stable_structures)
-        methods.append({
-            "name": "__browse__",
-            "method_type": "query",
-            "params": [{"name": "query", "candid_type": "text"}],
-            "returns": "text",
-        })
-        if verbose:
-            print(f"  Injected built-in __browse__ (query, {len(stable_structures)} stable structure(s))")
+    python_source = inject_builtin_endpoints(python_source, methods, verbose)
 
     # 3c. Inject automatic schema upgrade check into post_upgrade.
     # If ic_python_db is present, check_upgrade_compatibility() runs after the
@@ -691,6 +657,54 @@ def generate_candid_file_from_source(paths: Paths, verbose: bool):
         print(candid_string)
 
     create_file(paths["did"], candid_string)
+
+
+def inject_builtin_endpoints(python_source: str, methods: list, verbose: bool = False) -> str:
+    """Append the built-in ``__shell__`` / ``__browse__`` named in
+    ``__basilisk_features__`` (unless the canister defines its own) to
+    ``python_source`` and ``methods``. Both are controller-only: ``__browse__``
+    reads every stable structure, so it is no public query either."""
+    from basilisk.wasm_manipulator import (
+        extract_features_from_python,
+        extract_stable_structures_from_python,
+    )
+
+    features = extract_features_from_python(python_source)
+    user_method_names = {m["name"] for m in methods}
+
+    if features and verbose:
+        print(f"  __basilisk_features__: {features}")
+
+    if "shell" in features and "__shell__" not in user_method_names:
+        python_source += _generate_default_shell_code()
+        methods.append({
+            "name": "__basilisk_controller_guard__",
+            "method_type": "_guard",  # internal, not a canister method
+        })
+        methods.append({
+            "name": "__shell__",
+            "method_type": "update",
+            "params": [{"name": "code", "candid_type": "text"}],
+            "returns": "text",
+            "guard": "__basilisk_controller_guard__",
+        })
+        if verbose:
+            print("  Injected built-in __shell__ (update, controller-only)")
+
+    if "browse" in features and "__browse__" not in user_method_names:
+        stable_structures = extract_stable_structures_from_python(python_source)
+        python_source += _generate_default_browse_code(stable_structures)
+        methods.append({
+            "name": "__browse__",
+            "method_type": "query",
+            "params": [{"name": "query", "candid_type": "text"}],
+            "returns": "text",
+            "guard": "guard_against_non_controllers",
+        })
+        if verbose:
+            print(f"  Injected built-in __browse__ (query, controller-only, {len(stable_structures)} stable structure(s))")
+
+    return python_source
 
 
 def _generate_default_shell_code() -> str:
