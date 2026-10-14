@@ -62,19 +62,23 @@ jobs:
         run: |
           VERSION="${TAG#v}"
           docker run --rm \
-            -e VERSION="$VERSION" \
+            -e VERSION="$VERSION" -e USER=ci \
             python:${{ env.PYTHON_VERSION }}-slim-bookworm bash -c '
               set -e
 
-              apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
+              # xz: the icp-cli installer unpacks .tar.xz; libdbus: icp links it; git: icp new.
+              apt-get update -qq && apt-get install -y -qq curl ca-certificates xz-utils libdbus-1-3 git > /dev/null 2>&1
               # No quotes around =https: this whole script is inside a single-quoted bash -c string.
               curl --proto =https --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh > /dev/null 2>&1
+              curl --proto =https --tlsv1.2 -LsSf https://github.com/dfinity/ic-wasm/releases/latest/download/ic-wasm-installer.sh | sh > /dev/null 2>&1
               export PATH="$HOME/.cargo/bin:$PATH"
+              icp --version
+              ic-wasm --version
 
               # Wait for PyPI propagation
               echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
               for i in $(seq 1 30); do
-                if pip install "ic-basilisk==${VERSION}" 2>&1 | grep -q "Successfully installed"; then
+                if pip install --root-user-action=ignore "ic-basilisk==${VERSION}" 2>&1 | grep -q "Successfully installed"; then
                   echo "✅ ic-basilisk==${VERSION} installed"
                   break
                 fi
@@ -83,14 +87,17 @@ jobs:
               done
               basilisk --version | grep -q "${VERSION}" || { echo "::error::Version mismatch"; exit 1; }
 
-              # Scaffold, build, deploy locally, and test
-              icp new smoke_test --template python && cd smoke_test
+              # The README hello-world flow, against the release just published
+              icp new smoketest --silent --git https://github.com/smart-social-contracts/basilisk \
+                --subfolder icp-cli/templates/hello-world
+              cd smoketest
+              pip install -q --root-user-action=ignore -r requirements.txt "ic-basilisk==${VERSION}"
               icp network start -d
               icp deploy
 
-              RESULT=$(icp canister call smoke_test status "()")
-              echo "status: ${RESULT}"
-              echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
+              RESULT=$(icp canister call smoketest greet "(\"World\")")
+              echo "greet: ${RESULT}"
+              echo "${RESULT}" | grep -q "Hello, World!" || { echo "::error::greet failed: ${RESULT}"; exit 1; }
 
               icp network stop
 
