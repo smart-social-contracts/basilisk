@@ -1,4 +1,8 @@
-name: Publish to PyPI
+# Cut a release: bump the version, build, and attach every artifact plus
+# checksums.txt to a draft release. It is published (and only then uploaded to
+# PyPI, by release-verify.yml) after checksums.txt is signed with the release
+# key: smart-social-contracts/.github scripts/sign-release.sh.
+name: Release
 on:
   workflow_dispatch:
     inputs:
@@ -20,12 +24,10 @@ env:
     PYTHON_VERSION: "3.13"
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    outputs:
-      version: ${{ steps.bump_version.outputs.NEW_VERSION }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -60,19 +62,11 @@ jobs:
           DATE=$(git log -1 --format=%cI)
           printf '__commit__ = "%s"\n__date__ = "%s"\n' "$COMMIT" "$DATE" > basilisk/_build_info.py
 
-      - name: Build and publish to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      - name: Build
         run: |
           pip install build twine
-          
-          # Build and publish
           python -m build
           twine check dist/*
-          twine upload dist/*
-          
-          echo "✅ Published to PyPI: ic-basilisk v${{ steps.bump_version.outputs.NEW_VERSION }}"
       
       - name: Commit and tag version
         run: |
@@ -98,78 +92,32 @@ jobs:
               --clobber || echo "⚠️  $asset not found in cpython-wasm-3.13.0-ic1 release (skipping)"
           done
 
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+      - name: Stage assets and checksums
         run: |
-          RELEASE_ASSETS=""
+          mkdir -p release
+          cp dist/* release/
           for asset in cpython_canister_template.wasm cpython_canister_template_cedar.wasm; do
             if [ -f "${{ runner.temp }}/$asset" ]; then
-              RELEASE_ASSETS="$RELEASE_ASSETS ${{ runner.temp }}/$asset"
-              echo "✅ Including $asset in release"
+              cp "${{ runner.temp }}/$asset" release/
             else
               echo "⚠️  No $asset to include"
             fi
           done
+          [ -f icp-cli/recipe/recipe.hbs ] && cp icp-cli/recipe/recipe.hbs release/
+          cd release
+          { echo "# SHA-256 checksums for release assets"; sha256sum *; } > ../checksums.txt
+          mv ../checksums.txt .
+          cat checksums.txt
 
-          if [ -f "icp-cli/recipe/recipe.hbs" ]; then
-            RELEASE_ASSETS="$RELEASE_ASSETS icp-cli/recipe/recipe.hbs"
-            echo "✅ Including icp-cli recipe in release"
-          fi
-
-          if [ -n "$RELEASE_NOTES" ]; then
-            gh release create "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
-              --title "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
-              --notes "$RELEASE_NOTES" \
-              $RELEASE_ASSETS
-          else
-            gh release create "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
-              --title "v${{ steps.bump_version.outputs.NEW_VERSION }}" \
-              --generate-notes \
-              $RELEASE_ASSETS
-          fi
-
-  verify:
-    needs: publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Smoke test in Docker (local replica)
+      - name: Create draft GitHub Release
         env:
-          VERSION: ${{ needs.publish.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+          TAG: v${{ steps.bump_version.outputs.NEW_VERSION }}
         run: |
-          docker run --rm \
-            -e VERSION="$VERSION" \
-            python:${{ env.PYTHON_VERSION }}-slim-bookworm bash -c '
-              set -e
-
-              apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
-              # No quotes around =https: this whole script is inside a single-quoted bash -c string.
-              curl --proto =https --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh > /dev/null 2>&1
-              export PATH="$HOME/.cargo/bin:$PATH"
-
-              # Wait for PyPI propagation
-              echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
-              for i in $(seq 1 30); do
-                if pip install "ic-basilisk==${VERSION}" 2>&1 | grep -q "Successfully installed"; then
-                  echo "✅ ic-basilisk==${VERSION} installed"
-                  break
-                fi
-                echo "  retrying in 10s... (${i}/30)"
-                sleep 10
-              done
-              basilisk --version | grep -q "${VERSION}" || { echo "::error::Version mismatch"; exit 1; }
-
-              # Scaffold, build, deploy locally, and test
-              icp new smoke_test --template python && cd smoke_test
-              icp network start -d
-              icp deploy
-
-              RESULT=$(icp canister call smoke_test status "()")
-              echo "status: ${RESULT}"
-              echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
-
-              icp network stop
-
-              echo "✅ Local smoke test passed"
-            '
+          if [ -n "$RELEASE_NOTES" ]; then
+            NOTES=(--notes "$RELEASE_NOTES")
+          else
+            NOTES=(--generate-notes)
+          fi
+          gh release create "$TAG" --draft --title "$TAG" "${NOTES[@]}" release/*

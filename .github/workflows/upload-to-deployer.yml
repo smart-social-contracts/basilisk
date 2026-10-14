@@ -2,7 +2,7 @@ name: Upload WASM to Deployer Canister
 
 on:
   workflow_run:
-    workflows: ["Publish to PyPI"]
+    workflows: ["Verify release signature"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -21,7 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+        && github.event.workflow_run.event == 'release')
     steps:
       - uses: actions/checkout@v4
 

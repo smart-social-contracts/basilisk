@@ -1,0 +1,98 @@
+name: Verify release signature
+
+# A published v* release must carry checksums.txt signed with the release key.
+# Only then are its wheel and sdist (the signed bytes) uploaded to PyPI.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to check
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  verify:
+    # cpython-wasm-* releases hold build templates, not signed versions.
+    if: ${{ startsWith(github.event.release.tag_name || inputs.tag, 'v') }}
+    permissions:
+      contents: write
+    uses: smart-social-contracts/.github/.github/workflows/verify-release.yml@770dd2d252a20fd8f17dbab3c8dc21ae57678ea9 # main 2026-10-07
+    with:
+      tag: ${{ github.event.release.tag_name || inputs.tag }}
+      fingerprint: 6B7B038DEB77849F1F615E67CA38831314D6AA09
+      revert_on_failure: ${{ github.event_name == 'release' }}
+
+  pypi:
+    needs: verify
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download the signed wheel and sdist
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -D dist \
+            --pattern '*.whl' --pattern 'ic_basilisk-*.tar.gz'
+          ls -l dist
+
+      # Trusted Publishing (OIDC): pypi.org trusts release-verify.yml, no token.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          skip-existing: true
+
+  smoke:
+    needs: pypi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Smoke test in Docker (local replica)
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${TAG#v}"
+          docker run --rm \
+            -e VERSION="$VERSION" \
+            python:${{ env.PYTHON_VERSION }}-slim-bookworm bash -c '
+              set -e
+
+              apt-get update -qq && apt-get install -y -qq curl ca-certificates > /dev/null 2>&1
+              # No quotes around =https: this whole script is inside a single-quoted bash -c string.
+              curl --proto =https --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh > /dev/null 2>&1
+              export PATH="$HOME/.cargo/bin:$PATH"
+
+              # Wait for PyPI propagation
+              echo "Waiting for ic-basilisk==${VERSION} on PyPI..."
+              for i in $(seq 1 30); do
+                if pip install "ic-basilisk==${VERSION}" 2>&1 | grep -q "Successfully installed"; then
+                  echo "✅ ic-basilisk==${VERSION} installed"
+                  break
+                fi
+                echo "  retrying in 10s... (${i}/30)"
+                sleep 10
+              done
+              basilisk --version | grep -q "${VERSION}" || { echo "::error::Version mismatch"; exit 1; }
+
+              # Scaffold, build, deploy locally, and test
+              icp new smoke_test --template python && cd smoke_test
+              icp network start -d
+              icp deploy
+
+              RESULT=$(icp canister call smoke_test status "()")
+              echo "status: ${RESULT}"
+              echo "${RESULT}" | grep -q "ok" || { echo "::error::status failed: ${RESULT}"; exit 1; }
+
+              icp network stop
+
+              echo "✅ Local smoke test passed"
+            '

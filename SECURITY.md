@@ -1,8 +1,10 @@
 # Security Policy
 
-## Reporting Vulnerabilities
+## Reporting Vulnerabilities and Verifying Releases
 
-See the [organization-wide security policy](https://github.com/smart-social-contracts/.github/blob/main/SECURITY.md) for reporting instructions and PGP key.
+See [Security](https://github.com/smart-social-contracts#security) on the
+organization page: how to report privately, the PGP key, and how to check a
+release's signature.
 
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 

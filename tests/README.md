@@ -102,7 +102,8 @@ Tests decentralized canister upgrades using the IC chunked code upload API (`upl
 |---|---|---|
 | **Build CPython WASM** | `build-cpython-wasm.yml` | Builds CPython 3.13 + canister template for wasm32-wasip1 |
 | **Benchmark** | `benchmark.yml` | Manual: performance benchmarks |
-| **Publish** | `publish.yml` | Manual: bump version, publish to PyPI, IC mainnet smoke test |
+| **Release** | `release.yml` | Manual: bump version, build, draft release with `checksums.txt` |
+| **Verify release signature** | `release-verify.yml` | On publish (after signing): check the signature, upload the signed wheel/sdist to PyPI, smoke test |
 
 ## Directory Structure
 
