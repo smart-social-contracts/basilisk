@@ -2669,7 +2669,7 @@ def _register_hashlib():
     # above takes 5.4M, 1.4M for 10,000 bytes where it takes 850M. It cannot
     # continue from a half-hashed state, so this keeps what it is given and hashes
     # it when a digest is asked for. The code above still serves SHA-224, and
-    # everything where the native function cannot be imported (a sandbox).
+    # everything in a template without `_basilisk_sandbox.sha256`.
     try:
         from _basilisk_sandbox import sha256 as _native_sha256_hex
     except ImportError:

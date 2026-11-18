@@ -237,10 +237,13 @@ class TestWhatTheNativeFunctionServes:
         assert sandbox.calls == [b"abcdef" + "é".encode()]
         h.digest()
         assert len(sandbox.calls) == 2
+        fast.new("sha256", b"abc").hexdigest()
+        assert len(sandbox.calls) == 3
 
     def test_it_is_given_bytes(self, fast, sandbox):
         fast.sha256("text").hexdigest()
         fast.sha256(bytearray(b"x")).hexdigest()
+        assert len(sandbox.calls) == 2
         assert all(type(call) is bytes for call in sandbox.calls)
 
     def test_without_the_native_function_the_pure_code_serves(self, monkeypatch):
