@@ -2664,6 +2664,38 @@ def _register_hashlib():
     def sha256(data=b''):
         return _Sha256(data)
 
+    # The canister has a native SHA-256 (`_basilisk_sandbox.sha256`, one call over
+    # all the bytes, hex digest out): 19K instructions for 12 bytes where the code
+    # above takes 5.4M, 1.4M for 10,000 bytes where it takes 850M. It cannot
+    # continue from a half-hashed state, so this keeps what it is given and hashes
+    # it when a digest is asked for. The code above still serves SHA-224, and
+    # everything where the native function cannot be imported (a sandbox).
+    try:
+        from _basilisk_sandbox import sha256 as _native_sha256_hex
+    except ImportError:
+        pass
+    else:
+        class _NativeSha256:
+            def __init__(self, data=b''):
+                self._chunks = []
+                if data:
+                    self.update(data)
+            def update(self, data):
+                if isinstance(data, str):
+                    data = data.encode('utf-8')
+                self._chunks.append(b'' + data)  # a copy, as `_buf += data` is; the same TypeError
+            def digest(self):
+                return bytes.fromhex(self.hexdigest())
+            def hexdigest(self):
+                return _native_sha256_hex(b''.join(self._chunks))
+            def copy(self):
+                c = _NativeSha256.__new__(_NativeSha256)
+                c._chunks = list(self._chunks)
+                return c
+
+        def sha256(data=b''):
+            return _NativeSha256(data)
+
     class _Sha224:
         """SHA-224: same as SHA-256 but with different IV and truncated output."""
         _IV = [0xc1059ed8,0x367cd507,0x3070dd17,0xf70e5939,0xffc00b31,0x68581511,0x64f98fa7,0xbefa4fa4]
