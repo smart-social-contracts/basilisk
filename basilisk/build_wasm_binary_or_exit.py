@@ -460,9 +460,10 @@ def _bundle_all_modules(source_dir: str, entry_module: str) -> str:
     # Define the lazy module class
     lines.append("""
 class _LazyMod(_bMT):
-    def __init__(self, name, source, is_pkg=False):
+    def __init__(self, name, source, is_pkg=False, submodules=()):
         super().__init__(name)
         self.__dict__['_bsrc'] = source
+        self.__dict__['_bsubmodules'] = submodules
         self.__dict__['_bloaded'] = False
         self.__dict__['_bloading'] = False
         if is_pkg:
@@ -489,6 +490,18 @@ class _LazyMod(_bMT):
             raise type(_be)(f"{_be}\\nModule: {self.__name__}\\nTraceback:\\n" + "\\n".join(_frames)) from None
         finally:
             self.__dict__['_bloading'] = False
+        # Once loaded this is a plain module. A missing attribute is then
+        # answered in C: with the Python __getattr__ below, every
+        # `from m import x` (which probes m.__path__) costs ~50,000 instructions.
+        self._bbind_submodules()
+        self.__class__ = _bMT
+    def _bbind_submodules(self):
+        # Importing a bundled submodule finds it in sys.modules, so nothing
+        # sets it on its parent. The __getattr__ below finds it by name, which
+        # a plain module cannot do.
+        for _sub in self._bsubmodules:
+            if _sub in _bsys.modules:
+                self.__dict__.setdefault(_sub.rpartition('.')[2], _bsys.modules[_sub])
     def __getattr__(self, name):
         self._bload()
         try:
@@ -503,10 +516,19 @@ class _LazyMod(_bMT):
             raise AttributeError(f"module '{self.__name__}' has no attribute '{name}'")
 """)
 
+    submodules = {mod_name: [] for mod_name in sorted_modules}
+    for mod_name in sorted_modules:
+        parent = mod_name.rpartition('.')[0]
+        if parent in submodules:
+            submodules[parent].append(mod_name)
+
     # Register each module as a lazy module in sys.modules
     for mod_name in sorted_modules:
         source, is_package = modules[mod_name]
-        lines.append(f"_bsys.modules[{mod_name!r}] = _LazyMod({mod_name!r}, {source!r}, {is_package!r})")
+        lines.append(
+            f"_bsys.modules[{mod_name!r}] = "
+            f"_LazyMod({mod_name!r}, {source!r}, {is_package!r}, {submodules[mod_name]!r})"
+        )
 
     # Read and append the entry module source at the end
     entry_path = os.path.join(source_dir, f"{entry_module}.py")
