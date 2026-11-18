@@ -582,6 +582,70 @@ def _register_json():
 
         return _val()
 
+    # `_json` is built into the canister. The pure-Python writer and parser above
+    # take 0.8M and 1.2M instructions for a 366-character row, `_json` 74K and 70K.
+    # They stay the definition of what `json` does: the functions below return
+    # only what the stub would, and give every other input to the stub.
+    try:
+        from _json import encode_basestring, make_encoder, make_scanner
+    except ImportError:
+        pass
+    else:
+        _enc = encode_basestring  # the same escapes, so the stub writes strings faster too
+
+        class _ScanContext:
+            """What `make_scanner` reads from the decoder it serves."""
+            strict = False  # the stub accepts control characters in strings
+            object_hook = None
+            object_pairs_hook = None
+            parse_float = float
+            parse_int = int
+
+            @staticmethod
+            def parse_constant(name):  # the stub has no NaN or Infinity literals
+                raise ValueError(name)
+
+        _scan = make_scanner(_ScanContext)
+        _stub_dumps, _stub_loads = dumps, loads
+
+        def _unserializable(o):
+            raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+        def dumps(obj, ensure_ascii=True, sort_keys=False, indent=None,
+                  separators=None, default=None, **kw):
+            if indent is None and default is None:
+                encode = make_encoder(None, _unserializable, encode_basestring, None,
+                                      ":", ",", sort_keys, False, False)
+                try:
+                    text = "".join(encode(obj, 0))
+                except (TypeError, ValueError):
+                    # A key that is not a str, int or float, a NaN, an infinity,
+                    # an object `default` would have to write: the stub handles them.
+                    pass
+                else:
+                    # `_json` writes the keys True, False and None as "true", "false"
+                    # and "null"; the stub as "True", "False" and "None".
+                    if '"true":' not in text and '"false":' not in text and '"null":' not in text:
+                        return text
+            return _stub_dumps(obj, ensure_ascii, sort_keys, indent, separators, default)
+
+        def loads(s, **kw):
+            if isinstance(s, (bytes, bytearray)):
+                s = s.decode("utf-8")
+            # The stub reads an escaped surrogate pair as two lone surrogates, `_json` as one character.
+            if isinstance(s, str) and not ("\\u" in s and ("\\ud" in s or "\\uD" in s)):
+                start = len(s) - len(s.lstrip(" \t\n\r"))
+                try:
+                    value, end = _scan(s, start)
+                except Exception:
+                    pass  # malformed, or something only the stub accepts: it decides
+                else:
+                    # The stub ignores what follows the first value. Where `_json` stopped
+                    # inside a number (01, 1., 1e) the stub reads on: it decides there too.
+                    if end == len(s) or not s[end:].strip(" \t\n\r"):
+                        return value
+            return _stub_loads(s)
+
     m = type(_sys)("json")
     m.__file__ = "<frozen json>"
     m.dumps = dumps
