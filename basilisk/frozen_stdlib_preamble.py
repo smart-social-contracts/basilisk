@@ -591,7 +591,8 @@ def _register_json():
     except ImportError:
         pass
     else:
-        _enc = encode_basestring  # the same escapes, so the stub writes strings faster too
+        # The stub's `dumps` reads `_enc` when it runs, so this speeds its strings up too (same escapes).
+        _enc = encode_basestring
 
         class _ScanContext:
             """What `make_scanner` reads from the decoder it serves."""
@@ -633,6 +634,7 @@ def _register_json():
             if isinstance(s, (bytes, bytearray)):
                 s = s.decode("utf-8")
             # The stub reads an escaped surrogate pair as two lone surrogates, `_json` as one character.
+            # (The test for a backslash-u escape comes first only because it is quick and most texts have none.)
             if isinstance(s, str) and not ("\\u" in s and ("\\ud" in s or "\\uD" in s)):
                 start = len(s) - len(s.lstrip(" \t\n\r"))
                 try:

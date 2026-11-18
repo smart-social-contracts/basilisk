@@ -298,6 +298,21 @@ class TestWhatTheFastPathServes:
             fast.loads(text, object_hook=dict)
         assert calls == []
 
+    def test_what_overflows_the_stack_in_a_canister_never_reaches_the_stub(self, fast):
+        # The stub's `dumps` overflows the wasm stack about 450 levels down, or on a circular list, and
+        # traps the canister. `_json` stops with a RecursionError instead; handing that to the stub would
+        # bring the trap back.
+        calls = watch_stub(fast)
+        nested = []
+        for _ in range(600):
+            nested = [nested]
+        assert fast.dumps(nested) == "[" * 601 + "]" * 601
+        with pytest.raises(RecursionError):
+            fast.dumps(circular_list())
+        with pytest.raises(RecursionError):
+            fast.dumps(circular_list(), sort_keys=True)
+        assert calls == []
+
     def test_the_stub_serves_what_json_would_read_differently(self, fast):
         calls = watch_stub(fast)
         asked = [
