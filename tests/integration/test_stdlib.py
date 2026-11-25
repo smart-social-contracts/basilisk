@@ -28,7 +28,46 @@ def test_collections(canister):
 
 def test_datetime(canister):
     result = parse_candid_text(call_canister(canister, "test_datetime", example_dir=EXAMPLE_DIR))
-    assert isinstance(result, str) and len(result) > 0
+    assert re.match(r"^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", result) and not result.startswith("1970")
+
+
+def test_time_is_the_ic_time(canister):
+    """time.time() and datetime.now() read the IC clock, not 0 (#73)."""
+    result = parse_candid_text(call_canister(canister, "test_time_is_the_ic_time", example_dir=EXAMPLE_DIR))
+    time_time, now, ic_time = (float(part) for part in result.split("|"))
+    assert ic_time > 1_700_000_000
+    assert abs(time_time - ic_time) < 1e-6
+    assert abs(now - ic_time) < 1e-6
+
+
+def test_datetime_values(canister):
+    """Calendar arithmetic and formatting give the real answers, not 1970 and zero (#73)."""
+    result = parse_candid_text(call_canister(canister, "test_datetime_values", example_dir=EXAMPLE_DIR))
+    assert result.split("|") == [
+        "2027-01-15 08:00:00", "1157 days, 9:46:40", "1800000000.0", "2027-01-15T08:00:00.123000"]
+
+
+def test_sleep_refuses(canister):
+    result = parse_candid_text(call_canister(canister, "test_sleep_refuses", example_dir=EXAMPLE_DIR))
+    assert result == "refused"
+
+
+def test_enum_members(canister):
+    """Members are instances with values, classes iterate, auto() counts (#67)."""
+    result = parse_candid_text(call_canister(canister, "test_enum_members", example_dir=EXAMPLE_DIR))
+    assert result.split("|") == ["Color", "<Color.BLUE: 2>", "RED,BLUE", "True"]
+
+
+def test_weakref_frees(canister):
+    """A weak reference does not keep its object alive (#67)."""
+    result = parse_candid_text(call_canister(canister, "test_weakref_frees", example_dir=EXAMPLE_DIR))
+    assert result == "True|0"
+
+
+def test_struct_pack(canister):
+    """struct is the compiled-in _struct, not an empty stub (#67)."""
+    result = parse_candid_text(call_canister(canister, "test_struct_pack", example_dir=EXAMPLE_DIR))
+    assert result == "010000000200|(1, 2)"
 
 
 def test_itertools(canister):
