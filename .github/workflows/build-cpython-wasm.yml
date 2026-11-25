@@ -181,16 +181,22 @@ jobs:
             CPYTHON_VERSION: "3.13.0"
             ARTIFACT_REVISION: "ic1" # keep in sync with install_cpython_wasm.sh
             WASI_SDK_VERSION: "24"
-            # Pinned, because runner images move stable Rust under us: built
-            # with 1.100.0 (image of 16 Nov 2026) the template gains a wasm
-            # start function (_initialize) that calls ic0.time, and every
-            # install traps with "ic0_time cannot be executed in start mode".
-            # 1.99.1 built the published template.
-            # To raise it, change it here in a pull request: that changes the
-            # template sources hash, so the PR builds both templates with the
-            # new version, "Check the templates have no start function" below
-            # runs on them, and every canister suite (unit, local, upgrade)
-            # runs on the plain one. Nothing is published unless all pass.
+            # Pinned, because runner images move stable Rust under us, and
+            # gradually: on 19 Nov 2026 a runner still had image 20261111.196
+            # (Rust 1.99.1) while the 16 Nov image already had 1.100.0, so two
+            # runs of this job on one day could build different templates.
+            # Built with 1.100.0 the template gains a wasm start function
+            # (_initialize) that calls ic0.time, and every install traps with
+            # "ic0_time cannot be executed in start mode". 1.99.1 built the
+            # published template.
+            #
+            # To raise it, change it here in a pull request. The sources hash
+            # changes, so that PR builds both templates with the new version,
+            # "Check the templates have no start function" runs on both, and
+            # every canister suite (unit, local, upgrade) runs on the plain one.
+            # No test installs the Cedar template: download the PR's
+            # cpython-canister-template-cedar artifact, build a canister on it
+            # (BASILISK_TEMPLATE_WASM=<file> icp deploy), and call a method.
             RUST_VERSION: "1.99.1"
         steps:
             - uses: actions/checkout@v4
