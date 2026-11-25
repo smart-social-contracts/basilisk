@@ -767,10 +767,15 @@ def _generate_post_upgrade_wrapper(user_fn_name: str | None) -> str:
     first, then runs the check.  If ``None``, the wrapper only runs the check.
     The check is guarded by try/except so canisters without ic_python_db are
     unaffected.
+
+    The lifecycle entry keeps the user's declared parameters, so the runtime
+    decodes the upgrade arguments and calls the wrapper with them: the wrapper
+    takes them all and hands them on (#66). It returns what the user's function
+    returned, so the runtime still drives an async post_upgrade.
     """
-    call_user = f"    {user_fn_name}()\n" if user_fn_name else ""
+    call_user = f"    _result = {user_fn_name}(*args)\n" if user_fn_name else "    _result = None\n"
     return f'''
-def _basilisk_post_upgrade_wrapper():
+def _basilisk_post_upgrade_wrapper(*args):
 {call_user}    try:
         from ic_python_db import Database as _DB
         _db = _DB.get_instance()
@@ -779,6 +784,7 @@ def _basilisk_post_upgrade_wrapper():
         pass
     except Exception as _e:
         _basilisk_ic.trap(f"Upgrade rejected: {{_e}}")
+    return _result
 '''
 
 
