@@ -181,10 +181,16 @@ jobs:
             CPYTHON_VERSION: "3.13.0"
             ARTIFACT_REVISION: "ic1" # keep in sync with install_cpython_wasm.sh
             WASI_SDK_VERSION: "24"
-            # Pinned: built with Rust 1.100.0 (runner image of 16 Nov 2026), the
-            # template gets a wasm start function (_initialize) that calls
-            # ic0.time, and every install traps with "ic0_time cannot be
-            # executed in start mode". 1.99.1 built the published template.
+            # Pinned, because runner images move stable Rust under us: built
+            # with 1.100.0 (image of 16 Nov 2026) the template gains a wasm
+            # start function (_initialize) that calls ic0.time, and every
+            # install traps with "ic0_time cannot be executed in start mode".
+            # 1.99.1 built the published template.
+            # To raise it, change it here in a pull request: that changes the
+            # template sources hash, so the PR builds both templates with the
+            # new version, "Check the templates have no start function" below
+            # runs on them, and every canister suite (unit, local, upgrade)
+            # runs on the plain one. Nothing is published unless all pass.
             RUST_VERSION: "1.99.1"
         steps:
             - uses: actions/checkout@v4
@@ -264,6 +270,14 @@ jobs:
                   # Same wasm-opt caveat as the plain template above.
                   echo "Cedar template wasm size: $(du -sh ${{ runner.temp }}/cpython_canister_template_cedar.wasm | cut -f1)"
                   ls -la ${{ runner.temp }}/cpython_canister_template_cedar.wasm
+
+            # No canister test installs the Cedar template, and the plain one
+            # only fails at install with an error that does not name its cause.
+            - name: Check the templates have no start function
+              run: |
+                  python3 scripts/check_no_start_function.py \
+                    ${{ runner.temp }}/cpython_canister_template.wasm \
+                    ${{ runner.temp }}/cpython_canister_template_cedar.wasm
 
             - name: Upload template artifact
               uses: actions/upload-artifact@v4
