@@ -976,7 +976,7 @@ unsafe extern "C" fn ic_set_timer(
                 if result.has_attr("send") {
                     let cb_name = func_name.clone();
                     ic_cdk::spawn(async move {
-                        let _ = crate::drive_generator(result, &cb_name).await;
+                        let _ = crate::drive_generator(result, &cb_name, None).await;
                     });
                 }
             }
@@ -1032,7 +1032,7 @@ unsafe extern "C" fn ic_set_timer_interval(
                 if result.has_attr("send") {
                     let cb_name = func_name.clone();
                     ic_cdk::spawn(async move {
-                        let _ = crate::drive_generator(result, &cb_name).await;
+                        let _ = crate::drive_generator(result, &cb_name, None).await;
                     });
                 }
             }

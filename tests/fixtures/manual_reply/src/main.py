@@ -1,4 +1,5 @@
 from basilisk import (
+    Async,
     blob,
     float32,
     ic,
@@ -6,10 +7,14 @@ from basilisk import (
     Manual,
     nat,
     nat8,
+    nat64,
     null,
+    Principal,
     Record,
     query,
     reserved,
+    Service,
+    service_update,
     Tuple,
     update,
     Variant,
@@ -207,3 +212,32 @@ def reply_raw() -> Manual[RawReply]:
             '(record { "int" = 42; "text" = "text"; "bool" = true; "blob" = blob "Surprise!"; "variant" = variant { Medium } })'
         )
     )
+
+
+# A Manual method that replies after waiting on calls, while other methods run (#69)
+
+
+class ManagementCanister(Service):
+    @service_update
+    def raw_rand(self) -> blob:
+        ...
+
+
+calls_while_waiting = 0
+
+
+@update
+def manual_reply_after_calls() -> Async[Manual[str]]:
+    global calls_while_waiting
+    calls_while_waiting = 0
+    management_canister = ManagementCanister(Principal.from_str("aaaaa-aa"))
+    for _ in range(5):
+        yield management_canister.raw_rand()
+    ic.reply(f"replied after {calls_while_waiting} other calls")
+
+
+@update
+def count_call() -> nat64:
+    global calls_while_waiting
+    calls_while_waiting += 1
+    return calls_while_waiting
