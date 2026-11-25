@@ -67,7 +67,21 @@ jobs:
           pip install build twine
           python -m build
           twine check dist/*
-      
+
+      # The rolling release only gets a template after All Tests passed on it
+      # on main (#74). If it was built from other template sources than this
+      # commit's, it is not this commit's template: stop before tagging.
+      - name: Check the rolling template was built from this commit's sources
+        run: |
+          EXPECTED=$(bash scripts/template_sources_hash.sh)
+          RECORD=$(curl -sfL https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/template-sources.txt) || RECORD=""
+          PUBLISHED=$(printf '%s\n' "$RECORD" | awk '$1 == "sources" { print $2 }')
+          if [ "$PUBLISHED" != "$EXPECTED" ]; then
+            echo "::error::The rolling template was built from template sources ${PUBLISHED:-(none recorded)}; this commit's are $EXPECTED. Let All Tests pass on main, which publishes the template, then release."
+            exit 1
+          fi
+          printf '%s\n' "$RECORD"
+
       - name: Commit and tag version
         run: |
           git config user.name "github-actions[bot]"

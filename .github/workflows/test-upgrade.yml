@@ -1,11 +1,19 @@
 # Standalone test for the upgrade_test example
 # This test verifies decentralized canister upgrades using IC's chunked code upload API
+#
+# Pull requests and main run this through test-all.yml, which passes
+# template-from-run so the canisters are built on the template that run built
+# or vetted. Run by hand, it uses the published template.
 
 name: Upgrade Test
 on:
     workflow_dispatch:
-    pull_request:
     workflow_call: # Called by test-all.yml orchestrator
+        inputs:
+            template-from-run:
+                description: "Build on the run's cpython-canister-template artifact instead of the published template"
+                type: boolean
+                default: false
 
 jobs:
     upgrade-test:
@@ -39,19 +47,26 @@ jobs:
               with:
                   python-version: ${{ env.PYTHON_VERSION }}
 
-            - name: Pre-download CPython wasm
+            - name: Download the run's canister template
+              if: inputs.template-from-run
+              uses: actions/download-artifact@v4
+              with:
+                  name: cpython-canister-template
+                  path: ${{ runner.temp }}/template
+
+            - name: Download the published canister template
+              if: ${{ !inputs.template-from-run }}
               run: |
-                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
-                  CPYTHON_DIR="$HOME/.config/basilisk/${VERSION}/cpython_wasm"
-                  if [ ! -f "${CPYTHON_DIR}/lib/libpython3.13.a" ] || [ ! -f "${CPYTHON_DIR}/lib/libz.a" ]; then
-                    mkdir -p "${CPYTHON_DIR}"
-                    echo "Downloading CPython wasm artifacts..."
-                    curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython-wasm32-wasip1.tar.gz -o /tmp/cpython-wasm.tar.gz
-                    tar -xzf /tmp/cpython-wasm.tar.gz -C "${CPYTHON_DIR}"
-                    echo "CPython wasm installed to ${CPYTHON_DIR}"
-                  else
-                    echo "CPython wasm already cached"
-                  fi
+                  curl -Lf --create-dirs https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm \
+                    -o "${{ runner.temp }}/template/cpython_canister_template.wasm"
+
+            # Explicit, so the build cannot pick up a template cached in
+            # ~/.config/basilisk or the v{version} release instead.
+            - name: Use it for the build
+              run: |
+                  TEMPLATE="${{ runner.temp }}/template/cpython_canister_template.wasm"
+                  sha256sum "$TEMPLATE"
+                  echo "BASILISK_TEMPLATE_WASM=$TEMPLATE" >> "$GITHUB_ENV"
 
             - name: Setup venv and install basilisk from repo
               working-directory: tests/fixtures/upgrade_test

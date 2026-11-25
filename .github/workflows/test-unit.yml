@@ -4,8 +4,8 @@
 
 name: Unit Tests
 
+# Pull requests and main run this through test-all.yml.
 on:
-    pull_request:
     workflow_call:
     workflow_dispatch:
 
