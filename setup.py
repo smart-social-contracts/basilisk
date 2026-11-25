@@ -42,6 +42,7 @@ setup(
         "compiler/**/LICENSE*",
         "canisters/**",
         "py.typed",
+        "release_key.asc",
         "*.wasm",
         "*.js",
     ]},

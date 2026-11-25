@@ -1,11 +1,13 @@
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 
 import basilisk
-from basilisk.colors import red
+from basilisk.colors import red, yellow
 from basilisk.timed import timed_inline
 from basilisk.types import Paths
 
@@ -21,6 +23,13 @@ TEMPLATE_DOWNLOAD_URL_FALLBACK = (
     "https://github.com/smart-social-contracts/basilisk/releases/download"
     "/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm"
 )
+
+# A downloaded template must match checksums.txt of the release it came from
+# (#68). A versioned release's checksums.txt is signed (checksums.txt.asc) with
+# the org's release key, the key of smart-social-contracts/.github pgp-key.asc
+# that release-verify.yml checks when the release is published.
+RELEASE_KEY_FINGERPRINT = "6B7B038DEB77849F1F615E67CA38831314D6AA09"
+RELEASE_KEY_PATH = os.path.join(os.path.dirname(__file__), "release_key.asc")
 
 
 def ensure_rust_dependencies(paths: Paths) -> None:
@@ -227,7 +236,11 @@ def find_template_wasm(paths: Paths) -> str | None:
     """
     # 1. Explicit path
     explicit = os.environ.get("BASILISK_TEMPLATE_WASM")
-    if explicit and os.path.exists(explicit):
+    if explicit:
+        if not os.path.exists(explicit):
+            # Not a reason to build on some other template instead.
+            print(red(f"BASILISK_TEMPLATE_WASM is {explicit}, which does not exist."))
+            sys.exit(1)
         return explicit
 
     # 2. Cached artifact
@@ -250,64 +263,120 @@ def find_template_wasm(paths: Paths) -> str | None:
 
 
 def _download_template(dest_path: str) -> bool:
-    """Download the pre-built template WASM from the GitHub release.
+    """Download the pre-built template WASM from the GitHub release and verify it.
 
-    Tries the versioned release first (v{version}), then falls back to the
-    cpython-wasm release where CI uploads the latest template.
-    Returns True if the download succeeded, False otherwise.
+    Tries the versioned release first (v{version}), whose checksums.txt is
+    signed with the release key, then the cpython-wasm release, where CI
+    publishes the template it built and tested on main; that one's
+    checksums.txt is not signed. Returns False if neither has a template.
+    A download that does not verify is removed and the build stops: trying
+    the next source instead would let a replaced template through.
     """
-    urls = [
-        TEMPLATE_DOWNLOAD_URL.format(version=basilisk.__version__),
-        TEMPLATE_DOWNLOAD_URL_FALLBACK,
+    sources = [
+        (TEMPLATE_DOWNLOAD_URL.format(version=basilisk.__version__), True),
+        (TEMPLATE_DOWNLOAD_URL_FALLBACK, False),
     ]
-    for url in urls:
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    for url, signed in sources:
         print(f"Downloading CPython canister template from {url} ...")
         try:
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
             urllib.request.urlretrieve(url, dest_path)
-            size_mb = os.path.getsize(dest_path) / (1024 * 1024)
-            print(f"Template downloaded ({size_mb:.1f} MB) -> {dest_path}")
-
-            # Verify integrity: try to download .sha256 checksum and validate
-            _verify_template_checksum(url, dest_path)
-
-            return True
         except Exception as e:
             print(f"Download failed: {e}")
-            if os.path.exists(dest_path):
-                os.remove(dest_path)
+            _remove_if_present(dest_path)
+            continue
+        size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+        print(f"Template downloaded ({size_mb:.1f} MB) -> {dest_path}")
+        try:
+            _verify_template(url, dest_path, signed)
+        except TemplateVerificationError as e:
+            _remove_if_present(dest_path)
+            print(red(f"The downloaded template did not verify and was removed: {e}"))
+            sys.exit(1)
+        return True
     return False
 
 
-def _verify_template_checksum(wasm_url: str, wasm_path: str) -> None:
-    """Verify downloaded WASM against a .sha256 checksum file (if available).
+class TemplateVerificationError(Exception):
+    pass
 
-    Downloads <wasm_url>.sha256 and compares the hash. If the checksum file
-    is not found (404), prints a warning but does not fail — this allows
-    older releases without checksums to still work.
-    """
-    import hashlib
 
-    checksum_url = wasm_url + ".sha256"
-    try:
-        response = urllib.request.urlopen(checksum_url)
-        expected_hash = response.read().decode("utf-8").strip().split()[0].lower()
-    except Exception:
-        print("Warning: No .sha256 checksum file found for template WASM — skipping verification")
-        return
-
+def _verify_template(wasm_url: str, wasm_path: str, signed: bool) -> None:
+    """Check a downloaded template against checksums.txt of the release it came from."""
+    release_url, name = wasm_url.rsplit("/", 1)
+    checksums = _fetch(f"{release_url}/checksums.txt")
+    if signed:
+        _verify_signature(checksums, _fetch(f"{release_url}/checksums.txt.asc"))
+    else:
+        print(yellow(f"{release_url} is CI's build of main: its checksums.txt is not signed."))
+    expected = _listed_sha256(checksums.decode("utf-8"), name)
     with open(wasm_path, "rb") as f:
-        actual_hash = hashlib.sha256(f.read()).hexdigest().lower()
-
-    if actual_hash != expected_hash:
-        os.remove(wasm_path)
-        raise RuntimeError(
-            f"Template WASM checksum mismatch!\n"
-            f"  Expected: {expected_hash}\n"
-            f"  Actual:   {actual_hash}\n"
-            f"This could indicate a corrupted download or supply-chain attack.\n"
-            f"The file has been removed. Try again or build from source."
+        actual = hashlib.sha256(f.read()).hexdigest()
+    if actual != expected:
+        raise TemplateVerificationError(
+            f"{name} has SHA-256 {actual}, but checksums.txt lists {expected}"
         )
+    print(f"Template verified against {release_url}/checksums.txt")
+
+
+def _fetch(url: str) -> bytes:
+    try:
+        with urllib.request.urlopen(url) as response:
+            return response.read()
+    except Exception as e:
+        raise TemplateVerificationError(f"could not fetch {url}: {e}") from None
+
+
+def _listed_sha256(checksums: str, name: str) -> str:
+    """The SHA-256 that a sha256sum-format checksums file lists for `name`."""
+    for line in checksums.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[1].lstrip("*") == name:
+            return fields[0].lower()
+    raise TemplateVerificationError(f"checksums.txt does not list {name}")
+
+
+def _verify_signature(checksums: bytes, signature: bytes) -> None:
+    """Check that `signature` is the release key's signature of `checksums`, with gpg."""
+    gpg = shutil.which("gpg")
+    if gpg is None:
+        print(yellow(
+            "Warning: gpg is not installed, so the signature on checksums.txt was not "
+            "checked and the template is checked only against the checksums.txt next "
+            "to it. Install gpg to check it against the release key."
+        ))
+        return
+    with tempfile.TemporaryDirectory() as home:
+        checksums_path = os.path.join(home, "checksums.txt")
+        signature_path = checksums_path + ".asc"
+        with open(checksums_path, "wb") as f:
+            f.write(checksums)
+        with open(signature_path, "wb") as f:
+            f.write(signature)
+        gpg_base = [gpg, "--homedir", home, "--batch", "--quiet"]
+        subprocess.run(gpg_base + ["--import", RELEASE_KEY_PATH], check=True, capture_output=True)
+        result = subprocess.run(
+            gpg_base + ["--status-fd", "1", "--verify", signature_path, checksums_path],
+            capture_output=True,
+            text=True,
+        )
+    # VALIDSIG ends with the fingerprint of the primary key the signing subkey belongs to.
+    signers = [
+        line.split()[-1]
+        for line in result.stdout.splitlines()
+        if line.startswith("[GNUPG:] VALIDSIG ")
+    ]
+    if result.returncode != 0 or RELEASE_KEY_FINGERPRINT not in signers:
+        raise TemplateVerificationError(
+            f"checksums.txt.asc is not a valid signature by the release key "
+            f"{RELEASE_KEY_FINGERPRINT}: {result.stderr.strip() or 'no valid signature'}"
+        )
+    print(f"checksums.txt is signed by the release key {RELEASE_KEY_FINGERPRINT}")
+
+
+def _remove_if_present(path: str) -> None:
+    if os.path.exists(path):
+        os.remove(path)
 
 
 def build_template_from_source(

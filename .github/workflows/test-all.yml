@@ -200,8 +200,9 @@ jobs:
                   path: ${{ runner.temp }}/publish
                   merge-multiple: true
 
-            # check-changes compares the next run's sources with this record.
-            - name: Record the sources they were built from
+            # check-changes compares the next run's sources with this record;
+            # find_template_wasm checks a download against checksums.txt (#68).
+            - name: Record the sources they were built from, and their checksums
               run: |
                   cd "${{ runner.temp }}/publish"
                   {
@@ -209,8 +210,8 @@ jobs:
                     echo "sources ${{ needs.wasm-build.outputs.sources-hash }}"
                     echo "commit ${{ github.sha }}"
                   } > template-sources.txt
-                  cat template-sources.txt
-                  ls -la
+                  { echo "# SHA-256 checksums for release assets"; sha256sum *.tar.gz *.wasm; } > checksums.txt
+                  cat template-sources.txt checksums.txt
 
             - name: Publish to the rolling release
               uses: softprops/action-gh-release@v2
@@ -231,11 +232,13 @@ jobs:
                       - `cpython-wasm32-wasip1.tar.gz` — `lib/libpython3.13.a`, CPython headers, frozen stdlib modules
                       - `cpython_canister_template.wasm`, `cpython_canister_template_cedar.wasm` — canister templates
                       - `template-sources.txt` — the sources they were built from
+                      - `checksums.txt` — their SHA-256, not signed (versioned releases are)
                   files: |
                       ${{ runner.temp }}/publish/cpython-wasm32-wasip1.tar.gz
                       ${{ runner.temp }}/publish/cpython_canister_template.wasm
                       ${{ runner.temp }}/publish/cpython_canister_template_cedar.wasm
                       ${{ runner.temp }}/publish/template-sources.txt
+                      ${{ runner.temp }}/publish/checksums.txt
                   fail_on_unmatched_files: true
                   draft: false
                   prerelease: false
