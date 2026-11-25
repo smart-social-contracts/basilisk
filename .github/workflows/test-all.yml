@@ -1,29 +1,34 @@
-# Orchestrator workflow that runs all test suites on push to main.
-# First builds the CPython WASM template (if template paths changed),
-# then runs all test suites in parallel.
+# Orchestrator workflow: runs every test suite on the canister template these
+# sources build, on pull requests and on main, and publishes that template only
+# after all of them pass (#74).
 #
-# IC tests use a live canister on IC mainnet (gfs5q-6qaaa-aaaae-ag5nq-cai).
-# setup-ic-canister reinstalls WASM before tests; teardown stops the canister to
-# save idle cycles. IC_IDENTITY_PEM must be a controller, or set IC_CONTROLLER_PEM
-# (PEM identity that is a controller) so CI can re-grant access automatically.
+# wasm-build builds the template when its sources differ from the published
+# one, or else hands the published one on; either way the tests download it
+# from this run as the `cpython-canister-template` artifact.
+#
+# IC tests use a live canister on IC mainnet (gfs5q-6qaaa-aaaae-ag5nq-cai), so
+# they run on main only. setup-ic-canister reinstalls WASM before tests;
+# teardown stops the canister to save idle cycles. IC_IDENTITY_PEM must be a
+# controller, or set IC_CONTROLLER_PEM (PEM identity that is a controller) so
+# CI can re-grant access automatically.
 
 name: All Tests
 on:
     workflow_dispatch:
+    pull_request:
     push:
         branches:
             - main
 
 concurrency:
-    group: ci-main-${{ github.ref }}
+    group: all-tests-${{ github.ref }}
     cancel-in-progress: true
 
 env:
     PYTHON_VERSION: "3.13"
 
 permissions:
-    contents: write # Required by build-cpython-wasm for GitHub releases
-    actions: write  # Required by build-cpython-wasm for workflow dispatch
+    contents: read
 
 jobs:
     wasm-build:
@@ -32,13 +37,14 @@ jobs:
 
     upgrade-test:
         needs: wasm-build
-        if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         uses: ./.github/workflows/test-upgrade.yml
+        with:
+            template-from-run: true
         secrets: inherit
 
     setup-ic-canister:
         needs: wasm-build
-        if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
+        if: github.event_name != 'pull_request'
         runs-on: ubuntu-latest
         env:
             CANISTER_ID: gfs5q-6qaaa-aaaae-ag5nq-cai
@@ -75,14 +81,17 @@ jobs:
               run: |
                   pip install -e .
 
-            - name: Pre-download canister template
+            - name: Download this run's canister template
+              uses: actions/download-artifact@v4
+              with:
+                  name: cpython-canister-template
+                  path: ${{ runner.temp }}/template
+
+            - name: Use it for the build
               run: |
-                  VERSION=$(python3 -c "import basilisk; print(basilisk.__version__)")
-                  TEMPLATE_DIR="$HOME/.config/basilisk/${VERSION}"
-                  mkdir -p "$TEMPLATE_DIR"
-                  curl -Lf "https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm" \
-                    -o "$TEMPLATE_DIR/cpython_canister_template.wasm"
-                  echo "Template cached at $TEMPLATE_DIR/cpython_canister_template.wasm ($(du -sh "$TEMPLATE_DIR/cpython_canister_template.wasm" | cut -f1))"
+                  TEMPLATE="${{ runner.temp }}/template/cpython_canister_template.wasm"
+                  sha256sum "$TEMPLATE"
+                  echo "BASILISK_TEMPLATE_WASM=$TEMPLATE" >> "$GITHUB_ENV"
 
             - name: Build test canister WASM
               working-directory: tests/test_canister
@@ -107,7 +116,7 @@ jobs:
 
     teardown-ic-canister:
         needs: ic-tests
-        if: always()
+        if: always() && github.event_name != 'pull_request'
         runs-on: ubuntu-latest
         env:
             CANISTER_ID: gfs5q-6qaaa-aaaae-ag5nq-cai
@@ -170,6 +179,64 @@ jobs:
 
     local-tests:
         needs: wasm-build
-        if: ${{ !cancelled() && needs.wasm-build.result != 'failure' }}
         uses: ./.github/workflows/test-integration.yml
+        with:
+            template-from-run: true
         secrets: inherit
+
+    # The only way a template reaches the rolling release: built by this run
+    # from main, and every canister test above has passed on it.
+    publish-template:
+        needs: [wasm-build, unit-tests, upgrade-test, local-tests, ic-tests]
+        if: github.ref == 'refs/heads/main' && needs.wasm-build.outputs.should-build == 'true'
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - name: Download this run's CPython and template artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  pattern: cpython-*
+                  path: ${{ runner.temp }}/publish
+                  merge-multiple: true
+
+            # check-changes compares the next run's sources with this record.
+            - name: Record the sources they were built from
+              run: |
+                  cd "${{ runner.temp }}/publish"
+                  {
+                    echo "# Template sources the assets of this release were built and tested from"
+                    echo "sources ${{ needs.wasm-build.outputs.sources-hash }}"
+                    echo "commit ${{ github.sha }}"
+                  } > template-sources.txt
+                  cat template-sources.txt
+                  ls -la
+
+            - name: Publish to the rolling release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: cpython-wasm-3.13.0-ic1
+                  name: CPython 3.13.0 wasm32-wasip1 (ic1)
+                  body: |
+                      Pre-built CPython 3.13.0 static library for wasm32-wasip1,
+                      with the Basilisk IC patch set revision ic1
+                      (basilisk/compiler/cpython/patches/) applied, and the canister
+                      templates built on it. Published by the All Tests workflow
+                      after every canister test passed on these templates;
+                      `template-sources.txt` names the commit.
+                      Used by `install_cpython_wasm.sh` and `find_template_wasm`
+                      during basilisk canister builds.
+
+                      Contents:
+                      - `cpython-wasm32-wasip1.tar.gz` — `lib/libpython3.13.a`, CPython headers, frozen stdlib modules
+                      - `cpython_canister_template.wasm`, `cpython_canister_template_cedar.wasm` — canister templates
+                      - `template-sources.txt` — the sources they were built from
+                  files: |
+                      ${{ runner.temp }}/publish/cpython-wasm32-wasip1.tar.gz
+                      ${{ runner.temp }}/publish/cpython_canister_template.wasm
+                      ${{ runner.temp }}/publish/cpython_canister_template_cedar.wasm
+                      ${{ runner.temp }}/publish/template-sources.txt
+                  fail_on_unmatched_files: true
+                  draft: false
+                  prerelease: false
+                  make_latest: false

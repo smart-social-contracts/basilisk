@@ -5,12 +5,20 @@
 #      in CPython template mode) and uploads as artifact.
 #   2. local-tests (6 shards): Each shard downloads pre-built WASMs,
 #      deploys via `icp canister install --wasm` (no rebuild), and runs tests.
+#
+# Pull requests and main run this through test-all.yml, which passes
+# template-from-run so the canisters are built on the template that run built
+# or vetted. Run by hand, it uses the published template.
 
 name: Local Tests
 
 on:
-    pull_request:
     workflow_call:
+        inputs:
+            template-from-run:
+                description: "Build on the run's cpython-canister-template artifact instead of the published template"
+                type: boolean
+                default: false
     workflow_dispatch:
 
 env:
@@ -52,12 +60,24 @@ jobs:
                   sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
                   wasm-opt --version
 
-            - name: Pre-download canister template
+            - name: Download the run's canister template
+              if: inputs.template-from-run
+              uses: actions/download-artifact@v4
+              with:
+                  name: cpython-canister-template
+                  path: ${{ runner.temp }}/template
+
+            - name: Download the published canister template
+              if: ${{ !inputs.template-from-run }}
               run: |
-                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
-                  TEMPLATE_PATH="$HOME/.config/basilisk/${VERSION}/cpython_canister_template.wasm"
-                  mkdir -p "$(dirname $TEMPLATE_PATH)"
-                  curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm -o "$TEMPLATE_PATH"
+                  curl -Lf --create-dirs https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm \
+                    -o "${{ runner.temp }}/template/cpython_canister_template.wasm"
+
+            - name: Use it for the build
+              run: |
+                  TEMPLATE="${{ runner.temp }}/template/cpython_canister_template.wasm"
+                  sha256sum "$TEMPLATE"
+                  echo "BASILISK_TEMPLATE_WASM=$TEMPLATE" >> "$GITHUB_ENV"
 
             - name: Set up Python
               uses: actions/setup-python@v5

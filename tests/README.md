@@ -6,11 +6,19 @@ The test suite is split into three workflows based on **where** they run:
 
 | Workflow | File | Runs on | Trigger |
 |---|---|---|---|
-| **IC Tests** | `test-shell.yml` | Live IC mainnet canister | PR, push to main, manual |
-| **Local Tests** | `test-integration.yml` | Local icp-cli replica | PR, push to main, manual |
-| **Upgrade Test** | `test-upgrade.yml` | Local icp-cli replica | PR, push to main |
+| **IC Tests** | `test-shell.yml` | Live IC mainnet canister | PR, push to main (via `test-all.yml`), manual |
+| **Local Tests** | `test-integration.yml` | Local icp-cli replica | PR and push to main (via `test-all.yml`), manual |
+| **Upgrade Test** | `test-upgrade.yml` | Local icp-cli replica | PR and push to main (via `test-all.yml`), manual |
 
-On push to main, `test-all.yml` orchestrates all three (plus the CPython WASM template build).
+On pull requests and on push to main, `test-all.yml` runs the canister
+template build first (`build-cpython-wasm.yml`), then every suite on that
+template. The template is built whenever its sources
+(`scripts/template_sources_hash.sh`) differ from those of the published
+template; otherwise the published one is reused. Only `test-all.yml` on main
+publishes a template to the rolling `cpython-wasm-3.13.0-ic1` release, and only
+after all suites pass on it, with `template-sources.txt` recording the sources.
+On a PR the IC Tests run the PR's tests against the canister main installed;
+the PR's template is not installed on mainnet.
 
 ## IC Tests (`test-shell.yml`)
 
@@ -100,9 +108,9 @@ Tests decentralized canister upgrades using the IC chunked code upload API (`upl
 
 | Workflow | File | Purpose |
 |---|---|---|
-| **Build CPython WASM** | `build-cpython-wasm.yml` | Builds CPython 3.13 + canister template for wasm32-wasip1 |
+| **Build CPython WASM** | `build-cpython-wasm.yml` | Builds CPython 3.13 + canister template for wasm32-wasip1 (artifacts only; `test-all.yml` publishes) |
 | **Benchmark** | `benchmark.yml` | Manual: performance benchmarks |
-| **Release** | `release.yml` | Manual: bump version, build, draft release with `checksums.txt` |
+| **Release** | `release.yml` | Manual: refuses unless the rolling template was built from the commit's template sources; bump version, build, draft release with `checksums.txt` |
 | **Verify release signature** | `release-verify.yml` | On publish (after signing): check the signature, upload the signed wheel/sdist to PyPI, smoke test |
 
 ## Directory Structure

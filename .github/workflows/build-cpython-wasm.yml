@@ -1,54 +1,81 @@
-# Build CPython 3.13 for wasm32-wasip1 and publish as a GitHub release artifact.
-# This runs manually or when the CPython build scripts change.
-# The resulting tarball is downloaded by install_cpython_wasm.sh during canister builds.
+# Build CPython 3.13 for wasm32-wasip1 and the canister template on top of it.
+# Builds only: the artifacts are published to the rolling cpython-wasm release
+# by test-all.yml, after every canister test has run on them (#74).
+#
+# The run builds whenever its template sources (scripts/template_sources_hash.sh)
+# differ from the ones the published template was built from. Otherwise it
+# hands the published template to the tests under the same artifact name, so
+# callers always download `cpython-canister-template` from this run.
 
 name: Build CPython Wasm
 
 on:
-    workflow_dispatch: # Manual trigger
+    workflow_dispatch: # Manual trigger: always builds
     workflow_call:     # Called by test-all.yml orchestrator
+        outputs:
+            should-build:
+                description: "'true' when this run built the template from its own sources"
+                value: ${{ jobs.check-changes.outputs.should-build }}
+            sources-hash:
+                description: "Hash of the template sources this run tested"
+                value: ${{ jobs.check-changes.outputs.sources-hash }}
 
 permissions:
-    contents: write # Required for creating GitHub releases
-    actions: write  # Required for triggering workflow_dispatch on test.yml
+    contents: read
+
+env:
+    # Keep in sync with CPYTHON_VERSION and ARTIFACT_REVISION below.
+    ROLLING_RELEASE_URL: https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1
 
 jobs:
     check-changes:
         runs-on: ubuntu-latest
         outputs:
             should-build: ${{ steps.check.outputs.should_build }}
+            sources-hash: ${{ steps.check.outputs.sources_hash }}
         steps:
             - uses: actions/checkout@v4
-              with:
-                  fetch-depth: 0
 
             - id: check
               run: |
-                  # Always build on manual trigger
+                  HASH=$(bash scripts/template_sources_hash.sh)
+                  echo "sources_hash=$HASH" >> "$GITHUB_OUTPUT"
                   if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
                     echo "Manual trigger — will build"
-                    echo "should_build=true" >> $GITHUB_OUTPUT
+                    echo "should_build=true" >> "$GITHUB_OUTPUT"
                     exit 0
                   fi
-                  BEFORE="${{ github.event.before }}"
-                  if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-                    echo "No base commit — will build"
-                    echo "should_build=true" >> $GITHUB_OUTPUT
-                    exit 0
+                  PUBLISHED=""
+                  if RECORD=$(curl -sfL "$ROLLING_RELEASE_URL/template-sources.txt"); then
+                    PUBLISHED=$(printf '%s\n' "$RECORD" | awk '$1 == "sources" { print $2 }')
                   fi
-                  CHANGED=$(git diff --name-only "$BEFORE" "${{ github.sha }}" -- \
-                    'basilisk/compiler/cpython/**' \
-                    'basilisk/compiler/basilisk_cpython/**' \
-                    'basilisk/compiler/cpython_canister_template/**' \
-                    'basilisk/frozen_stdlib_preamble.py' || true)
-                  if [ -n "$CHANGED" ]; then
-                    echo "Template paths changed:"
-                    echo "$CHANGED"
-                    echo "should_build=true" >> $GITHUB_OUTPUT
+                  if [ "$PUBLISHED" = "$HASH" ]; then
+                    echo "The published template was built from these sources ($HASH) — reusing it"
+                    echo "should_build=false" >> "$GITHUB_OUTPUT"
                   else
-                    echo "No template path changes detected, skipping build"
-                    echo "should_build=false" >> $GITHUB_OUTPUT
+                    echo "Template sources $HASH differ from the published template's (${PUBLISHED:-none recorded}) — will build"
+                    echo "should_build=true" >> "$GITHUB_OUTPUT"
                   fi
+
+    # Nothing to build: hand the tests the published template, which was built
+    # and tested from these exact sources.
+    fetch-published-template:
+        needs: check-changes
+        if: needs.check-changes.outputs.should-build == 'false'
+        runs-on: ubuntu-latest
+        steps:
+            - name: Download published template
+              run: |
+                  curl -fL "$ROLLING_RELEASE_URL/cpython_canister_template.wasm" \
+                    -o "${{ runner.temp }}/cpython_canister_template.wasm"
+                  sha256sum "${{ runner.temp }}/cpython_canister_template.wasm"
+
+            - name: Upload template artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: cpython-canister-template
+                  path: ${{ runner.temp }}/cpython_canister_template.wasm
+                  retention-days: 1
 
     # Guard against source-tree reproducibility drift (zero tolerance).
     #
@@ -144,26 +171,6 @@ jobs:
                   path: ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz
                   retention-days: 90
 
-            - name: Create/Update GitHub Release
-              if: github.ref == 'refs/heads/main'
-              uses: softprops/action-gh-release@v2
-              with:
-                  tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}-${{ env.ARTIFACT_REVISION }}
-                  name: CPython ${{ env.CPYTHON_VERSION }} wasm32-wasip1 (${{ env.ARTIFACT_REVISION }})
-                  body: |
-                      Pre-built CPython ${{ env.CPYTHON_VERSION }} static library for wasm32-wasip1,
-                      with the Basilisk IC patch set revision ${{ env.ARTIFACT_REVISION }}
-                      (basilisk/compiler/cpython/patches/) applied.
-                      Used by `install_cpython_wasm.sh` during basilisk canister builds.
-                      
-                      Contents:
-                      - `lib/libpython3.13.a` — static library
-                      - `include/` — CPython headers
-                      - `lib/python3.13/` — frozen stdlib modules
-                  files: ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz
-                  draft: false
-                  prerelease: false
-                  make_latest: false
 
     build-canister-template:
         runs-on: ubuntu-latest
@@ -174,6 +181,23 @@ jobs:
             CPYTHON_VERSION: "3.13.0"
             ARTIFACT_REVISION: "ic1" # keep in sync with install_cpython_wasm.sh
             WASI_SDK_VERSION: "24"
+            # Pinned, because runner images move stable Rust under us, and
+            # gradually: on 19 Nov 2026 a runner still had image 20261111.196
+            # (Rust 1.99.1) while the 16 Nov image already had 1.100.0, so two
+            # runs of this job on one day could build different templates.
+            # Built with 1.100.0 the template gains a wasm start function
+            # (_initialize) that calls ic0.time, and every install traps with
+            # "ic0_time cannot be executed in start mode". 1.99.1 built the
+            # published template.
+            #
+            # To raise it, change it here in a pull request. The sources hash
+            # changes, so that PR builds both templates with the new version,
+            # "Check the templates have no start function" runs on both, and
+            # every canister suite (unit, local, upgrade) runs on the plain one.
+            # No test installs the Cedar template: download the PR's
+            # cpython-canister-template-cedar artifact, build a canister on it
+            # (BASILISK_TEMPLATE_WASM=<file> icp deploy), and call a method.
+            RUST_VERSION: "1.99.1"
         steps:
             - uses: actions/checkout@v4
 
@@ -195,8 +219,11 @@ jobs:
                   sudo mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux /opt/wasi-sdk
                   /opt/wasi-sdk/bin/clang --version
 
-            - name: Install Rust wasm32-wasip1 target
-              run: rustup target add wasm32-wasip1
+            - name: Install Rust ${{ env.RUST_VERSION }} with the wasm32-wasip1 target
+              run: |
+                  rustup toolchain install "$RUST_VERSION" --profile minimal --target wasm32-wasip1
+                  rustup default "$RUST_VERSION"
+                  rustc --version
 
             - name: Install wasi2ic
               run: cargo install wasi2ic
@@ -250,6 +277,14 @@ jobs:
                   echo "Cedar template wasm size: $(du -sh ${{ runner.temp }}/cpython_canister_template_cedar.wasm | cut -f1)"
                   ls -la ${{ runner.temp }}/cpython_canister_template_cedar.wasm
 
+            # No canister test installs the Cedar template, and the plain one
+            # only fails at install with an error that does not name its cause.
+            - name: Check the templates have no start function
+              run: |
+                  python3 scripts/check_no_start_function.py \
+                    ${{ runner.temp }}/cpython_canister_template.wasm \
+                    ${{ runner.temp }}/cpython_canister_template_cedar.wasm
+
             - name: Upload template artifact
               uses: actions/upload-artifact@v4
               with:
@@ -263,16 +298,3 @@ jobs:
                   name: cpython-canister-template-cedar
                   path: ${{ runner.temp }}/cpython_canister_template_cedar.wasm
                   retention-days: 90
-
-            - name: Add template to GitHub Release
-              if: github.ref == 'refs/heads/main'
-              uses: softprops/action-gh-release@v2
-              with:
-                  tag_name: cpython-wasm-${{ env.CPYTHON_VERSION }}-${{ env.ARTIFACT_REVISION }}
-                  files: |
-                      ${{ runner.temp }}/cpython_canister_template.wasm
-                      ${{ runner.temp }}/cpython_canister_template_cedar.wasm
-                  draft: false
-                  prerelease: false
-                  make_latest: false
-
