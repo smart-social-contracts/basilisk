@@ -43,19 +43,29 @@ def test_init_succeeded(canister):
     assert result == "init_"
 
 
-@pytest.mark.xfail(reason="PocketIC may not call post_upgrade hook on canister upgrade", strict=False)
+def _upgrade(args):
+    """Upgrade the canister to its built wasm, passing post_upgrade_ the Candid args."""
+    return subprocess.run(
+        ["icp", "canister", "install", CANISTER_NAME, "--wasm", _wasm_path(),
+         "--args", args, "--mode", "upgrade", "-y"],
+        cwd=EXAMPLE_DIR, capture_output=True, text=True, timeout=120,
+    )
+
+
 def test_post_upgrade_succeeds(canister):
-    if _USE_PREBUILT:
-        result = subprocess.run(
-            ["icp", "canister", "install", CANISTER_NAME, "--wasm", _wasm_path(),
-             "--args", "(false)", "--mode", "upgrade", "-y"],
-            cwd=EXAMPLE_DIR, capture_output=True, text=True, timeout=120,
-        )
-        assert result.returncode == 0, f"upgrade failed: {result.stderr}"
-    else:
-        subprocess.run(
-            ["icp", "deploy", CANISTER_NAME, "--args", "(false)"],
-            cwd=EXAMPLE_DIR, capture_output=True, text=True, timeout=1800,
-        )
+    """post_upgrade_ takes an argument, and the upgrade passes it through the build's wrapper (#66)."""
+    result = _upgrade("(false)")
+    assert result.returncode == 0, f"upgrade failed: {result.stderr}"
+    # Only post_upgrade_ sets this: after install it reads "init_", so an
+    # install that skipped the unchanged wasm would fail here.
+    result = parse_candid_text(call_canister(canister, "get_message", example_dir=EXAMPLE_DIR))
+    assert result == "post_upgrade_"
+
+
+def test_post_upgrade_trap_rolls_back(canister):
+    """(true) reaches post_upgrade_, which traps, and the IC keeps the canister as it was."""
+    result = _upgrade("(true)")
+    assert result.returncode != 0
+    assert "post_upgrade_ trapped" in result.stderr + result.stdout
     result = parse_candid_text(call_canister(canister, "get_message", example_dir=EXAMPLE_DIR))
     assert result == "post_upgrade_"
