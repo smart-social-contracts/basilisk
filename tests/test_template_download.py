@@ -72,14 +72,12 @@ def nothing_left_behind(directory):
     return [name for name in os.listdir(directory) if name.endswith(".download")] == []
 
 
-@pytest.fixture
-def other_key(tmp_path_factory):
-    """A second, valid signing key in its own gpg home: (sign(bytes) -> signature, public key path)."""
+def throwaway_key(tmp_path_factory, user_id):
+    """A valid signing key in its own gpg home: (sign(bytes) -> signature, public key path, home)."""
     home = str(tmp_path_factory.mktemp("gnupg"))
     gpg = ["gpg", "--homedir", home, "--batch", "--quiet", "--pinentry-mode", "loopback", "--passphrase", ""]
-    subprocess.run(gpg + ["--quick-gen-key", "Not the release key <other@example.org>", "ed25519", "sign", "never"],
-                   check=True, capture_output=True)
-    public = os.path.join(home, "other.asc")
+    subprocess.run(gpg + ["--quick-gen-key", user_id, "ed25519", "sign", "never"], check=True, capture_output=True)
+    public = os.path.join(home, "public.asc")
     subprocess.run(gpg + ["--armor", "--output", public, "--export"], check=True, capture_output=True)
 
     def sign(content):
@@ -89,6 +87,21 @@ def other_key(tmp_path_factory):
         return subprocess.run(gpg + ["--detach-sign", "--output", "-", source],
                               check=True, capture_output=True).stdout
 
+    return sign, public, home
+
+
+@pytest.fixture
+def other_key(tmp_path_factory):
+    """A second, valid signing key: (sign, public key path)."""
+    sign, public, home = throwaway_key(tmp_path_factory, "Not the release key <other@example.org>")
+    yield sign, public
+    subprocess.run(["gpgconf", "--homedir", home, "--kill", "all"], capture_output=True)
+
+
+@pytest.fixture
+def impostor_key(tmp_path_factory):
+    """A valid key whose user ID ends in the release key's fingerprint."""
+    sign, public, home = throwaway_key(tmp_path_factory, f"Release key {build.RELEASE_KEY_FINGERPRINT}")
     yield sign, public
     subprocess.run(["gpgconf", "--homedir", home, "--kill", "all"], capture_output=True)
 
@@ -130,6 +143,21 @@ def test_a_valid_signature_by_another_key_fails(github, tmp_path, monkeypatch, o
     pages[f"{V0_17_0}/checksums.txt.asc"] = sign(checksums)
     both = tmp_path / "both-keys.asc"
     both.write_bytes(data_of(build.RELEASE_KEY_PATH) + data_of(other_public))
+    monkeypatch.setattr(build, "RELEASE_KEY_PATH", str(both))
+    with pytest.raises(TemplateVerificationError, match="not a valid signature by the release key"):
+        build._verify_template(f"{V0_17_0}/recipe.hbs", recipe(tmp_path))
+
+
+@needs_gpg
+def test_a_key_named_after_the_release_fingerprint_fails(github, tmp_path, monkeypatch, impostor_key):
+    """Only VALIDSIG's primary-key field counts, not text elsewhere in gpg's status lines."""
+    sign, impostor_public = impostor_key
+    pages, _ = github
+    checksums = data("v0.17.0-checksums.txt")
+    pages[f"{V0_17_0}/checksums.txt"] = checksums
+    pages[f"{V0_17_0}/checksums.txt.asc"] = sign(checksums)
+    both = tmp_path / "both-keys.asc"
+    both.write_bytes(data_of(build.RELEASE_KEY_PATH) + data_of(impostor_public))
     monkeypatch.setattr(build, "RELEASE_KEY_PATH", str(both))
     with pytest.raises(TemplateVerificationError, match="not a valid signature by the release key"):
         build._verify_template(f"{V0_17_0}/recipe.hbs", recipe(tmp_path))
@@ -231,6 +259,75 @@ def test_without_a_template_the_build_stops_unless_a_source_build_is_asked_for(m
     monkeypatch.setattr(build, "build_template_from_source", source_build)
     with pytest.raises(SystemExit):
         build.build_with_template({}, "canister", {}, False)
+
+
+@pytest.mark.parametrize("value, allowed", [
+    ("1", True), ("0", False), ("true", False), ("yes", False), ("", False), (None, False),
+])
+def test_only_exactly_1_asks_for_an_unverified_template(monkeypatch, value, allowed):
+    if value is None:
+        monkeypatch.delenv("BASILISK_TEMPLATE_FROM_SOURCE", raising=False)
+    else:
+        monkeypatch.setenv("BASILISK_TEMPLATE_FROM_SOURCE", value)
+    assert build._source_build_allowed() is allowed
+
+
+def source_build_paths(tmp_path):
+    version_dir = tmp_path / "0.17.0"
+    version_dir.mkdir()
+    raw = tmp_path / "target" / "wasm32-wasip1" / "release" / TEMPLATE
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"built from the unsigned CPython")
+    compiler = tmp_path / "compiler" / "cpython_canister_template"
+    compiler.mkdir(parents=True)
+    (compiler / "Cargo.toml").write_text("[package]\n")
+    return {"global_basilisk_version_dir": str(version_dir), "global_basilisk_target_dir": str(tmp_path / "target"),
+            "global_basilisk_rust_bin_dir": str(tmp_path / "bin"), "compiler": str(tmp_path / "compiler")}
+
+
+@pytest.fixture
+def source_build(monkeypatch, tmp_path):
+    """build_template_from_source with Rust, CPython and cargo stubbed: (paths, version_dir)."""
+    monkeypatch.setattr(build, "ensure_rust_dependencies", lambda paths: None)
+    monkeypatch.setattr(build, "install_cpython_wasm", lambda paths, env, verbose: None)
+    monkeypatch.setattr(build, "run_subprocess", lambda args, env, verbose: None)
+    monkeypatch.setattr(basilisk, "__file__", str(tmp_path / "__init__.py"))
+    paths = source_build_paths(tmp_path)
+    return paths, tmp_path / "0.17.0"
+
+
+def test_a_source_build_never_lands_where_the_verified_template_is_trusted(github, source_build, monkeypatch):
+    """The review's third path: a source build cached as if verified, used by later builds without the opt-in."""
+    paths, version_dir = source_build
+    built = build.build_template_from_source(paths, {}, False)
+    assert built == str(version_dir / build.SOURCE_BUILT_TEMPLATE)
+    assert not (version_dir / TEMPLATE).exists() and nothing_left_behind(version_dir)
+    monkeypatch.delenv("BASILISK_TEMPLATE_FROM_SOURCE", raising=False)
+    assert build.find_template_wasm(paths) is None  # the next build downloads, and gets nothing
+
+
+def test_a_failed_conversion_leaves_no_source_built_template(github, source_build, monkeypatch):
+    paths, version_dir = source_build
+
+    def wasi2ic_fails(args, env, verbose):
+        if args[0].endswith("wasi2ic"):  # cargo succeeds, the conversion does not
+            raise SystemExit(1)
+
+    monkeypatch.setattr(build, "run_subprocess", wasi2ic_fails)
+    with pytest.raises(SystemExit):
+        build.build_template_from_source(paths, {}, False)
+    assert os.listdir(version_dir) == []
+
+
+def test_a_local_build_needs_the_opt_in(github, source_build, monkeypatch, tmp_path):
+    paths, _ = source_build
+    local = tmp_path / "compiler" / "cpython_canister_template" / "target" / "wasm32-wasip1" / "release" / TEMPLATE
+    local.parent.mkdir(parents=True)
+    local.write_bytes(b"built in this checkout")
+    monkeypatch.delenv("BASILISK_TEMPLATE_FROM_SOURCE", raising=False)
+    assert build.find_template_wasm(paths) is None
+    monkeypatch.setenv("BASILISK_TEMPLATE_FROM_SOURCE", "1")
+    assert build.find_template_wasm(paths) == str(local)
 
 
 @pytest.mark.parametrize("failure", [

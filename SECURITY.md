@@ -72,13 +72,19 @@ and uses it only if all of this holds:
   so another release's signed file cannot be replayed.
 - The template's SHA-256 is the one `checksums.txt` lists.
 
-Only a template that passes is moved into the cache
-(`~/.config/basilisk/{version}/`), where later builds use it without checking
-again. Anything else stops the build. There is no fallback to the
-`cpython-wasm-3.13.0-ic1` release, which CI publishes from `main` and does not
-sign. If a version's release has no template, the build stops too, unless
-`BASILISK_TEMPLATE_FROM_SOURCE=1` asks for a source build; that build's CPython
-comes from the unsigned release.
+Only a template that passes is moved to
+`~/.config/basilisk/{version}/cpython_canister_template.wasm`, where later builds
+use it without checking again; it is downloaded to a temporary file and moved
+there after verifying. Anything else stops the build. There is no fallback to
+the `cpython-wasm-3.13.0-ic1` release, which CI publishes from `main` and does
+not sign.
+
+If a version's release has no template, the build stops too. Only
+`BASILISK_TEMPLATE_FROM_SOURCE=1` (exactly `1`) lets it use an unverified one:
+a template built from source, written to
+`cpython_canister_template.source-built.wasm` next to the verified one and
+never in its place, or one built in a source checkout. A source build's
+CPython comes from the unsigned release, so use it for development only.
 
 ## Security Checklist for Canister Developers
 

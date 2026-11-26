@@ -23,6 +23,16 @@ TEMPLATE_DOWNLOAD_URL = (
 RELEASE_KEY_FINGERPRINT = "6B7B038DEB77849F1F615E67CA38831314D6AA09"
 RELEASE_KEY_PATH = os.path.join(os.path.dirname(__file__), "release_key.asc")
 
+# A template built from source goes to a file of its own: the cached download
+# (cpython_canister_template.wasm) is trusted as it is, so nothing unverified
+# may be written there.
+SOURCE_BUILT_TEMPLATE = "cpython_canister_template.source-built.wasm"
+
+
+def _source_build_allowed() -> bool:
+    """Whether this build may use a template that no release signed (opt-in, exactly "1")."""
+    return os.environ.get("BASILISK_TEMPLATE_FROM_SOURCE") == "1"
+
 
 def ensure_rust_dependencies(paths: Paths) -> None:
     """Install Rust toolchain and build tools only when building the template from source.
@@ -78,13 +88,13 @@ def build_with_template(
     if template_wasm_path is None:
         # A source build takes its CPython from the unsigned cpython-wasm
         # release, so it is not a silent stand-in for the signed template.
-        if os.environ.get("BASILISK_TEMPLATE_FROM_SOURCE") != "1":
+        if not _source_build_allowed():
             print(red(
                 f"No verified canister template for basilisk {basilisk.__version__}: the "
                 f"v{basilisk.__version__} release has none that could be downloaded. Set "
-                "BASILISK_TEMPLATE_WASM to a template file you trust, or "
-                "BASILISK_TEMPLATE_FROM_SOURCE=1 to build one from source (its CPython "
-                "comes from the unsigned cpython-wasm-3.13.0-ic1 release)."
+                "BASILISK_TEMPLATE_WASM to a template file you trust. For development "
+                "only, BASILISK_TEMPLATE_FROM_SOURCE=1 builds one from source, unverified: "
+                "its CPython comes from the unsigned cpython-wasm-3.13.0-ic1 release."
             ))
             sys.exit(1)
         print(red("Template wasm not found. Building from source..."))
@@ -236,7 +246,8 @@ def find_template_wasm(paths: Paths) -> str | None:
     2. ~/.config/basilisk/<version>/cpython_canister_template.wasm (cached artifact,
        which only a verified download puts there)
     3. Download from the v{version} GitHub release, verify, and cache at (2)
-    4. <compiler_dir>/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm (local build)
+    4. <compiler_dir>/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm
+       (a local build), only with BASILISK_TEMPLATE_FROM_SOURCE=1
     """
     # 1. Explicit path
     explicit = os.environ.get("BASILISK_TEMPLATE_WASM")
@@ -257,10 +268,10 @@ def find_template_wasm(paths: Paths) -> str | None:
     if downloaded:
         return artifact_path
 
-    # 4. Local build
+    # 4. Local build: unsigned, like a source build
     compiler_dir = os.path.dirname(basilisk.__file__) + "/compiler"
     local_path = f"{compiler_dir}/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm"
-    if os.path.exists(local_path):
+    if _source_build_allowed() and os.path.exists(local_path):
         return local_path
 
     return None
@@ -379,18 +390,21 @@ def _verify_signature(checksums: bytes, signature: bytes) -> None:
 
 
 def _remove_if_present(path: str) -> None:
-    if os.path.exists(path):
+    try:
         os.remove(path)
+    except FileNotFoundError:
+        pass
 
 
 def build_template_from_source(
     paths: Paths, cargo_env: dict[str, str], verbose: bool
 ) -> str:
-    """Build the CPython canister template WASM from source and cache it.
+    """Build the CPython canister template WASM from source.
 
-    This is the fallback when no pre-built template is found. It compiles the
-    template from its own Cargo.toml, runs wasi2ic, and caches the result at
-    ~/.config/basilisk/<version>/cpython_canister_template.wasm.
+    Used only with BASILISK_TEMPLATE_FROM_SOURCE=1, when no verified template
+    is found. It compiles the template from its own Cargo.toml, runs wasi2ic,
+    and puts the result at ~/.config/basilisk/<version>/SOURCE_BUILT_TEMPLATE,
+    never at the path of the verified download.
 
     wasi2ic is needed to convert WASI entry points to IC canister format.
     wasm-opt is NOT run here as it can corrupt the binary.
@@ -428,24 +442,30 @@ def build_template_from_source(
     # 3. Post-process: copy raw wasm and run wasi2ic
     # wasi2ic converts WASI entry points (_start, etc.) to IC canister format.
     # Do NOT run wasm-opt — it corrupts the binary for IC deployment.
+    # It is converted in a temporary file and moved into place only once
+    # wasi2ic has succeeded, so a failed conversion leaves nothing behind.
     raw_wasm = f"{paths['global_basilisk_target_dir']}/wasm32-wasip1/release/cpython_canister_template.wasm"
-    cached_path = f"{paths['global_basilisk_version_dir']}/cpython_canister_template.wasm"
-    os.makedirs(os.path.dirname(cached_path), exist_ok=True)
-    shutil.copy(raw_wasm, cached_path)
+    built_path = f"{paths['global_basilisk_version_dir']}/{SOURCE_BUILT_TEMPLATE}"
+    os.makedirs(os.path.dirname(built_path), exist_ok=True)
+    fd, work_path = tempfile.mkstemp(dir=os.path.dirname(built_path), prefix=".template-", suffix=".build")
+    os.close(fd)
+    try:
+        shutil.copy(raw_wasm, work_path)
+        run_subprocess(
+            [
+                f"{paths['global_basilisk_rust_bin_dir']}/wasi2ic",
+                work_path,
+                work_path,
+            ],
+            cargo_env,
+            verbose,
+        )
+        os.replace(work_path, built_path)
+    finally:
+        _remove_if_present(work_path)
 
-    # wasi2ic
-    run_subprocess(
-        [
-            f"{paths['global_basilisk_rust_bin_dir']}/wasi2ic",
-            cached_path,
-            cached_path,
-        ],
-        cargo_env,
-        verbose,
-    )
-
-    print(f"Template WASM built and cached at {cached_path}")
-    return cached_path
+    print(f"Template WASM built from source at {built_path}")
+    return built_path
 
 
 def read_python_source(paths: Paths) -> str:
