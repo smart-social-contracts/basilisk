@@ -100,6 +100,13 @@ jobs:
               run: |
                   source venv/bin/activate
                   pip install pyyaml
+                  # A fixture's third-party packages (imports: boltons) are bundled
+                  # from this venv; without them its canister traps at install.
+                  # "basilisk" alone is an unrelated PyPI package.
+                  grep -hvE '^\s*(#|$)|^(ic-)?basilisk' tests/fixtures/*/requirements.txt \
+                    | sort -u > fixture-requirements.txt
+                  cat fixture-requirements.txt
+                  pip install -r fixture-requirements.txt
                   python scripts/build_all_wasms.py
 
             - name: Package pre-built WASMs
