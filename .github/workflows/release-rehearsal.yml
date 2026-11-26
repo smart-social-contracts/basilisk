@@ -1,0 +1,46 @@
+# Rehearse a release: build, test and stage every asset of a release from this
+# commit, exactly as release.yml does, and upload the staged release as the
+# `release` artifact. Pull requests that change the release path run it, so the
+# path is not first run on the day of a release.
+#
+# It cannot release anything. It does not call release.yml, whose jobs alone
+# push, tag and create the draft; its token only reads, and a called workflow
+# cannot raise that; and PyPI is uploaded to only by release-verify.yml, for a
+# published release.
+name: Release Rehearsal
+
+on:
+    workflow_dispatch:
+    pull_request:
+        paths:
+            - .github/workflows/release.yml
+            - .github/workflows/release-build.yml
+            - .github/workflows/release-rehearsal.yml
+            - .github/workflows/build-cpython-wasm.yml
+            - basilisk/compiler/cpython/build_cpython_wasm.sh
+            - scripts/stage_release.py
+
+concurrency:
+    group: release-rehearsal-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+jobs:
+    version:
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.version.outputs.version }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - id: version
+              run: echo "version=$(grep -Po '__version__ = "\K[^"]*' basilisk/__init__.py)" >> "$GITHUB_OUTPUT"
+
+    build:
+        needs: version
+        uses: ./.github/workflows/release-build.yml
+        with:
+            ref: ${{ github.sha }}
+            version: ${{ needs.version.outputs.version }}

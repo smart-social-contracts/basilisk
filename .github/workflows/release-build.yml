@@ -1,0 +1,123 @@
+# Build, test and stage every asset of a release from one commit, in this run.
+# Called by release.yml, with the tag's commit, and by release-rehearsal.yml.
+#
+# A signed release holds only what this run built from that commit (#83):
+#   - build-cpython-wasm.yml with `release: true` builds the CPython tarball
+#     and both templates with no cache and without reading the rolling
+#     release, and each build step records the sha256 of what it built;
+#   - the canister suites run on the template built here;
+#   - scripts/stage_release.py stages a file only if its hash is the one its
+#     build step recorded, and only a complete set. The rolling release's
+#     bytes have no build record, so they cannot be staged.
+#
+# This workflow only reads. It never pushes, tags or creates a release: its
+# result is the `release` artifact, and the hash of its checksums.txt.
+name: Release Build
+
+on:
+    workflow_call:
+        inputs:
+            ref:
+                description: "Commit to build: the release tag's"
+                type: string
+                required: true
+            version:
+                description: "The version basilisk/__init__.py has at that commit"
+                type: string
+                required: true
+        outputs:
+            checksums-sha256:
+                description: "sha256 of the staged checksums.txt"
+                value: ${{ jobs.stage.outputs.checksums-sha256 }}
+
+permissions:
+    contents: read
+
+env:
+    PYTHON_VERSION: "3.13"
+
+jobs:
+    binaries:
+        uses: ./.github/workflows/build-cpython-wasm.yml
+        with:
+            ref: ${{ inputs.ref }}
+            release: true
+
+    upgrade-test:
+        needs: binaries
+        uses: ./.github/workflows/test-upgrade.yml
+        with:
+            template-from-run: true
+
+    local-tests:
+        needs: binaries
+        uses: ./.github/workflows/test-integration.yml
+        with:
+            template-from-run: true
+
+    stage:
+        needs: [binaries, upgrade-test, local-tests]
+        runs-on: ubuntu-latest
+        outputs:
+            checksums-sha256: ${{ steps.stage.outputs.checksums-sha256 }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.ref }}
+
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ env.PYTHON_VERSION }}
+
+            - name: Write build info
+              run: |
+                  COMMIT=$(git rev-parse HEAD | head -c 8)
+                  DATE=$(git log -1 --format=%cI)
+                  printf '__commit__ = "%s"\n__date__ = "%s"\n' "$COMMIT" "$DATE" > basilisk/_build_info.py
+
+            - name: Build the wheel and sdist
+              run: |
+                  pip install build twine
+                  python -m build
+                  twine check dist/*
+
+            # What stage_release.py stages against: each binary's hash as its
+            # build step recorded it, the dist's as built just above, and the
+            # recipe as this commit has it.
+            - name: Record what this run built
+              env:
+                  CPYTHON_SHA256: ${{ needs.binaries.outputs.cpython-sha256 }}
+                  TEMPLATE_SHA256: ${{ needs.binaries.outputs.template-sha256 }}
+                  CEDAR_SHA256: ${{ needs.binaries.outputs.template-cedar-sha256 }}
+              run: |
+                  {
+                    echo "$CPYTHON_SHA256  cpython-wasm32-wasip1.tar.gz"
+                    echo "$TEMPLATE_SHA256  cpython_canister_template.wasm"
+                    echo "$CEDAR_SHA256  cpython_canister_template_cedar.wasm"
+                    (cd dist && sha256sum -- *)
+                    (cd icp-cli/recipe && sha256sum recipe.hbs)
+                  } > "${{ runner.temp }}/built.txt"
+                  cat "${{ runner.temp }}/built.txt"
+
+            - name: Download this run's binaries
+              uses: actions/download-artifact@v4
+              with:
+                  pattern: cpython-*
+                  path: ${{ runner.temp }}/binaries
+                  merge-multiple: true
+
+            - name: Stage the release
+              id: stage
+              run: |
+                  python3 scripts/stage_release.py stage "${{ inputs.version }}" \
+                    "${{ runner.temp }}/built.txt" release \
+                    "${{ runner.temp }}"/binaries/* dist/* icp-cli/recipe/recipe.hbs
+                  echo "checksums-sha256=$(sha256sum release/checksums.txt | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+            - name: Upload the staged release
+              uses: actions/upload-artifact@v4
+              with:
+                  name: release
+                  path: release/
+                  if-no-files-found: error
+                  retention-days: 30

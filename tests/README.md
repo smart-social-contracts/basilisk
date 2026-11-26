@@ -110,8 +110,9 @@ Tests decentralized canister upgrades using the IC chunked code upload API (`upl
 |---|---|---|
 | **Build CPython WASM** | `build-cpython-wasm.yml` | Builds CPython 3.13 + canister template for wasm32-wasip1 (artifacts only; `test-all.yml` publishes) |
 | **Benchmark** | `benchmark.yml` | Manual: performance benchmarks |
-| **Release** | `release.yml` | Manual: refuses unless the rolling template was built from the commit's template sources; bump version, build, draft release with `checksums.txt` |
-| **Verify release signature** | `release-verify.yml` | On publish (after signing): check the signature, upload the signed wheel/sdist to PyPI, smoke test |
+| **Release** | `release.yml` | Manual, from main: tag a version bump, then `release-build.yml` builds every asset from the tag, runs the upgrade and local suites on its template, and stages only what it built; draft release with `checksums.txt` |
+| **Release Rehearsal** | `release-rehearsal.yml` | PRs that change the release path, manual: `release-build.yml` without the tag and the draft; the staged release is the `release` artifact |
+| **Verify release signature** | `release-verify.yml` | On publish (after signing): check the signature and that `checksums.txt` lists every asset, upload the signed wheel/sdist to PyPI, smoke test |
 
 ## Directory Structure
 

@@ -6,6 +6,14 @@ See [Security](https://github.com/smart-social-contracts#security) on the
 organization page: how to report privately, the PGP key, and how to check a
 release's signature.
 
+A release's signature covers its `checksums.txt`. Every file listed there was
+built in that release's own run of `release.yml` from the tagged commit, with
+its hash recorded when it was built, except `recipe.hbs`, which is that commit's
+file. The canister suites ran on that run's template. Nothing is copied from
+another release. Releases up to v0.17.0 do not
+meet this: their templates were copied from the unsigned
+`cpython-wasm-3.13.0-ic1` release ([#83](https://github.com/smart-social-contracts/basilisk/issues/83)).
+
 **Do NOT open a public GitHub issue for security vulnerabilities.**
 
 ## Supported Versions
