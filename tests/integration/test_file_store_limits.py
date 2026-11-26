@@ -2,7 +2,7 @@
 
 Tests enforce:
   - Per-file size limit (50 MB)
-  - File count limit (10,000)
+  - File count limit (10,000 in the shim; the fixture lowers it to 200 so a test can reach it)
   - Total size limit (200 MB)
   - fs_stats() correctness
   - Exceptions raised on limit violations
@@ -19,6 +19,7 @@ from .conftest import deploy_example, call_canister, parse_candid_text, EXAMPLES
 EXAMPLE = "file_store_limits"
 EXAMPLE_DIR = os.path.join(EXAMPLES_DIR, EXAMPLE)
 CANISTER_NAME = "file_store_limits"
+FIXTURE_MAX_FILES = 200  # the fixture's _BASILISK_FS_MAX_FILE_COUNT
 TOP_UP_AMOUNT = "5t"
 
 
@@ -52,6 +53,14 @@ def _call(canister, method, args=None):
     return parse_candid_text(raw)
 
 
+def _fill_store(canister, prefix):
+    """Fill the store to the fixture's limit over several calls, as a store fills over time."""
+    for batch in range(4):
+        result = _call(canister, "write_many_files", f'("{prefix}{batch}_f", 50, 10)')
+        assert result == "ok:50", f"Batch {batch} failed: {result}"
+    assert _get_stats(canister)["files"] == FIXTURE_MAX_FILES
+
+
 def _get_stats(canister):
     """Call get_fs_stats and return parsed dict from pipe-delimited string."""
     text = _call(canister, "get_fs_stats")
@@ -82,7 +91,7 @@ class TestFsStats:
         _call(canister, "cleanup_all_files")
         stats = _get_stats(canister)
         assert stats["files"] == 0
-        assert stats["max_files"] == 10_000
+        assert stats["max_files"] == FIXTURE_MAX_FILES
         assert stats["total_bytes"] == 0
         assert stats["max_total_bytes"] == 200_000_000
         assert stats["max_file_bytes"] == 50_000_000
@@ -179,27 +188,27 @@ class TestFileCountLimit:
         assert stats["files"] == 10
         _call(canister, "cleanup_all_files")
 
-    @pytest.mark.xfail(
-        reason="Creating 10,000 files exceeds IC instruction limit (~50B) "
-               "due to O(n) file-store serialization on each write",
-        strict=False,
-    )
+    def test_the_shim_allows_10000_files(self, canister):
+        """The fixture lowers the limit; the shim's own is unchanged."""
+        assert _call(canister, "get_production_max_files") == 10_000
+
     def test_count_limit_enforced(self, canister):
-        """Writing beyond 10,000 files should raise FileStoreLimitError."""
+        """Files written over several calls fill the store; the next one is refused."""
         _call(canister, "cleanup_all_files")
-        batch_size = 500
-        for batch in range(20):
-            offset = batch * batch_size
-            result = _call(canister, "write_many_files",
-                           f'("/limit/b{batch:02d}_f", {batch_size}, 10)')
-            assert result == f"ok:{batch_size}", (
-                f"Batch {batch} (offset {offset}) failed: {result}")
-        stats = _get_stats(canister)
-        assert stats["files"] == 10_000
-        # The 10,001st file should fail
+        _fill_store(canister, "/limit/b")
         result = _call(canister, "write_file", '("/limit/overflow.dat", 10)')
         assert "FileStoreLimitError" in result
-        assert "10000/10000" in result
+        assert f"{FIXTURE_MAX_FILES}/{FIXTURE_MAX_FILES}" in result
+        _call(canister, "cleanup_all_files")
+
+    def test_count_limit_enforced_inside_a_bulk_write(self, canister):
+        """A single call that crosses the limit is stopped at the file that crosses it."""
+        _call(canister, "cleanup_all_files")
+        result = _call(canister, "write_many_files", '("/limit/half", 150, 10)')
+        assert result == "ok:150"
+        result = _call(canister, "write_many_files", '("/limit/rest", 100, 10)')
+        assert "FileStoreLimitError:50:" in result, result  # the 201st file overall
+        assert _get_stats(canister)["files"] == FIXTURE_MAX_FILES
         _call(canister, "cleanup_all_files")
 
 
@@ -254,20 +263,10 @@ class TestExceptionHierarchy:
         result = _call(canister, "write_file", '("/hierarchy.dat", 51000000)')
         assert "FileTooLargeError" in result
 
-    @pytest.mark.xfail(
-        reason="Creating 10,000 files exceeds IC instruction limit (~50B) "
-               "due to O(n) file-store serialization on each write",
-        strict=False,
-    )
     def test_store_limit_is_file_store_error(self, canister):
         """FileStoreLimitError should be caught by FileStoreError handler."""
         _call(canister, "cleanup_all_files")
-        batch_size = 500
-        for batch in range(20):
-            result = _call(canister, "write_many_files",
-                           f'("/hier/b{batch:02d}_f", {batch_size}, 10)')
-            assert result == f"ok:{batch_size}", (
-                f"Batch {batch} failed: {result}")
+        _fill_store(canister, "/hier/b")
         result = _call(canister, "write_file", '("/hier/overflow.dat", 10)')
         assert "FileStoreLimitError" in result
         _call(canister, "cleanup_all_files")
