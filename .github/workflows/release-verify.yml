@@ -66,8 +66,9 @@ jobs:
             python:${{ env.PYTHON_VERSION }}-slim-bookworm bash -c '
               set -e
 
-              # xz: the icp-cli installer unpacks .tar.xz; libdbus: icp links it; git: icp new.
-              apt-get update -qq && apt-get install -y -qq curl ca-certificates xz-utils libdbus-1-3 git > /dev/null 2>&1
+              # xz: the icp-cli installer unpacks .tar.xz; libdbus: icp links it; git: icp new;
+              # gnupg: basilisk checks the signature of the template it downloads.
+              apt-get update -qq && apt-get install -y -qq curl ca-certificates xz-utils libdbus-1-3 git gnupg > /dev/null 2>&1
               # No quotes around =https: this whole script is inside a single-quoted bash -c string.
               curl --proto =https --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh > /dev/null 2>&1
               curl --proto =https --tlsv1.2 -LsSf https://github.com/dfinity/ic-wasm/releases/latest/download/ic-wasm-installer.sh | sh > /dev/null 2>&1

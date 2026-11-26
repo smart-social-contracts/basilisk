@@ -7,7 +7,7 @@ import tempfile
 import urllib.request
 
 import basilisk
-from basilisk.colors import red, yellow
+from basilisk.colors import red
 from basilisk.timed import timed_inline
 from basilisk.types import Paths
 
@@ -16,18 +16,10 @@ TEMPLATE_DOWNLOAD_URL = (
     "/v{version}/cpython_canister_template.wasm"
 )
 
-# Fallback: CI uploads the template to the cpython-wasm release (not versioned
-# by basilisk release; the -ic suffix tracks the IC patch-set revision, keep it
-# in sync with ARTIFACT_REVISION in basilisk/compiler/cpython/install_cpython_wasm.sh)
-TEMPLATE_DOWNLOAD_URL_FALLBACK = (
-    "https://github.com/smart-social-contracts/basilisk/releases/download"
-    "/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm"
-)
-
-# A downloaded template must match checksums.txt of the release it came from
-# (#68). A versioned release's checksums.txt is signed (checksums.txt.asc) with
-# the org's release key, the key of smart-social-contracts/.github pgp-key.asc
-# that release-verify.yml checks when the release is published.
+# A downloaded template must be listed in checksums.txt of its release, and
+# checksums.txt must carry a valid signature (checksums.txt.asc) by the org's
+# release key: smart-social-contracts/.github pgp-key.asc, which
+# release-verify.yml checks when a release is published (#68, SECURITY.md).
 RELEASE_KEY_FINGERPRINT = "6B7B038DEB77849F1F615E67CA38831314D6AA09"
 RELEASE_KEY_PATH = os.path.join(os.path.dirname(__file__), "release_key.asc")
 
@@ -84,6 +76,17 @@ def build_with_template(
     # 1. Locate the pre-built template wasm
     template_wasm_path = find_template_wasm(paths)
     if template_wasm_path is None:
+        # A source build takes its CPython from the unsigned cpython-wasm
+        # release, so it is not a silent stand-in for the signed template.
+        if os.environ.get("BASILISK_TEMPLATE_FROM_SOURCE") != "1":
+            print(red(
+                f"No verified canister template for basilisk {basilisk.__version__}: the "
+                f"v{basilisk.__version__} release has none that could be downloaded. Set "
+                "BASILISK_TEMPLATE_WASM to a template file you trust, or "
+                "BASILISK_TEMPLATE_FROM_SOURCE=1 to build one from source (its CPython "
+                "comes from the unsigned cpython-wasm-3.13.0-ic1 release)."
+            ))
+            sys.exit(1)
         print(red("Template wasm not found. Building from source..."))
         template_wasm_path = build_template_from_source(paths, cargo_env, verbose)
 
@@ -230,8 +233,9 @@ def find_template_wasm(paths: Paths) -> str | None:
 
     Searches in order:
     1. BASILISK_TEMPLATE_WASM env var (explicit path)
-    2. ~/.config/basilisk/<version>/cpython_canister_template.wasm (cached artifact)
-    3. Download from GitHub release and cache at (2)
+    2. ~/.config/basilisk/<version>/cpython_canister_template.wasm (cached artifact,
+       which only a verified download puts there)
+    3. Download from the v{version} GitHub release, verify, and cache at (2)
     4. <compiler_dir>/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm (local build)
     """
     # 1. Explicit path
@@ -263,60 +267,61 @@ def find_template_wasm(paths: Paths) -> str | None:
 
 
 def _download_template(dest_path: str) -> bool:
-    """Download the pre-built template WASM from the GitHub release and verify it.
+    """Download the template of this version's release, verify it, and put it at `dest_path`.
 
-    Tries the versioned release first (v{version}), whose checksums.txt is
-    signed with the release key, then the cpython-wasm release, where CI
-    publishes the template it built and tested on main; that one's
-    checksums.txt is not signed. Returns False if neither has a template.
-    A download that does not verify is removed and the build stops: trying
-    the next source instead would let a replaced template through.
+    Later builds use the file at `dest_path` without checking it again, so the
+    download goes to a temporary file next to it and is moved there only once
+    it has verified; anything that goes wrong first, an interrupt included,
+    leaves no file behind. Returns False if the download fails. A template
+    that does not verify stops the build. There is no fallback to another
+    release: the only other one, cpython-wasm, is not signed (#68).
     """
-    sources = [
-        (TEMPLATE_DOWNLOAD_URL.format(version=basilisk.__version__), True),
-        (TEMPLATE_DOWNLOAD_URL_FALLBACK, False),
-    ]
-    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-    for url, signed in sources:
+    url = TEMPLATE_DOWNLOAD_URL.format(version=basilisk.__version__)
+    directory = os.path.dirname(dest_path)
+    os.makedirs(directory, exist_ok=True)
+    fd, download_path = tempfile.mkstemp(dir=directory, prefix=".template-", suffix=".download")
+    os.close(fd)
+    try:
         print(f"Downloading CPython canister template from {url} ...")
         try:
-            urllib.request.urlretrieve(url, dest_path)
+            urllib.request.urlretrieve(url, download_path)
         except Exception as e:
             print(f"Download failed: {e}")
-            _remove_if_present(dest_path)
-            continue
-        size_mb = os.path.getsize(dest_path) / (1024 * 1024)
-        print(f"Template downloaded ({size_mb:.1f} MB) -> {dest_path}")
+            return False
+        size_mb = os.path.getsize(download_path) / (1024 * 1024)
+        print(f"Template downloaded ({size_mb:.1f} MB)")
         try:
-            _verify_template(url, dest_path, signed)
-        except TemplateVerificationError as e:
-            _remove_if_present(dest_path)
-            print(red(f"The downloaded template did not verify and was removed: {e}"))
+            _verify_template(url, download_path)
+        except Exception as e:
+            print(red(f"The downloaded template did not verify, so it was not used: {e}"))
             sys.exit(1)
+        os.replace(download_path, dest_path)
+        print(f"Template verified -> {dest_path}")
         return True
-    return False
+    finally:
+        _remove_if_present(download_path)
 
 
 class TemplateVerificationError(Exception):
     pass
 
 
-def _verify_template(wasm_url: str, wasm_path: str, signed: bool) -> None:
-    """Check a downloaded template against checksums.txt of the release it came from."""
+def _verify_template(wasm_url: str, wasm_path: str) -> None:
+    """Check a downloaded template against the signed checksums.txt of its release."""
     release_url, name = wasm_url.rsplit("/", 1)
     checksums = _fetch(f"{release_url}/checksums.txt")
-    if signed:
-        _verify_signature(checksums, _fetch(f"{release_url}/checksums.txt.asc"))
-    else:
-        print(yellow(f"{release_url} is CI's build of main: its checksums.txt is not signed."))
-    expected = _listed_sha256(checksums.decode("utf-8"), name)
+    _verify_signature(checksums, _fetch(f"{release_url}/checksums.txt.asc"))
+    listing = checksums.decode("utf-8")
+    # Every release signs its own sdist's hash; without this line another
+    # version's signed checksums.txt would verify here as well (a replay).
+    _listed_sha256(listing, f"ic_basilisk-{basilisk.__version__}.tar.gz")
+    expected = _listed_sha256(listing, name)
     with open(wasm_path, "rb") as f:
         actual = hashlib.sha256(f.read()).hexdigest()
     if actual != expected:
         raise TemplateVerificationError(
             f"{name} has SHA-256 {actual}, but checksums.txt lists {expected}"
         )
-    print(f"Template verified against {release_url}/checksums.txt")
 
 
 def _fetch(url: str) -> bytes:
@@ -340,12 +345,11 @@ def _verify_signature(checksums: bytes, signature: bytes) -> None:
     """Check that `signature` is the release key's signature of `checksums`, with gpg."""
     gpg = shutil.which("gpg")
     if gpg is None:
-        print(yellow(
-            "Warning: gpg is not installed, so the signature on checksums.txt was not "
-            "checked and the template is checked only against the checksums.txt next "
-            "to it. Install gpg to check it against the release key."
-        ))
-        return
+        raise TemplateVerificationError(
+            "gpg is not installed, so the signature on checksums.txt cannot be checked. "
+            "Install it (e.g. apt install gnupg, brew install gnupg), or set "
+            "BASILISK_TEMPLATE_WASM to a template file you trust."
+        )
     with tempfile.TemporaryDirectory() as home:
         checksums_path = os.path.join(home, "checksums.txt")
         signature_path = checksums_path + ".asc"
