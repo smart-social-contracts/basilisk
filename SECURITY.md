@@ -73,9 +73,10 @@ and uses it only if all of this holds:
 - The template's SHA-256 is the one `checksums.txt` lists.
 
 Only a template that passes is moved to
-`~/.config/basilisk/{version}/cpython_canister_template.wasm`, where later builds
-use it without checking again; it is downloaded to a temporary file and moved
-there after verifying. Anything else stops the build. There is no fallback to
+`~/.config/basilisk/{version}/cpython_canister_template.verified.wasm`, where
+later builds use it without checking again; it is downloaded to a temporary file
+and moved there after verifying. The `cpython_canister_template.wasm` that
+v0.17.0 and earlier cached in the same directory, unverified, is not used. Anything else stops the build. There is no fallback to
 the `cpython-wasm-3.13.0-ic1` release, which CI publishes from `main` and does
 not sign.
 

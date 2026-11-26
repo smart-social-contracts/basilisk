@@ -570,12 +570,18 @@ python -m basilisk <canister_name>
 export BASILISK_TEMPLATE_WASM=/path/to/cpython_canister_template.wasm
 ```
 
-The build pipeline searches for the template wasm in order:
-1. `BASILISK_TEMPLATE_WASM` env var (explicit path)
-2. `~/.config/basilisk/<version>/cpython_canister_template.wasm` (downloaded artifact)
-3. `compiler/cpython_canister_template/target/wasm32-wasip1/release/` (local build)
+The build pipeline searches for the template wasm in order (see
+`find_template_wasm` and SECURITY.md, "The Canister Template"):
+1. `BASILISK_TEMPLATE_WASM` env var (explicit path, not verified)
+2. `~/.config/basilisk/<version>/cpython_canister_template.verified.wasm` (a download
+   that verified against the release's signed `checksums.txt`)
+3. Download from the `v<version>` release and verify; the build stops if it does not verify
+4. `compiler/cpython_canister_template/target/wasm32-wasip1/release/` (local build),
+   only with `BASILISK_TEMPLATE_FROM_SOURCE=1`
 
-If not found, it falls back to the standard per-project Cargo build.
+If none is found, the build stops; with `BASILISK_TEMPLATE_FROM_SOURCE=1` it builds
+the template from source instead (unverified: its CPython comes from the unsigned
+`cpython-wasm` release).
 
 ### Key files
 

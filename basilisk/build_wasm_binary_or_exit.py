@@ -23,9 +23,13 @@ TEMPLATE_DOWNLOAD_URL = (
 RELEASE_KEY_FINGERPRINT = "6B7B038DEB77849F1F615E67CA38831314D6AA09"
 RELEASE_KEY_PATH = os.path.join(os.path.dirname(__file__), "release_key.asc")
 
-# A template built from source goes to a file of its own: the cached download
-# (cpython_canister_template.wasm) is trusted as it is, so nothing unverified
-# may be written there.
+# The cache entry a verified download is moved to, and that later builds trust
+# as it is. Its name is new with verification: v0.17.0 and earlier cached
+# unverified downloads and source builds as cpython_canister_template.wasm in
+# the same directory, and those are not trusted.
+VERIFIED_TEMPLATE = "cpython_canister_template.verified.wasm"
+
+# A template built from source goes to a file of its own, never VERIFIED_TEMPLATE.
 SOURCE_BUILT_TEMPLATE = "cpython_canister_template.source-built.wasm"
 
 
@@ -243,8 +247,8 @@ def find_template_wasm(paths: Paths) -> str | None:
 
     Searches in order:
     1. BASILISK_TEMPLATE_WASM env var (explicit path)
-    2. ~/.config/basilisk/<version>/cpython_canister_template.wasm (cached artifact,
-       which only a verified download puts there)
+    2. ~/.config/basilisk/<version>/VERIFIED_TEMPLATE (cached artifact, which only
+       a verified download puts there)
     3. Download from the v{version} GitHub release, verify, and cache at (2)
     4. <compiler_dir>/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm
        (a local build), only with BASILISK_TEMPLATE_FROM_SOURCE=1
@@ -259,7 +263,7 @@ def find_template_wasm(paths: Paths) -> str | None:
         return explicit
 
     # 2. Cached artifact
-    artifact_path = f"{paths['global_basilisk_version_dir']}/cpython_canister_template.wasm"
+    artifact_path = f"{paths['global_basilisk_version_dir']}/{VERIFIED_TEMPLATE}"
     if os.path.exists(artifact_path):
         return artifact_path
 
@@ -404,7 +408,7 @@ def build_template_from_source(
     Used only with BASILISK_TEMPLATE_FROM_SOURCE=1, when no verified template
     is found. It compiles the template from its own Cargo.toml, runs wasi2ic,
     and puts the result at ~/.config/basilisk/<version>/SOURCE_BUILT_TEMPLATE,
-    never at the path of the verified download.
+    never at VERIFIED_TEMPLATE.
 
     wasi2ic is needed to convert WASI entry points to IC canister format.
     wasm-opt is NOT run here as it can corrupt the binary.

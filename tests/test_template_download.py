@@ -301,9 +301,19 @@ def test_a_source_build_never_lands_where_the_verified_template_is_trusted(githu
     paths, version_dir = source_build
     built = build.build_template_from_source(paths, {}, False)
     assert built == str(version_dir / build.SOURCE_BUILT_TEMPLATE)
-    assert not (version_dir / TEMPLATE).exists() and nothing_left_behind(version_dir)
+    # These two asserts also carry the opt-in's strictness for the cache (a
+    # review of #78 found a planted truthiness check killed only here): keep them.
+    assert not (version_dir / build.VERIFIED_TEMPLATE).exists() and nothing_left_behind(version_dir)
     monkeypatch.delenv("BASILISK_TEMPLATE_FROM_SOURCE", raising=False)
     assert build.find_template_wasm(paths) is None  # the next build downloads, and gets nothing
+
+
+def test_an_unverified_cache_from_v0_17_0_is_not_trusted(github, tmp_path):
+    """v0.17.0 cached unverified templates as cpython_canister_template.wasm; that file is ignored."""
+    version_dir = tmp_path / "0.17.0"
+    version_dir.mkdir()
+    (version_dir / "cpython_canister_template.wasm").write_bytes(b"EVIL, cached by v0.17.0")
+    assert build.find_template_wasm({"global_basilisk_version_dir": str(version_dir)}) is None
 
 
 def test_a_failed_conversion_leaves_no_source_built_template(github, source_build, monkeypatch):
