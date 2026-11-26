@@ -1731,20 +1731,107 @@ del _register_random
 
 
 # --- frozen stdlib: time module ---
+# The C time module is not linked into the template (wasm size), so this one
+# reads the IC clock: ic0.time, the time the subnet gave the block. It does not
+# move while a message runs, so a duration measured inside one message is 0.
+# A canister has no time zone: local time is UTC. What a canister cannot do,
+# such as wait, raises instead of returning a plausible wrong answer (#73).
 def _register_time():
-    def _time():
-        return 0.0
-    def _sleep(secs):
-        pass
-    def _monotonic():
-        return 0.0
+    ic_time_ns = _basilisk_ic.time
+
+    class struct_time(tuple):
+        __module__ = "time"
+        __qualname__ = "struct_time"
+        n_sequence_fields = 9
+        n_fields = 11
+        n_unnamed_fields = 0
+        _fields = ("tm_year", "tm_mon", "tm_mday", "tm_hour", "tm_min",
+                   "tm_sec", "tm_wday", "tm_yday", "tm_isdst")
+
+        def __new__(cls, sequence):
+            sequence = tuple(sequence)
+            if not 9 <= len(sequence) <= 11:
+                raise TypeError("time.struct_time() takes an at least 9-sequence "
+                                f"({len(sequence)}-sequence given)")
+            self = tuple.__new__(cls, sequence[:9])
+            self.tm_zone, self.tm_gmtoff = (sequence[9:] + (None, None))[:2]
+            return self
+
+        def __repr__(self):
+            fields = ", ".join(f"{n}={v}" for n, v in zip(self._fields, self))
+            return f"time.struct_time({fields})"
+
+    for index, field in enumerate(struct_time._fields):
+        setattr(struct_time, field, property(lambda self, i=index: self[i]))
+
+    def time():
+        return ic_time_ns() / 1e9
+
+    def time_ns():
+        return ic_time_ns()
+
+    def sleep(secs):
+        if secs < 0:
+            raise ValueError("sleep length must be non-negative")
+        if secs:
+            raise NotImplementedError(
+                "time.sleep() cannot wait in a canister: a message runs to its end "
+                "without pausing. Schedule the rest of the work with ic.set_timer().")
+
+    def gmtime(secs=None):
+        import datetime
+        if secs is None:
+            secs = time()
+        moment = datetime.datetime.fromtimestamp(secs // 1, datetime.timezone.utc)
+        return struct_time(moment.timetuple()[:8] + (0, "GMT", 0))
+
+    def localtime(secs=None):
+        return struct_time(tuple(gmtime(secs)) + ("UTC", 0))
+
+    def mktime(t):
+        import datetime
+        year, month, day, hour, minute, second = t[:6]
+        year, month = year + (month - 1) // 12, (month - 1) % 12 + 1
+        days = datetime.date(year, month, 1).toordinal() - 719163 + day - 1
+        return float(((days * 24 + hour) * 60 + minute) * 60 + second)
+
+    def _as_utc_datetime(t):
+        import datetime
+        if t is None:
+            t = localtime()
+        zone = getattr(t, "tm_zone", None) or "UTC"
+        return datetime.datetime(*t[:6], tzinfo=datetime.timezone(datetime.timedelta(0), zone))
+
+    def strftime(format, t=None):
+        return _as_utc_datetime(t).strftime(format)
+
+    def asctime(t=None):
+        return _as_utc_datetime(t).ctime()
+
+    def ctime(secs=None):
+        return asctime(gmtime(secs))
+
+    def strptime(string, format="%a %b %d %H:%M:%S %Y"):
+        import datetime
+        return struct_time(datetime.datetime.strptime(string, format).timetuple())
+
     m = type(_sys)("time")
     m.__file__ = "<frozen time>"
-    m.time = _time
-    m.sleep = _sleep
-    m.monotonic = _monotonic
-    m.perf_counter = _monotonic
-    m.time_ns = lambda: 0
+    m.struct_time = struct_time
+    m.time = time
+    m.time_ns = time_ns
+    m.monotonic = m.perf_counter = time
+    m.monotonic_ns = m.perf_counter_ns = time_ns
+    m.sleep = sleep
+    m.gmtime = gmtime
+    m.localtime = localtime
+    m.mktime = mktime
+    m.strftime = strftime
+    m.strptime = strptime
+    m.asctime = asctime
+    m.ctime = ctime
+    m.timezone = m.altzone = m.daylight = 0
+    m.tzname = ("UTC", "UTC")
     _sys.modules["time"] = m
 
 try:
@@ -1755,103 +1842,1208 @@ del _register_time
 
 
 # --- frozen stdlib: datetime module ---
+# A pure-Python datetime (the C _datetime is not linked in) on the same
+# proleptic Gregorian arithmetic as CPython's _pydatetime, reading the clock
+# from the time module above. A canister's local time is UTC. It has date,
+# datetime, timedelta, tzinfo and timezone, but no datetime.time class.
+# strftime and strptime take the directives below and raise on any other
+# rather than print something plausible (#73).
 def _register_datetime():
-    class timedelta:
-        def __init__(self, days=0, seconds=0, microseconds=0,
-                     milliseconds=0, minutes=0, hours=0, weeks=0):
-            total = (days * 86400 + hours * 3600 + minutes * 60 + seconds
-                     + milliseconds / 1000 + microseconds / 1000000 + weeks * 604800)
-            self._total_seconds = total
-        def total_seconds(self):
-            return self._total_seconds
-        def __repr__(self):
-            return f"timedelta(seconds={self._total_seconds})"
+    import time as _time
 
-    class datetime:
-        def __init__(self, year=1970, month=1, day=1, hour=0, minute=0,
-                     second=0, microsecond=0):
-            self.year = year; self.month = month; self.day = day
-            self.hour = hour; self.minute = minute; self.second = second
-            self.microsecond = microsecond
-        @staticmethod
-        def now():
-            return datetime()
-        @staticmethod
-        def fromtimestamp(ts):
-            d = datetime()
-            d._ts = ts
-            return d
-        @staticmethod
-        def fromisoformat(s):
-            # Parse "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS" (minimal)
-            s = s.replace('T', ' ').replace('Z', '')
-            parts = s.split(' ')
-            date_part = parts[0].split('-')
-            yr = int(date_part[0])
-            mo = int(date_part[1]) if len(date_part) > 1 else 1
-            dy = int(date_part[2]) if len(date_part) > 2 else 1
-            hr = mi = se = us = 0
-            if len(parts) > 1:
-                time_parts = parts[1].split(':')
-                hr = int(time_parts[0]) if len(time_parts) > 0 else 0
-                mi = int(time_parts[1]) if len(time_parts) > 1 else 0
-                if len(time_parts) > 2:
-                    sec_parts = time_parts[2].split('.')
-                    se = int(sec_parts[0])
-                    if len(sec_parts) > 1:
-                        frac = sec_parts[1][:6].ljust(6, '0')
-                        us = int(frac)
-            return datetime(yr, mo, dy, hr, mi, se, us)
-        def strftime(self, fmt):
-            return f"{self.year:04d}-{self.month:02d}-{self.day:02d} {self.hour:02d}:{self.minute:02d}:{self.second:02d}.{self.microsecond:06d}"
-        def isoformat(self, sep='T'):
-            return f"{self.year:04d}-{self.month:02d}-{self.day:02d}{sep}{self.hour:02d}:{self.minute:02d}:{self.second:02d}"
-        def weekday(self):
-            # Zeller-like day-of-week (Mon=0 .. Sun=6)
-            y, m, d = self.year, self.month, self.day
-            if m < 3:
-                m += 12; y -= 1
-            return (d + (13*(m+1))//5 + y + y//4 - y//100 + y//400 + 5) % 7
-        def timestamp(self):
-            # Convert to POSIX timestamp (seconds since 1970-01-01 UTC)
-            # Days from year 1 to year y
-            y, m, d = self.year, self.month, self.day
-            # Days in each month (non-leap)
-            _mdays = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-            def _is_leap(yr):
-                return yr % 4 == 0 and (yr % 100 != 0 or yr % 400 == 0)
-            # Days from epoch (1970-01-01) to this date
-            days = 0
-            for yr in range(1970, y):
-                days += 366 if _is_leap(yr) else 365
-            for mo in range(1, m):
-                days += _mdays[mo]
-                if mo == 2 and _is_leap(y):
-                    days += 1
-            days += d - 1
-            return days * 86400 + self.hour * 3600 + self.minute * 60 + self.second + self.microsecond / 1e6
-        def utcoffset(self):
+    MINYEAR = 1
+    MAXYEAR = 9999
+    MAXORDINAL = 3652059  # date.max.toordinal()
+    EPOCH_ORDINAL = 719163  # date(1970, 1, 1).toordinal()
+
+    DAYS_IN_MONTH = [-1, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    DAYS_BEFORE_MONTH = [-1]
+    total = 0
+    for days in DAYS_IN_MONTH[1:]:
+        DAYS_BEFORE_MONTH.append(total)
+        total += days
+
+    MONTH_NAMES = [None, "January", "February", "March", "April", "May", "June", "July",
+                   "August", "September", "October", "November", "December"]
+    DAY_NAMES = [None, "Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+                 "Saturday", "Sunday"]
+
+    def is_leap(year):
+        return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+
+    def days_before_year(year):
+        y = year - 1
+        return y * 365 + y // 4 - y // 100 + y // 400
+
+    def days_in_month(year, month):
+        return 29 if month == 2 and is_leap(year) else DAYS_IN_MONTH[month]
+
+    def ymd_to_ordinal(year, month, day):
+        return (days_before_year(year) + DAYS_BEFORE_MONTH[month]
+                + (month > 2 and is_leap(year)) + day)
+
+    DAYS_IN_400_YEARS = days_before_year(401)
+    DAYS_IN_100_YEARS = days_before_year(101)
+    DAYS_IN_4_YEARS = days_before_year(5)
+
+    def ordinal_to_ymd(n):
+        n -= 1
+        n400, n = divmod(n, DAYS_IN_400_YEARS)
+        year = n400 * 400 + 1
+        n100, n = divmod(n, DAYS_IN_100_YEARS)
+        n4, n = divmod(n, DAYS_IN_4_YEARS)
+        n1, n = divmod(n, 365)
+        year += n100 * 100 + n4 * 4 + n1
+        if n1 == 4 or n100 == 4:
+            return year - 1, 12, 31
+        leap = n1 == 3 and (n4 != 24 or n100 == 3)
+        month = (n + 50) >> 5
+        preceding = DAYS_BEFORE_MONTH[month] + (month > 2 and leap)
+        if preceding > n:
+            month -= 1
+            preceding -= DAYS_IN_MONTH[month] + (month == 2 and leap)
+        return year, month, n - preceding + 1
+
+    def iso_week1_monday(year):
+        first = ymd_to_ordinal(year, 1, 1)
+        first_weekday = (first + 6) % 7
+        monday = first - first_weekday
+        return monday + 7 if first_weekday > 3 else monday
+
+    def as_index(value):
+        try:
+            return value.__index__()
+        except AttributeError:
+            raise TypeError(f"'{type(value).__name__}' object cannot be interpreted "
+                            "as an integer") from None
+
+    def check_date_fields(year, month, day):
+        year, month, day = as_index(year), as_index(month), as_index(day)
+        if not MINYEAR <= year <= MAXYEAR:
+            raise ValueError(f"year {year} is out of range")
+        if not 1 <= month <= 12:
+            raise ValueError("month must be in 1..12")
+        last = days_in_month(year, month)
+        if not 1 <= day <= last:
+            raise ValueError(f"day {day} must be in range 1..{last} for month {month} in year {year}")
+        return year, month, day
+
+    def check_time_fields(hour, minute, second, microsecond, fold):
+        hour, minute, second = as_index(hour), as_index(minute), as_index(second)
+        microsecond = as_index(microsecond)
+        if not 0 <= hour <= 23:
+            raise ValueError("hour must be in 0..23")
+        if not 0 <= minute <= 59:
+            raise ValueError("minute must be in 0..59")
+        if not 0 <= second <= 59:
+            raise ValueError("second must be in 0..59")
+        if not 0 <= microsecond <= 999999:
+            raise ValueError("microsecond must be in 0..999999")
+        if fold not in (0, 1):
+            raise ValueError("fold must be either 0 or 1")
+        return hour, minute, second, microsecond, fold
+
+    def check_tzinfo(tz):
+        if tz is not None and not isinstance(tz, tzinfo):
+            raise TypeError("tzinfo argument must be None or of a tzinfo subclass")
+
+    def check_offset(name, offset):
+        if offset is None:
+            return
+        if not isinstance(offset, timedelta):
+            raise TypeError(f"tzinfo.{name}() must return None or timedelta, "
+                            f"not '{type(offset).__name__}'")
+        if not -timedelta(1) < offset < timedelta(1):
+            raise ValueError(f"{name}()={offset}, must be strictly between "
+                             "-timedelta(hours=24) and timedelta(hours=24)")
+
+    def modf(x):
+        """math.modf: the math stand-in has none."""
+        whole = float(int(x))
+        return x - whole, whole
+
+    def c_round(x):
+        """C's round(): halves away from zero, where Python's round() goes to even."""
+        fraction, whole = modf(x)
+        if fraction >= 0.5:
+            whole += 1.0
+        elif fraction <= -0.5:
+            whole -= 1.0
+        return whole
+
+    def divide_and_round(a, b):
+        """a / b rounded to the nearest integer, half to even."""
+        q, r = divmod(a, b)
+        r *= 2
+        greater_than_half = r > b if b > 0 else r < b
+        if greater_than_half or r == b and q % 2 == 1:
+            q += 1
+        return q
+
+    def class_name(obj):
+        cls = type(obj)
+        return f"{cls.__module__}.{cls.__qualname__}"
+
+    def utc_fields(t):
+        """(year, month, day, hour, minute, second, microsecond) of POSIX time t in UTC.
+
+        The fraction of a second is rounded to the microsecond, half to even, as
+        CPython's fromtimestamp does."""
+        if isinstance(t, float):
+            seconds = int(t)
+            microseconds = round((t - seconds) * 1e6)
+            if microseconds >= 1000000:
+                seconds, microseconds = seconds + 1, microseconds - 1000000
+            elif microseconds < 0:
+                seconds, microseconds = seconds - 1, microseconds + 1000000
+        else:
+            seconds, microseconds = as_index(t), 0
+        days, rest = divmod(seconds, 86400)
+        ordinal = days + EPOCH_ORDINAL
+        if not 1 <= ordinal <= MAXORDINAL:
+            raise ValueError("year is out of range")
+        hour, rest = divmod(rest, 3600)
+        minute, second = divmod(rest, 60)
+        return ordinal_to_ymd(ordinal) + (hour, minute, second, microseconds)
+
+    def format_offset(offset, separator=":"):
+        if offset is None:
+            return ""
+        sign = "+"
+        if offset.days < 0:
+            sign, offset = "-", -offset
+        hours, rest = divmod(offset, timedelta(hours=1))
+        minutes, rest = divmod(rest, timedelta(minutes=1))
+        text = f"{sign}{hours:02d}{separator}{minutes:02d}"
+        if rest.seconds or rest.microseconds:
+            text += f"{separator}{rest.seconds:02d}"
+            if rest.microseconds:
+                text += f".{rest.microseconds:06d}"
+        return text
+
+    def format_time(hour, minute, second, microsecond, timespec):
+        if timespec == "auto":
+            timespec = "microseconds" if microsecond else "seconds"
+        elif timespec == "milliseconds":
+            microsecond //= 1000
+        formats = {
+            "hours": "{:02d}",
+            "minutes": "{:02d}:{:02d}",
+            "seconds": "{:02d}:{:02d}:{:02d}",
+            "milliseconds": "{:02d}:{:02d}:{:02d}.{:03d}",
+            "microseconds": "{:02d}:{:02d}:{:02d}.{:06d}",
+        }
+        if timespec not in formats:
+            raise ValueError("Unknown timespec value")
+        return formats[timespec].format(hour, minute, second, microsecond)
+
+    # --- strftime --------------------------------------------------------
+    # The C locale's output for each directive, as glibc prints it.
+
+    def strftime(moment, fmt):
+        if not isinstance(fmt, str):
+            raise TypeError(f"strftime() argument 1 must be str, not {type(fmt).__name__}")
+        year, month, day = moment.year, moment.month, moment.day
+        hour = getattr(moment, "hour", 0)
+        minute = getattr(moment, "minute", 0)
+        second = getattr(moment, "second", 0)
+        microsecond = getattr(moment, "microsecond", 0)
+        offset = moment.utcoffset() if isinstance(moment, datetime) else None
+        weekday = moment.weekday()  # Monday is 0
+        yday = moment.toordinal() - ymd_to_ordinal(year, 1, 1)  # from 0
+        iso_year, iso_week, iso_weekday = moment.isocalendar()
+        sunday_weekday = (weekday + 1) % 7
+
+        # (value, width): a positive width pads with zeros, a negative one with spaces
+        numbers = {
+            "d": (day, 2), "m": (month, 2), "y": (year % 100, 2), "C": (year // 100, 2),
+            "H": (hour, 2), "I": (hour % 12 or 12, 2), "M": (minute, 2), "S": (second, 2),
+            "j": (yday + 1, 3), "f": (microsecond, 6),
+            "U": ((yday + 7 - sunday_weekday) // 7, 2), "W": ((yday + 7 - weekday) // 7, 2),
+            "V": (iso_week, 2), "g": (iso_year % 100, 2),
+            "e": (day, -2), "k": (hour, -2), "l": (hour % 12 or 12, -2),
+        }
+
+        def directive(c):
+            if c == "Y":
+                return str(year)
+            if c == "G":
+                return str(iso_year)
+            if c == "a":
+                return DAY_NAMES[weekday + 1][:3]
+            if c == "A":
+                return DAY_NAMES[weekday + 1]
+            if c in "bh":
+                return MONTH_NAMES[month][:3]
+            if c == "B":
+                return MONTH_NAMES[month]
+            if c == "p":
+                return "AM" if hour < 12 else "PM"
+            if c == "P":
+                return "am" if hour < 12 else "pm"
+            if c == "w":
+                return str(sunday_weekday)
+            if c == "u":
+                return str(iso_weekday)
+            if c == "z":
+                return format_offset(offset, "")
+            if c == "Z":
+                return (moment.tzname() or "") if isinstance(moment, datetime) else ""
+            if c == "s":
+                # glibc reads the fields as local time, which in a canister is UTC
+                days = moment.toordinal() - EPOCH_ORDINAL
+                return str(((days * 24 + hour) * 60 + minute) * 60 + second)
+            if c in compound:
+                return strftime(moment, compound[c])
+            if c == "n":
+                return "\n"
+            if c == "t":
+                return "\t"
+            if c == "%":
+                return "%"
+            if c not in numbers:
+                return None
+            number, width = numbers[c]
+            return f"{number:0{width}d}" if width > 0 else f"{number:{-width}d}"
+
+        compound = {"c": "%a %b %e %H:%M:%S %Y", "x": "%m/%d/%y", "X": "%H:%M:%S",
+                    "D": "%m/%d/%y", "F": "%Y-%m-%d", "T": "%H:%M:%S", "R": "%H:%M",
+                    "r": "%I:%M:%S %p"}
+        out = []
+        i, n = 0, len(fmt)
+        while i < n:
+            c = fmt[i]
+            i += 1
+            if c != "%":
+                out.append(c)
+                continue
+            if i == n:
+                out.append("%")
+                break
+            c = fmt[i]
+            i += 1
+            if c == ":" and fmt[i:i + 1] == "z":
+                i += 1
+                out.append(format_offset(offset))
+                continue
+            if c == "-" and fmt[i:i + 1] in numbers:  # glibc's "no padding" flag
+                out.append(str(numbers[fmt[i]][0]))
+                i += 1
+                continue
+            text = directive(c)
+            if text is None:
+                raise ValueError(f"strftime directive '%{c}' is not supported in a canister")
+            out.append(text)
+        return "".join(out)
+
+    def ctime(moment):
+        return "%s %s %2d %02d:%02d:%02d %04d" % (
+            DAY_NAMES[moment.weekday() + 1][:3], MONTH_NAMES[moment.month][:3], moment.day,
+            getattr(moment, "hour", 0), getattr(moment, "minute", 0),
+            getattr(moment, "second", 0), moment.year)
+
+    # --- strptime --------------------------------------------------------
+
+    def strptime(cls, data, fmt):
+        if not isinstance(data, str):
+            raise TypeError(f"strptime() argument 1 must be str, not {type(data).__name__}")
+        if not isinstance(fmt, str):
+            raise TypeError(f"strptime() argument 2 must be str, not {type(fmt).__name__}")
+        # (fewest digits, most digits, lowest value, highest value): what
+        # CPython's pattern for each directive accepts (_strptime.TimeRE)
+        numbers = {"Y": (4, 4, 0, 9999), "y": (2, 2, 0, 99), "m": (1, 2, 1, 12),
+                   "d": (1, 2, 1, 31), "H": (1, 2, 0, 23), "I": (1, 2, 1, 12),
+                   "M": (1, 2, 0, 59), "S": (1, 2, 0, 61), "j": (1, 3, 1, 366),
+                   "f": (1, 6, 0, 999999)}
+        space_padded = {"d": "123456789", "H": "0123456789", "I": "123456789"}  # " 5" for 5
+        names = {"B": [n for n in MONTH_NAMES if n], "b": [n[:3] for n in MONTH_NAMES if n],
+                 "A": [n for n in DAY_NAMES if n], "a": [n[:3] for n in DAY_NAMES if n]}
+
+        def mismatch():
+            return ValueError(f"time data {data!r} does not match format {fmt!r}")
+
+        # The format as tokens: (kind, directive or literal character)
+        tokens = []
+        i = 0
+        while i < len(fmt):
+            c = fmt[i]
+            i += 1
+            if c.isspace():  # a run of whitespace matches one or more, as in CPython
+                while i < len(fmt) and fmt[i].isspace():
+                    i += 1
+                tokens.append(("space", None))
+            elif c != "%":
+                tokens.append(("literal", c))
+            elif i == len(fmt):
+                raise ValueError(f"stray % in format {fmt!r}")
+            else:
+                c = fmt[i]
+                i += 1
+                if c in numbers:
+                    tokens.append(("number", c))
+                elif c in names:
+                    tokens.append(("name", c))
+                elif c in "pzZ%":
+                    tokens.append((c, c))
+                else:
+                    raise ValueError(f"strptime directive '%{c}' is not supported in a canister")
+
+        def digits_at(pos, most):
+            end = pos
+            while end < len(data) and end - pos < most and data[end] in "0123456789":
+                end += 1
+            return data[pos:end]
+
+        def offset_at(pos):
+            """([+-]HH[:]MM[[:]SS[.ffffff]] or Z, as CPython's %z pattern reads it, end) or None."""
+            if data[pos:pos + 1] == "Z":
+                return timedelta(0), pos + 1
+            if data[pos:pos + 1] not in ("+", "-"):
+                return None
+            sign = -1 if data[pos] == "-" else 1
+            hours = digits_at(pos + 1, 2)
+            pos += 3 + (data[pos + 3:pos + 4] == ":")
+            minutes = digits_at(pos, 2)
+            if len(hours) != 2 or len(minutes) != 2 or minutes[0] > "5":
+                return None
+            pos += 2
+            seconds = microseconds = "0"
+            after_colon = pos + (data[pos:pos + 1] == ":")
+            if len(digits_at(after_colon, 2)) == 2 and digits_at(after_colon, 2)[0] <= "5":
+                seconds = digits_at(after_colon, 2)
+                pos = after_colon + 2
+                if data[pos:pos + 1] == "." and digits_at(pos + 1, 6):
+                    microseconds = digits_at(pos + 1, 6).ljust(6, "0")
+                    pos += 1 + len(digits_at(pos + 1, 6))
+            offset = timedelta(hours=int(hours), minutes=int(minutes), seconds=int(seconds),
+                               microseconds=int(microseconds))
+            return sign * offset, pos
+
+        def candidates(kind, c, pos):
+            """Each (value, end) the token can take at pos, in the order CPython's pattern tries them."""
+            if kind == "literal":
+                if data[pos:pos + 1].lower() == c.lower():
+                    yield None, pos + 1
+            elif kind == "space":
+                end = pos
+                while end < len(data) and data[end].isspace():
+                    end += 1
+                for stop in range(end, pos, -1):
+                    yield None, stop
+            elif kind == "number":
+                least, most, low, high = numbers[c]
+                run = digits_at(pos, most)
+                for length in range(len(run), least - 1, -1):
+                    if low <= int(run[:length]) <= high:
+                        yield run[:length], pos + length
+                padded = data[pos + 1:pos + 2]
+                if c in space_padded and data[pos:pos + 1] == " " and padded and padded in space_padded[c]:
+                    yield padded, pos + 2
+            elif kind == "name":
+                for index, name in sorted(enumerate(names[c], 1), key=lambda item: -len(item[1])):
+                    if data[pos:pos + len(name)].lower() == name.lower():
+                        yield index, pos + len(name)
+            elif kind == "p":
+                if data[pos:pos + 2].upper() in ("AM", "PM"):
+                    yield data[pos:pos + 2].upper(), pos + 2
+            elif kind == "z":
+                offset = offset_at(pos)
+                if offset is not None:
+                    yield offset
+            elif kind == "Z":
+                if data[pos:pos + 3].upper() in ("UTC", "GMT"):
+                    yield None, pos + 3
+            elif data[pos:pos + 1] == "%":
+                yield None, pos + 1
+
+        def match(index, pos):
+            """The first way tokens[index:] match from pos, as a regular expression would
+            find it: (values by directive, end) or None."""
+            if index == len(tokens):
+                return {}, pos
+            kind, c = tokens[index]
+            for value, end in candidates(kind, c, pos):
+                rest = match(index + 1, end)
+                if rest is not None:
+                    found, final = rest
+                    if value is not None:
+                        found[c] = value
+                    return found, final
             return None
-        @property
-        def tzinfo(self):
-            return None
-        def date(self):
+
+        matched = match(0, 0)
+        if matched is None:
+            raise mismatch()
+        found, end = matched
+        if end != len(data):
+            raise ValueError(f"unconverted data remains: {data[end:]}")
+
+        year = int(found.get("Y", 1900))
+        if "y" in found:
+            year = int(found["y"])
+            year += 2000 if year <= 68 else 1900
+        month = int(found.get("m", found.get("b", found.get("B", 1))))
+        day = int(found.get("d", 1))
+        hour = int(found.get("H", 0))
+        if "I" in found:
+            hour = int(found["I"]) % 12
+            if found.get("p") == "PM":
+                hour += 12
+        minute = int(found.get("M", 0))
+        second = int(found.get("S", 0))
+        microsecond = int(found.get("f", "0").ljust(6, "0"))
+        if "j" in found and not ({"m", "b", "B", "d"} & set(found)):
+            year, month, day = ordinal_to_ymd(ymd_to_ordinal(year, 1, 1) + int(found["j"]) - 1)
+        tz = None
+        if "z" in found:
+            tz = timezone(found["z"])
+        return cls(year, month, day, hour, minute, second, microsecond, tz)
+
+    # --- classes ---------------------------------------------------------
+
+    class timedelta:
+        __module__ = "datetime"
+        __qualname__ = "timedelta"
+        __slots__ = ("_days", "_seconds", "_microseconds")
+
+        def __new__(cls, days=0, seconds=0, microseconds=0, milliseconds=0,
+                    minutes=0, hours=0, weeks=0):
+            # CPython's C constructor (delta_new): each component's whole part
+            # is counted exactly, the fractions go into one float in this
+            # order, and that is rounded once, half to even. _pydatetime and
+            # any other order are microseconds off for some floats (#76 review).
+            total = 0
+            leftover = 0.0
+            for name, value, factor in (
+                    ("microseconds", microseconds, 1), ("milliseconds", milliseconds, 1000),
+                    ("seconds", seconds, 1000000), ("minutes", minutes, 60000000),
+                    ("hours", hours, 3600000000), ("days", days, 86400000000),
+                    ("weeks", weeks, 604800000000)):
+                if isinstance(value, int):
+                    total += value * factor
+                elif isinstance(value, float):
+                    fraction, whole = modf(value)
+                    total += int(whole) * factor
+                    if fraction:
+                        fraction, whole = modf(float(factor) * fraction)
+                        total += int(whole)
+                        leftover += fraction
+                else:
+                    raise TypeError(f"unsupported type for timedelta {name} component: "
+                                    f"{type(value).__name__}")
+            if leftover:
+                whole = c_round(leftover)
+                if abs(whole - leftover) == 0.5:
+                    odd = total & 1
+                    whole = 2.0 * c_round((leftover + odd) * 0.5) - odd
+                total += int(whole)
+            return cls._from_microseconds(total)
+
+        @classmethod
+        def _from_microseconds(cls, total):
+            days, rest = divmod(total, 86400000000)
+            seconds, microseconds = divmod(rest, 1000000)
+            if abs(days) > 999999999:
+                raise OverflowError(f"days={days}; must have magnitude <= 999999999")
+            self = object.__new__(cls)
+            self._days, self._seconds, self._microseconds = days, seconds, microseconds
             return self
+
+        days = property(lambda self: self._days)
+        seconds = property(lambda self: self._seconds)
+        microseconds = property(lambda self: self._microseconds)
+
+        def _to_microseconds(self):
+            return (self._days * 86400 + self._seconds) * 1000000 + self._microseconds
+
+        def total_seconds(self):
+            return self._to_microseconds() / 10**6
+
         def __repr__(self):
-            return self.strftime("%Y-%m-%d %H:%M:%S.%f")
-        def __sub__(self, other):
-            if isinstance(other, datetime):
-                return timedelta(days=0)
-            return NotImplemented
+            args = [f"{name}={value}" for name, value in
+                    (("days", self._days), ("seconds", self._seconds),
+                     ("microseconds", self._microseconds)) if value]
+            return f"{class_name(self)}({', '.join(args) or '0'})"
+
+        def __str__(self):
+            minutes, seconds = divmod(self._seconds, 60)
+            hours, minutes = divmod(minutes, 60)
+            text = f"{hours}:{minutes:02d}:{seconds:02d}"
+            if self._days:
+                plural = "s" if abs(self._days) != 1 else ""
+                text = f"{self._days} day{plural}, {text}"
+            if self._microseconds:
+                text += f".{self._microseconds:06d}"
+            return text
+
         def __add__(self, other):
             if isinstance(other, timedelta):
-                return self
+                return timedelta._from_microseconds(self._to_microseconds() + other._to_microseconds())
             return NotImplemented
+
+        __radd__ = __add__
+
+        def __sub__(self, other):
+            if isinstance(other, timedelta):
+                return timedelta._from_microseconds(self._to_microseconds() - other._to_microseconds())
+            return NotImplemented
+
+        def __neg__(self):
+            return timedelta._from_microseconds(-self._to_microseconds())
+
+        def __pos__(self):
+            return self
+
+        def __abs__(self):
+            return -self if self._days < 0 else self
+
+        def __mul__(self, other):
+            if isinstance(other, int):
+                return timedelta._from_microseconds(self._to_microseconds() * other)
+            if isinstance(other, float):
+                a, b = other.as_integer_ratio()
+                return timedelta._from_microseconds(divide_and_round(self._to_microseconds() * a, b))
+            return NotImplemented
+
+        __rmul__ = __mul__
+
+        def __floordiv__(self, other):
+            if isinstance(other, timedelta):
+                return self._to_microseconds() // other._to_microseconds()
+            if isinstance(other, int):
+                return timedelta._from_microseconds(self._to_microseconds() // other)
+            return NotImplemented
+
+        def __truediv__(self, other):
+            if isinstance(other, timedelta):
+                return self._to_microseconds() / other._to_microseconds()
+            if isinstance(other, int):
+                return timedelta._from_microseconds(divide_and_round(self._to_microseconds(), other))
+            if isinstance(other, float):
+                a, b = other.as_integer_ratio()
+                return timedelta._from_microseconds(divide_and_round(b * self._to_microseconds(), a))
+            return NotImplemented
+
+        def __mod__(self, other):
+            if isinstance(other, timedelta):
+                return timedelta._from_microseconds(self._to_microseconds() % other._to_microseconds())
+            return NotImplemented
+
+        def __divmod__(self, other):
+            if isinstance(other, timedelta):
+                q, r = divmod(self._to_microseconds(), other._to_microseconds())
+                return q, timedelta._from_microseconds(r)
+            return NotImplemented
+
+        def _key(self):
+            return (self._days, self._seconds, self._microseconds)
+
+        def __eq__(self, other):
+            return self._key() == other._key() if isinstance(other, timedelta) else NotImplemented
+
+        def __lt__(self, other):
+            return self._key() < other._key() if isinstance(other, timedelta) else NotImplemented
+
+        def __le__(self, other):
+            return self._key() <= other._key() if isinstance(other, timedelta) else NotImplemented
+
+        def __gt__(self, other):
+            return self._key() > other._key() if isinstance(other, timedelta) else NotImplemented
+
+        def __ge__(self, other):
+            return self._key() >= other._key() if isinstance(other, timedelta) else NotImplemented
+
+        def __hash__(self):
+            return hash(self._key())
+
+        def __bool__(self):
+            return self._key() != (0, 0, 0)
+
+        def __reduce__(self):
+            return (type(self), self._key())
+
+    timedelta.min = timedelta(-999999999)
+    timedelta.max = timedelta(days=999999999, hours=23, minutes=59, seconds=59,
+                              microseconds=999999)
+    timedelta.resolution = timedelta(microseconds=1)
+
+    class tzinfo:
+        __module__ = "datetime"
+        __qualname__ = "tzinfo"
+        __slots__ = ()
+
+        def tzname(self, dt):
+            raise NotImplementedError("tzinfo subclass must override tzname()")
+
+        def utcoffset(self, dt):
+            raise NotImplementedError("tzinfo subclass must override utcoffset()")
+
+        def dst(self, dt):
+            raise NotImplementedError("tzinfo subclass must override dst()")
+
+        def fromutc(self, dt):
+            if not isinstance(dt, datetime):
+                raise TypeError("fromutc() requires a datetime argument")
+            if dt.tzinfo is not self:
+                raise ValueError("dt.tzinfo is not self")
+            offset = dt.utcoffset()
+            dst = dt.dst()
+            if offset is None or dst is None:
+                raise ValueError("fromutc() requires non-None utcoffset() and dst() results")
+            delta = offset - dst
+            if delta:
+                dt += delta
+                dst = dt.dst()
+                if dst is None:
+                    raise ValueError("fromutc(): dt.dst gave inconsistent results; cannot convert")
+            return dt + dst
+
+    class timezone(tzinfo):
+        __module__ = "datetime"
+        __qualname__ = "timezone"
+        __slots__ = ("_offset", "_name")
+        _omitted = object()
+
+        def __new__(cls, offset, name=_omitted):
+            if not isinstance(offset, timedelta):
+                raise TypeError("offset must be a timedelta")
+            if name is cls._omitted:
+                if not offset:
+                    return cls.utc
+                name = None
+            elif not isinstance(name, str):
+                raise TypeError("name must be a string")
+            if not -timedelta(1) < offset < timedelta(1):
+                raise ValueError("offset must be a timedelta strictly between "
+                                 "-timedelta(hours=24) and timedelta(hours=24).")
+            return cls._create(offset, name)
+
+        @classmethod
+        def _create(cls, offset, name=None):
+            self = tzinfo.__new__(cls)
+            self._offset, self._name = offset, name
+            return self
+
+        def __reduce__(self):
+            return (type(self), (self._offset,) if self._name is None else (self._offset, self._name))
+
+        def __eq__(self, other):
+            return self._offset == other._offset if isinstance(other, timezone) else NotImplemented
+
+        def __hash__(self):
+            return hash(self._offset)
+
+        def __repr__(self):
+            if self is self.utc:
+                return "datetime.timezone.utc"
+            if self._name is None:
+                return f"{class_name(self)}({self._offset!r})"
+            return f"{class_name(self)}({self._offset!r}, {self._name!r})"
+
+        def __str__(self):
+            return self.tzname(None)
+
+        def _check(self, dt):
+            if dt is not None and not isinstance(dt, datetime):
+                raise TypeError("argument must be a datetime instance or None")
+
+        def utcoffset(self, dt):
+            self._check(dt)
+            return self._offset
+
+        def tzname(self, dt):
+            self._check(dt)
+            if self._name is not None:
+                return self._name
+            return "UTC" + format_offset(self._offset) if self._offset else "UTC"
+
+        def dst(self, dt):
+            self._check(dt)
+            return None
+
+        def fromutc(self, dt):
+            if not isinstance(dt, datetime):
+                raise TypeError("fromutc() argument must be a datetime instance or None")
+            if dt.tzinfo is not self:
+                raise ValueError("fromutc: dt.tzinfo is not self")
+            return dt + self._offset
+
+    timezone.utc = timezone._create(timedelta(0))
+    timezone.min = timezone._create(-timedelta(hours=23, minutes=59))
+    timezone.max = timezone._create(timedelta(hours=23, minutes=59))
+
+    class IsoCalendarDate(tuple):
+        __module__ = "datetime"
+        __qualname__ = "IsoCalendarDate"
+
+        def __new__(cls, year, week, weekday):
+            return tuple.__new__(cls, (year, week, weekday))
+
+        year = property(lambda self: self[0])
+        week = property(lambda self: self[1])
+        weekday = property(lambda self: self[2])
+
+        def __repr__(self):
+            return f"{class_name(self)}(year={self[0]}, week={self[1]}, weekday={self[2]})"
+
+    def parse_digits(text, start, count):
+        part = text[start:start + count]
+        if len(part) != count or any(c not in "0123456789" for c in part):
+            raise ValueError
+        return int(part)
+
+    def parse_isodate(text):
+        if len(text) == 10 and text[4] == "-" and text[7] == "-":
+            return parse_digits(text, 0, 4), parse_digits(text, 5, 2), parse_digits(text, 8, 2)
+        if len(text) == 8:
+            return parse_digits(text, 0, 4), parse_digits(text, 4, 2), parse_digits(text, 6, 2)
+        raise ValueError
+
+    def parse_hh_mm_ss_ff(text):
+        """HH[:MM[:SS[.ffffff]]] or HH[MM[SS[.ffffff]]]: [hour, minute, second, microsecond]."""
+        parts = [0, 0, 0, 0]
+        pos = 0
+        separated = len(text) > 2 and text[2] == ":"
+        for index in range(3):
+            parts[index] = parse_digits(text, pos, 2)
+            pos += 2
+            if pos == len(text) or index == 2 or text[pos] in ".,":
+                break
+            if separated:
+                if text[pos] != ":":
+                    raise ValueError
+                pos += 1
+        if pos < len(text):
+            if text[pos] not in ".,":
+                raise ValueError
+            digits = text[pos + 1:]
+            if not digits or any(c not in "0123456789" for c in digits):
+                raise ValueError
+            parts[3] = int(digits[:6].ljust(6, "0"))
+        return parts
+
+    def parse_isotime(text):
+        tz_at = next((i for i, c in enumerate(text) if c in "+-Z"), len(text))
+        hour, minute, second, microsecond = parse_hh_mm_ss_ff(text[:tz_at])
+        zone = text[tz_at:]
+        tz = None
+        if zone[:1] == "Z":
+            if zone != "Z":
+                raise ValueError
+            tz = timezone.utc
+        elif zone:
+            hh, mm, ss, us = parse_hh_mm_ss_ff(zone[1:])
+            offset = timedelta(hours=hh, minutes=mm, seconds=ss, microseconds=us)
+            tz = timezone(-offset if zone[0] == "-" else offset)
+        return hour, minute, second, microsecond, tz
+
+    class date:
+        __module__ = "datetime"
+        __qualname__ = "date"
+        __slots__ = ("_year", "_month", "_day")
+
+        def __new__(cls, year, month, day):
+            self = object.__new__(cls)
+            self._year, self._month, self._day = check_date_fields(year, month, day)
+            return self
+
+        @classmethod
+        def fromtimestamp(cls, t):
+            year, month, day = utc_fields(t)[:3]
+            return cls(year, month, day)
+
+        @classmethod
+        def today(cls):
+            return cls.fromtimestamp(_time.time())
+
+        @classmethod
+        def fromordinal(cls, n):
+            if not 1 <= n <= MAXORDINAL:
+                raise ValueError(f"ordinal must be in 1..{MAXORDINAL}")
+            return cls(*ordinal_to_ymd(n))
+
+        @classmethod
+        def fromisoformat(cls, date_string):
+            if not isinstance(date_string, str):
+                raise TypeError("fromisoformat: argument must be str")
+            try:
+                return cls(*parse_isodate(date_string))
+            except ValueError:
+                raise ValueError(f"Invalid isoformat string: {date_string!r}") from None
+
+        year = property(lambda self: self._year)
+        month = property(lambda self: self._month)
+        day = property(lambda self: self._day)
+
+        def __repr__(self):
+            return f"{class_name(self)}({self._year}, {self._month}, {self._day})"
+
+        def isoformat(self):
+            return f"{self._year:04d}-{self._month:02d}-{self._day:02d}"
+
+        __str__ = isoformat
+
+        def ctime(self):
+            return ctime(self)
+
+        def strftime(self, format):
+            return strftime(self, format)
+
+        def __format__(self, fmt):
+            if not isinstance(fmt, str):
+                raise TypeError(f"must be str, not {type(fmt).__name__}")
+            return self.strftime(fmt) if fmt else str(self)
+
+        def timetuple(self):
+            yday = self.toordinal() - ymd_to_ordinal(self._year, 1, 1) + 1
+            return _time.struct_time((self._year, self._month, self._day, 0, 0, 0,
+                                      self.weekday(), yday, -1))
+
+        def toordinal(self):
+            return ymd_to_ordinal(self._year, self._month, self._day)
+
+        def weekday(self):
+            return (self.toordinal() + 6) % 7
+
+        def isoweekday(self):
+            return self.toordinal() % 7 or 7
+
+        def isocalendar(self):
+            year = self._year
+            today = self.toordinal()
+            week, day = divmod(today - iso_week1_monday(year), 7)
+            if week < 0:
+                year -= 1
+                week, day = divmod(today - iso_week1_monday(year), 7)
+            elif week >= 52 and today >= iso_week1_monday(year + 1):
+                year += 1
+                week = 0
+            return IsoCalendarDate(year, week + 1, day + 1)
+
+        def replace(self, year=None, month=None, day=None):
+            return type(self)(self._year if year is None else year,
+                              self._month if month is None else month,
+                              self._day if day is None else day)
+
+        __replace__ = replace
+
+        def _key(self):
+            return (self._year, self._month, self._day)
+
+        def __eq__(self, other):
+            if isinstance(other, date) and not isinstance(other, datetime):
+                return self._key() == other._key()
+            return NotImplemented
+
+        def __lt__(self, other):
+            if isinstance(other, date) and not isinstance(other, datetime):
+                return self._key() < other._key()
+            return NotImplemented
+
+        def __le__(self, other):
+            if isinstance(other, date) and not isinstance(other, datetime):
+                return self._key() <= other._key()
+            return NotImplemented
+
+        def __gt__(self, other):
+            if isinstance(other, date) and not isinstance(other, datetime):
+                return self._key() > other._key()
+            return NotImplemented
+
+        def __ge__(self, other):
+            if isinstance(other, date) and not isinstance(other, datetime):
+                return self._key() >= other._key()
+            return NotImplemented
+
+        def __hash__(self):
+            return hash(self._key())
+
+        def __add__(self, other):
+            if isinstance(other, timedelta):
+                ordinal = self.toordinal() + other.days
+                if 0 < ordinal <= MAXORDINAL:
+                    return type(self).fromordinal(ordinal)
+                raise OverflowError("result out of range")
+            return NotImplemented
+
+        __radd__ = __add__
+
+        def __sub__(self, other):
+            if isinstance(other, timedelta):
+                return self + timedelta(-other.days)
+            if isinstance(other, date):
+                return timedelta(self.toordinal() - other.toordinal())
+            return NotImplemented
+
+        def __reduce__(self):
+            return (type(self), self._key())
+
+    date.min = date(1, 1, 1)
+    date.max = date(9999, 12, 31)
+    date.resolution = timedelta(days=1)
+
+    class datetime(date):
+        __module__ = "datetime"
+        __qualname__ = "datetime"
+        __slots__ = ("_hour", "_minute", "_second", "_microsecond", "_tzinfo", "_fold")
+
+        def __new__(cls, year, month, day, hour=0, minute=0, second=0, microsecond=0,
+                    tzinfo=None, *, fold=0):
+            self = object.__new__(cls)
+            self._year, self._month, self._day = check_date_fields(year, month, day)
+            (self._hour, self._minute, self._second, self._microsecond,
+             self._fold) = check_time_fields(hour, minute, second, microsecond, fold)
+            check_tzinfo(tzinfo)
+            self._tzinfo = tzinfo
+            return self
+
+        hour = property(lambda self: self._hour)
+        minute = property(lambda self: self._minute)
+        second = property(lambda self: self._second)
+        microsecond = property(lambda self: self._microsecond)
+        tzinfo = property(lambda self: self._tzinfo)
+        fold = property(lambda self: self._fold)
+
+        @classmethod
+        def fromtimestamp(cls, t, tz=None):
+            check_tzinfo(tz)
+            result = cls(*utc_fields(t), tzinfo=tz)
+            return result if tz is None else tz.fromutc(result)
+
+        @classmethod
+        def utcfromtimestamp(cls, t):
+            return cls(*utc_fields(t))
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.fromtimestamp(_time.time(), tz)
+
+        @classmethod
+        def utcnow(cls):
+            return cls.utcfromtimestamp(_time.time())
+
+        @classmethod
+        def fromisoformat(cls, date_string):
+            if not isinstance(date_string, str):
+                raise TypeError("fromisoformat: argument must be str")
+            date_length = 10 if date_string[4:5] == "-" else 8
+            try:
+                year, month, day = parse_isodate(date_string[:date_length])
+                time_fields = (0, 0, 0, 0, None)
+                if len(date_string) > date_length:
+                    time_fields = parse_isotime(date_string[date_length + 1:])
+                return cls(year, month, day, *time_fields)
+            except ValueError:
+                raise ValueError(f"Invalid isoformat string: {date_string!r}") from None
+
+        @classmethod
+        def strptime(cls, date_string, format):
+            return strptime(cls, date_string, format)
+
+        def timetuple(self):
+            dst = self.dst()
+            isdst = -1 if dst is None else int(bool(dst))
+            yday = self.toordinal() - ymd_to_ordinal(self._year, 1, 1) + 1
+            return _time.struct_time((self._year, self._month, self._day, self._hour,
+                                      self._minute, self._second, self.weekday(), yday, isdst))
+
+        def utctimetuple(self):
+            offset = self.utcoffset()
+            moment = (self - offset if offset else self).replace(tzinfo=None)
+            return _time.struct_time(moment.timetuple()[:8] + (0,))
+
+        def timestamp(self):
+            if self.utcoffset() is None:
+                # Naive: local time, which in a canister is UTC.
+                days = self.toordinal() - EPOCH_ORDINAL
+                seconds = ((days * 24 + self._hour) * 60 + self._minute) * 60 + self._second
+                return seconds + self._microsecond / 1e6
+            return (self - EPOCH).total_seconds()
+
+        def date(self):
+            return date(self._year, self._month, self._day)
+
+        def utcoffset(self):
+            if self._tzinfo is None:
+                return None
+            offset = self._tzinfo.utcoffset(self)
+            check_offset("utcoffset", offset)
+            return offset
+
+        def dst(self):
+            if self._tzinfo is None:
+                return None
+            offset = self._tzinfo.dst(self)
+            check_offset("dst", offset)
+            return offset
+
+        def tzname(self):
+            if self._tzinfo is None:
+                return None
+            name = self._tzinfo.tzname(self)
+            if name is not None and not isinstance(name, str):
+                raise TypeError(f"tzinfo.tzname() must return None or a string, "
+                                f"not '{type(name).__name__}'")
+            return name
+
+        def replace(self, year=None, month=None, day=None, hour=None, minute=None,
+                    second=None, microsecond=None, tzinfo=True, *, fold=None):
+            return type(self)(
+                self._year if year is None else year,
+                self._month if month is None else month,
+                self._day if day is None else day,
+                self._hour if hour is None else hour,
+                self._minute if minute is None else minute,
+                self._second if second is None else second,
+                self._microsecond if microsecond is None else microsecond,
+                self._tzinfo if tzinfo is True else tzinfo,
+                fold=self._fold if fold is None else fold)
+
+        __replace__ = replace
+
+        def astimezone(self, tz=None):
+            if tz is None:
+                tz = LOCAL_ZONE
+            elif not isinstance(tz, tzinfo):
+                raise TypeError("tz argument must be an instance of tzinfo")
+            if tz is self._tzinfo:
+                return self
+            offset = self.utcoffset() or timedelta(0)  # naive is local time: UTC
+            return tz.fromutc((self - offset).replace(tzinfo=tz))
+
+        def ctime(self):
+            return ctime(self)
+
+        def isoformat(self, sep="T", timespec="auto"):
+            text = (f"{self._year:04d}-{self._month:02d}-{self._day:02d}{sep}"
+                    + format_time(self._hour, self._minute, self._second,
+                                  self._microsecond, timespec))
+            return text + format_offset(self.utcoffset())
+
+        def __str__(self):
+            return self.isoformat(sep=" ")
+
+        def __repr__(self):
+            fields = [self._year, self._month, self._day, self._hour, self._minute,
+                      self._second, self._microsecond]
+            for _ in range(2):
+                if fields[-1] == 0:
+                    fields.pop()
+            text = f"{class_name(self)}({', '.join(map(str, fields))}"
+            if self._fold:
+                text += ", fold=1"
+            if self._tzinfo is not None:
+                text += f", tzinfo={self._tzinfo!r}"
+            return text + ")"
+
+        def _key(self):
+            return (self._year, self._month, self._day, self._hour, self._minute,
+                    self._second, self._microsecond)
+
+        def _compare(self, other, allow_mixed=False):
+            if self._tzinfo is other._tzinfo:
+                mine, theirs = self._key(), other._key()
+            else:
+                my_offset, other_offset = self.utcoffset(), other.utcoffset()
+                if my_offset == other_offset:
+                    mine, theirs = self._key(), other._key()
+                elif my_offset is None or other_offset is None:
+                    if allow_mixed:
+                        return 2
+                    raise TypeError("can't compare offset-naive and offset-aware datetimes")
+                else:
+                    difference = self - other
+                    return -1 if difference.days < 0 else (1 if difference else 0)
+            return (mine > theirs) - (mine < theirs)
+
+        def __eq__(self, other):
+            if isinstance(other, datetime):
+                return self._compare(other, allow_mixed=True) == 0
+            return NotImplemented if not isinstance(other, date) else False
+
+        def _order(self, other):
+            if isinstance(other, datetime):
+                return self._compare(other)
+            if isinstance(other, date):
+                raise TypeError(f"can't compare {class_name(self)} to {class_name(other)}")
+            return None
+
+        def __lt__(self, other):
+            order = self._order(other)
+            return NotImplemented if order is None else order < 0
+
+        def __le__(self, other):
+            order = self._order(other)
+            return NotImplemented if order is None else order <= 0
+
+        def __gt__(self, other):
+            order = self._order(other)
+            return NotImplemented if order is None else order > 0
+
+        def __ge__(self, other):
+            order = self._order(other)
+            return NotImplemented if order is None else order >= 0
+
+        def __hash__(self):
+            moment = self.replace(fold=0) if self._fold else self
+            offset = moment.utcoffset()
+            if offset is None:
+                return hash(moment._key())
+            seconds = moment._hour * 3600 + moment._minute * 60 + moment._second
+            return hash(timedelta(moment.toordinal(), seconds, moment._microsecond) - offset)
+
+        def _as_timedelta(self):
+            return timedelta(self.toordinal(), hours=self._hour, minutes=self._minute,
+                             seconds=self._second, microseconds=self._microsecond)
+
+        def __add__(self, other):
+            if not isinstance(other, timedelta):
+                return NotImplemented
+            moment = self._as_timedelta() + other
+            if not 0 < moment.days <= MAXORDINAL:
+                raise OverflowError("result out of range")
+            hour, rest = divmod(moment.seconds, 3600)
+            minute, second = divmod(rest, 60)
+            return type(self)(*ordinal_to_ymd(moment.days), hour, minute, second,
+                              moment.microseconds, tzinfo=self._tzinfo)
+
+        __radd__ = __add__
+
+        def __sub__(self, other):
+            if isinstance(other, timedelta):
+                return self + -other
+            if not isinstance(other, datetime):
+                return NotImplemented
+            base = self._as_timedelta() - other._as_timedelta()
+            if self._tzinfo is other._tzinfo:
+                return base
+            my_offset, other_offset = self.utcoffset(), other.utcoffset()
+            if my_offset == other_offset:
+                return base
+            if my_offset is None or other_offset is None:
+                raise TypeError("can't subtract offset-naive and offset-aware datetimes")
+            return base + other_offset - my_offset
+
+        def __reduce__(self):
+            return (type(self), self._key() + (self._tzinfo,))
+
+    datetime.min = datetime(1, 1, 1)
+    datetime.max = datetime(9999, 12, 31, 23, 59, 59, 999999)
+    datetime.resolution = timedelta(microseconds=1)
+    EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    LOCAL_ZONE = timezone(timedelta(0), "UTC")  # a canister's, named as CPython names a UTC host's
 
     m = type(_sys)("datetime")
     m.__file__ = "<frozen datetime>"
+    m.MINYEAR = MINYEAR
+    m.MAXYEAR = MAXYEAR
+    m.date = date
     m.datetime = datetime
     m.timedelta = timedelta
+    m.tzinfo = tzinfo
+    m.timezone = timezone
+    m.UTC = timezone.utc
+    m.IsoCalendarDate = IsoCalendarDate
     _sys.modules["datetime"] = m
 
 try:
@@ -2099,19 +3291,162 @@ del _register_abc
 
 
 # --- frozen stdlib: weakref module ---
+# weakref.py is not in the canister, but the _weakref it wraps is compiled
+# in, so these references are real: they do not keep their object alive (#67).
 def _register_weakref():
-    class WeakValueDictionary(dict):
-        """Stub: acts as a regular dict (no weak references in WASI)."""
-        pass
-    class WeakSet(set):
-        pass
-    def ref(obj, callback=None):
-        return lambda: obj
+    import _weakref
+
+    class WeakValueDictionary:
+        """A mapping whose entries go when their value is collected."""
+        __module__ = "weakref"
+        __qualname__ = "WeakValueDictionary"
+
+        def __init__(self, other=(), **kwargs):
+            self._data = {}
+            self.update(other, **kwargs)
+
+        def _remover(self, key):
+            self_ref = _weakref.ref(self)
+
+            def remove(wr):
+                owner = self_ref()
+                if owner is not None and owner._data.get(key) is wr:
+                    del owner._data[key]
+            return remove
+
+        def __setitem__(self, key, value):
+            self._data[key] = _weakref.ref(value, self._remover(key))
+
+        def __getitem__(self, key):
+            value = self._data[key]()
+            if value is None:
+                raise KeyError(key)
+            return value
+
+        def __delitem__(self, key):
+            del self._data[key]
+
+        def __contains__(self, key):
+            wr = self._data.get(key)
+            return wr is not None and wr() is not None
+
+        def items(self):
+            for key, wr in list(self._data.items()):
+                value = wr()
+                if value is not None:
+                    yield key, value
+
+        def keys(self):
+            for key, _ in self.items():
+                yield key
+
+        __iter__ = keys
+
+        def values(self):
+            for _, value in self.items():
+                yield value
+
+        def __len__(self):
+            return sum(1 for _ in self.items())
+
+        def get(self, key, default=None):
+            try:
+                return self[key]
+            except KeyError:
+                return default
+
+        def pop(self, key, *default):
+            wr = self._data.pop(key, None)
+            value = wr() if wr is not None else None
+            if value is None:
+                if default:
+                    return default[0]
+                raise KeyError(key)
+            return value
+
+        def setdefault(self, key, default=None):
+            try:
+                return self[key]
+            except KeyError:
+                self[key] = default
+                return default
+
+        def update(self, other=(), **kwargs):
+            if hasattr(other, "items"):
+                other = other.items()
+            for key, value in other:
+                self[key] = value
+            for key, value in kwargs.items():
+                self[key] = value
+
+        def clear(self):
+            self._data.clear()
+
+        def copy(self):
+            return WeakValueDictionary(self.items())
+
+        def __repr__(self):
+            return f"<WeakValueDictionary at {id(self):#x}>"
+
+    class WeakSet:
+        """A set whose items go when they are collected."""
+        __module__ = "weakref"
+        __qualname__ = "WeakSet"
+
+        def __init__(self, data=()):
+            self_ref = _weakref.ref(self)
+
+            def remove(wr):
+                owner = self_ref()
+                if owner is not None:
+                    owner._data.discard(wr)
+            self._remove = remove
+            self._data = set()
+            for item in data:
+                self.add(item)
+
+        def add(self, item):
+            self._data.add(_weakref.ref(item, self._remove))
+
+        def discard(self, item):
+            self._data.discard(_weakref.ref(item))
+
+        def remove(self, item):
+            self._data.remove(_weakref.ref(item))
+
+        def __contains__(self, item):
+            try:
+                wr = _weakref.ref(item)
+            except TypeError:
+                return False
+            return wr in self._data
+
+        def __iter__(self):
+            for wr in list(self._data):
+                item = wr()
+                if item is not None:
+                    yield item
+
+        def __len__(self):
+            return sum(1 for _ in self)
+
+        def clear(self):
+            self._data.clear()
+
+        def copy(self):
+            return WeakSet(self)
+
+        def __repr__(self):
+            return repr(self._data)
+
     m = type(_sys)("weakref")
     m.__file__ = "<frozen weakref>"
+    for name in ("ref", "proxy", "getweakrefcount", "getweakrefs", "ReferenceType",
+                 "ProxyType", "CallableProxyType"):
+        setattr(m, name, getattr(_weakref, name))
+    m.ProxyTypes = (_weakref.ProxyType, _weakref.CallableProxyType)
     m.WeakValueDictionary = WeakValueDictionary
     m.WeakSet = WeakSet
-    m.ref = ref
     _sys.modules["weakref"] = m
 
 try:
@@ -2121,25 +3456,353 @@ except ImportError:
 del _register_weakref
 
 
+# --- frozen stdlib: struct module ---
+# struct.py only re-exports _struct, which is compiled in. Without this the
+# import fell through to an empty stub module (#67).
+def _register_struct():
+    import _struct
+    m = type(_sys)("struct")
+    m.__file__ = "<frozen struct>"
+    m.__doc__ = _struct.__doc__
+    m.__all__ = ["calcsize", "pack", "pack_into", "unpack", "unpack_from",
+                 "iter_unpack", "Struct", "error"]
+    for name in m.__all__ + ["_clearcache"]:
+        setattr(m, name, getattr(_struct, name))
+    _sys.modules["struct"] = m
+
+try:
+    import struct
+except ImportError:
+    _register_struct()
+del _register_struct
+
+
 # --- frozen stdlib: enum module ---
+# enum.py is not in the canister. This one keeps the standard library's
+# semantics for Enum, IntEnum and StrEnum: members are instances of their class
+# with .name and .value, classes iterate and look up by value and by name,
+# equal values make aliases, and auto() counts (#67). Flag, IntFlag, member()
+# and nonmember() are not provided, so importing them fails.
 def _register_enum():
-    class EnumMeta(type):
-        def __new__(mcs, name, bases, namespace):
-            cls = super().__new__(mcs, name, bases, namespace)
-            return cls
+    MappingProxy = type(type.__dict__)
+    auto_null = object()
+
+    class auto:
+        """Instances are replaced with an appropriate value in Enum class suites."""
+        __module__ = "enum"
+        __qualname__ = "auto"
+
+        def __init__(self, value=auto_null):
+            self.value = value
+
+        def __repr__(self):
+            return f"auto({self.value!r})"
+
+    def is_dunder(name):
+        return (len(name) > 4 and name[:2] == name[-2:] == "__"
+                and name[2] != "_" and name[-3] != "_")
+
+    def is_sunder(name):
+        return (len(name) > 2 and name[0] == name[-1] == "_"
+                and name[1] != "_" and name[-2] != "_")
+
+    def is_private(class_name, name):
+        prefix = f"_{class_name}__"
+        return (len(name) > len(prefix) and name.startswith(prefix)
+                and (name[-1] != "_" or name[-2] != "_"))
+
+    def is_descriptor(value):
+        return any(hasattr(value, attr) for attr in ("__get__", "__set__", "__delete__"))
+
+    def is_member(class_name, qualname, key, value):
+        if is_dunder(key) or is_sunder(key) or is_private(class_name, key) or is_descriptor(value):
+            return False
+        # A class nested in the enum's body is not a member.
+        return not (isinstance(value, type)
+                    and getattr(value, "__qualname__", "").startswith(qualname + "."))
+
+    def member_type_of(bases):
+        """The data type members are made of: int for IntEnum, str for StrEnum, else object."""
+        for base in bases:
+            for candidate in base.__mro__:
+                if candidate is not object and not isinstance(candidate, EnumType):
+                    return candidate
+        return object
+
+    def inherited(bases, name):
+        for base in bases:
+            value = getattr(base, name, None)
+            if value is not None:
+                return value
+        return None
+
+    class EnumType(type):
+        __module__ = "enum"
+        __qualname__ = "EnumType"
+
+        def __new__(metacls, cls, bases, classdict, **kwds):
+            for base in bases:
+                if isinstance(base, EnumType) and base._member_names_:
+                    raise TypeError(f"{cls!r} cannot extend {base!r}")
+            ignore = classdict.get("_ignore_", [])
+            if isinstance(ignore, str):
+                ignore = ignore.replace(",", " ").split()
+            qualname = classdict.get("__qualname__", cls)
+            generate = classdict.get("_generate_next_value_") or inherited(bases, "_generate_next_value_")
+            if isinstance(generate, staticmethod):
+                generate = generate.__func__
+
+            members = []  # (name, value), in the order they were defined
+            last_values = []  # what auto() counts from, kept as CPython's EnumDict keeps it
+            namespace = {}
+            for key, value in classdict.items():
+                if key in ignore or key == "_ignore_":
+                    continue
+                if not is_member(cls, qualname, key, value):
+                    namespace[key] = value
+                    continue
+                single = isinstance(value, auto)
+                if single or (type(value) is tuple and any(isinstance(v, auto) for v in value)):
+                    # auto() alone, or inside a tuple value: X = auto(), "label"
+                    resolved = []
+                    for part in ((value,) if single else value):
+                        if isinstance(part, auto):
+                            if part.value is auto_null:
+                                part.value = generate(key, 1, len(members), last_values[:])
+                            part = part.value
+                            last_values.append(part)
+                        resolved.append(part)
+                    value = resolved[0] if single else tuple(resolved)
+                else:
+                    last_values.append(value)
+                members.append((key, value))
+
+            member_type = member_type_of(bases)
+            namespace.update(_member_names_=[], _member_map_={}, _value2member_map_={},
+                             _unhashable_values_=[], _member_type_=member_type)
+            new_member = classdict.get("__new__") or inherited(bases, "_new_member_")
+            enum_class = super().__new__(metacls, cls, bases, namespace, **kwds)
+            type.__setattr__(enum_class, "_new_member_", new_member)
+
+            # A mixed-in type's repr and str would hide that these are members.
+            first_enum = bases[-1] if bases and isinstance(bases[-1], EnumType) else None
+            if first_enum is not None and member_type is not object:
+                for name in ("__repr__", "__str__", "__format__", "__reduce_ex__"):
+                    if name not in classdict:
+                        found = getattr(enum_class, name)
+                        if found in (getattr(member_type, name), getattr(object, name)):
+                            type.__setattr__(enum_class, name, getattr(first_enum, name))
+
+            use_args = new_member is not None or member_type is not object
+            create = new_member or member_type.__new__
+            for name, value in members:
+                args = value if isinstance(value, tuple) else (value,)
+                if member_type is tuple:
+                    args = (args,)
+                member = create(enum_class, *args) if use_args else create(enum_class)
+                if not hasattr(member, "_value_"):
+                    member._value_ = value if member_type is object else member_type(*args)
+                member._name_ = name
+                member.__objclass__ = enum_class
+                member.__init__(*args)
+                canonical = next((m for m in enum_class._member_map_.values()
+                                  if m._value_ == member._value_), None)
+                if canonical is not None:
+                    member = canonical  # an alias
+                else:
+                    enum_class._member_names_.append(name)
+                enum_class._member_map_[name] = member
+                try:
+                    enum_class._value2member_map_.setdefault(member._value_, member)
+                except TypeError:
+                    enum_class._unhashable_values_.append(member._value_)
+                type.__setattr__(enum_class, name, member)
+            return enum_class
+
+        def __call__(cls, value, names=None, *, module=None, qualname=None, type=None, start=1):
+            if names is None:
+                return cls._lookup(value)
+            return cls._create_(value, names, module=module, qualname=qualname, type=type,
+                                start=start)
+
+        def _lookup(cls, value):
+            if isinstance(value, cls):
+                return value
+            try:
+                return cls._value2member_map_[value]
+            except (KeyError, TypeError):
+                pass
+            for member in cls._member_map_.values():
+                if member._value_ == value:
+                    return member
+            result = cls._missing_(value)
+            if isinstance(result, cls):
+                return result
+            if result is not None:
+                raise TypeError(f"error in {cls.__name__}._missing_: returned {result!r} "
+                                "instead of None or a valid member")
+            raise ValueError(f"{value!r} is not a valid {cls.__qualname__}")
+
+        def _create_(cls, class_name, names, *, module=None, qualname=None, type=None, start=1):
+            """The functional API: Enum('Color', 'RED GREEN') or Enum('Color', [('RED', 1)])."""
+            if isinstance(names, str):
+                names = names.replace(",", " ").split()
+            if hasattr(names, "items"):
+                items = list(names.items())
+            else:
+                names = list(names)
+                if names and isinstance(names[0], str):
+                    items, values = [], []
+                    for count, name in enumerate(names):
+                        values.append(cls._generate_next_value_(name, start, count, values[:]))
+                        items.append((name, values[-1]))
+                else:
+                    items = [tuple(item) for item in names]
+            classdict = dict(items)
+            classdict["__qualname__"] = qualname or class_name
+            if module is not None:
+                classdict["__module__"] = module
+            bases = (cls,) if type is None else (type, cls)
+            return EnumType.__new__(cls.__class__, class_name, bases, classdict)
+
         def __iter__(cls):
-            return iter([])
-    class Enum(metaclass=EnumMeta):
-        pass
-    class IntEnum(int, Enum):
-        pass
+            return (cls._member_map_[name] for name in cls._member_names_)
+
+        def __reversed__(cls):
+            return (cls._member_map_[name] for name in reversed(cls._member_names_))
+
+        def __len__(cls):
+            return len(cls._member_names_)
+
+        def __contains__(cls, value):
+            if isinstance(value, cls):
+                return True
+            try:
+                return value in cls._value2member_map_
+            except TypeError:
+                return value in cls._unhashable_values_
+
+        def __getitem__(cls, name):
+            return cls._member_map_[name]
+
+        @property
+        def __members__(cls):
+            return MappingProxy(cls._member_map_)
+
+        def __bool__(cls):
+            return True
+
+        def __repr__(cls):
+            return f"<enum {cls.__name__!r}>"
+
+        def __setattr__(cls, name, value):
+            if name in cls.__dict__.get("_member_map_", {}):
+                raise AttributeError(f"cannot reassign member {name!r}")
+            super().__setattr__(name, value)
+
+        def __delattr__(cls, name):
+            if name in cls.__dict__.get("_member_map_", {}):
+                raise AttributeError(f"{cls.__name__!r} cannot delete member {name!r}.")
+            super().__delattr__(name)
+
+    class Enum(metaclass=EnumType):
+        """Create a collection of name/value pairs."""
+        __module__ = "enum"
+        __qualname__ = "Enum"
+
+        def __init__(self, *args, **kwds):
+            pass
+
+        @staticmethod
+        def _generate_next_value_(name, start, count, last_values):
+            if not last_values:
+                return start
+            try:
+                last_value = sorted(last_values).pop()
+            except TypeError:
+                raise TypeError("unable to sort non-numeric values") from None
+            try:
+                return last_value + 1
+            except TypeError:
+                raise TypeError(f"unable to increment {last_value!r}") from None
+
+        @classmethod
+        def _missing_(cls, value):
+            return None
+
+        name = property(lambda self: self._name_)
+        value = property(lambda self: self._value_)
+
+        def __repr__(self):
+            return f"<{type(self).__name__}.{self._name_}: {self._value_!r}>"
+
+        def __str__(self):
+            return f"{type(self).__name__}.{self._name_}"
+
+        def __format__(self, format_spec):
+            return str.__format__(str(self), format_spec)
+
+        def __hash__(self):
+            return hash(self._name_)
+
+        def __reduce_ex__(self, protocol):
+            return type(self), (self._value_,)
+
+        def __copy__(self):
+            return self
+
+        def __deepcopy__(self, memo):
+            return self
+
+    class ReprEnum(Enum):
+        """Only changes the repr(), leaving str() and format() to the mixed-in type."""
+        __module__ = "enum"
+        __qualname__ = "ReprEnum"
+
+    class IntEnum(int, ReprEnum):
+        """Enum where members are also (and must be) ints."""
+        __module__ = "enum"
+        __qualname__ = "IntEnum"
+        __str__ = int.__repr__
+        __format__ = int.__format__
+
+    class StrEnum(str, ReprEnum):
+        """Enum where members are also (and must be) strings."""
+        __module__ = "enum"
+        __qualname__ = "StrEnum"
+
+        def __new__(cls, value):
+            if not isinstance(value, str):
+                raise TypeError(f"{value!r} is not a string")
+            member = str.__new__(cls, value)
+            member._value_ = value
+            return member
+
+        __str__ = str.__str__
+        __format__ = str.__format__
+
+        @staticmethod
+        def _generate_next_value_(name, start, count, last_values):
+            return name.lower()
+
+    def unique(enumeration):
+        """Class decorator that refuses aliases: two names for one value."""
+        aliases = [(alias, member.name) for alias, member in enumeration.__members__.items()
+                   if alias != member.name]
+        if aliases:
+            details = ", ".join(f"{alias} -> {name}" for alias, name in aliases)
+            raise ValueError(f"duplicate values found in {enumeration!r}: {details}")
+        return enumeration
+
     m = type(_sys)("enum")
     m.__file__ = "<frozen enum>"
+    m.EnumType = m.EnumMeta = EnumType
     m.Enum = Enum
+    m.ReprEnum = ReprEnum
     m.IntEnum = IntEnum
-    m.EnumMeta = EnumMeta
-    m.unique = lambda cls: cls
-    m.auto = lambda: 0
+    m.StrEnum = StrEnum
+    m.auto = auto
+    m.unique = unique
     _sys.modules["enum"] = m
 
 try:
