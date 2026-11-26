@@ -71,14 +71,16 @@ jobs:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-cpython-bench-${{ hashFiles('basilisk/cargotoml.py') }}
 
+            # The rolling (main) template, which is not signed: named explicitly
+            # with BASILISK_TEMPLATE_WASM, never written into ~/.config/basilisk,
+            # where builds trust what they find (SECURITY.md, "The Canister Template").
             - name: Download CPython canister template
               run: |
-                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
-                  TEMPLATE_DIR="$HOME/.config/basilisk/${VERSION}"
-                  mkdir -p "${TEMPLATE_DIR}"
-                  curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm \
-                    -o "${TEMPLATE_DIR}/cpython_canister_template.wasm"
-                  echo "Template wasm: $(wc -c < "${TEMPLATE_DIR}/cpython_canister_template.wasm") bytes"
+                  TEMPLATE="${{ runner.temp }}/template/cpython_canister_template.wasm"
+                  curl -Lf --create-dirs https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm \
+                    -o "$TEMPLATE"
+                  sha256sum "$TEMPLATE"
+                  echo "BASILISK_TEMPLATE_WASM=$TEMPLATE" >> "$GITHUB_ENV"
 
             - name: Install Basilisk (CPython)
               shell: bash -l {0}
@@ -158,14 +160,16 @@ jobs:
                   path: ~/.config/basilisk
                   key: basilisk-cargo-sandbox-bench-${{ hashFiles('basilisk/cargotoml.py') }}
 
+            # The rolling (main) template, which is not signed: named explicitly
+            # with BASILISK_TEMPLATE_WASM, never written into ~/.config/basilisk,
+            # where builds trust what they find (SECURITY.md, "The Canister Template").
             - name: Download CPython canister template
               run: |
-                  VERSION=$(python3 -c "import ast; t=ast.parse(open('basilisk/__init__.py').read()); print([n.value.value for n in ast.walk(t) if isinstance(n, ast.Assign) and any(t.id=='__version__' for t in n.targets if isinstance(t, ast.Name))][0])")
-                  TEMPLATE_DIR="$HOME/.config/basilisk/${VERSION}"
-                  mkdir -p "${TEMPLATE_DIR}"
-                  curl -Lf https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm \
-                    -o "${TEMPLATE_DIR}/cpython_canister_template.wasm"
-                  echo "Template wasm: $(wc -c < "${TEMPLATE_DIR}/cpython_canister_template.wasm") bytes"
+                  TEMPLATE="${{ runner.temp }}/template/cpython_canister_template.wasm"
+                  curl -Lf --create-dirs https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm \
+                    -o "$TEMPLATE"
+                  sha256sum "$TEMPLATE"
+                  echo "BASILISK_TEMPLATE_WASM=$TEMPLATE" >> "$GITHUB_ENV"
 
             - name: Install Basilisk (CPython)
               shell: bash -l {0}
