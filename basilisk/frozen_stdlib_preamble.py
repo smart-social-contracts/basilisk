@@ -1957,6 +1957,20 @@ def _register_datetime():
             raise ValueError(f"{name}()={offset}, must be strictly between "
                              "-timedelta(hours=24) and timedelta(hours=24)")
 
+    def modf(x):
+        """math.modf: the math stand-in has none."""
+        whole = float(int(x))
+        return x - whole, whole
+
+    def c_round(x):
+        """C's round(): halves away from zero, where Python's round() goes to even."""
+        fraction, whole = modf(x)
+        if fraction >= 0.5:
+            whole += 1.0
+        elif fraction <= -0.5:
+            whole -= 1.0
+        return whole
+
     def divide_and_round(a, b):
         """a / b rounded to the nearest integer, half to even."""
         q, r = divmod(a, b)
@@ -2135,63 +2149,21 @@ def _register_datetime():
             raise TypeError(f"strptime() argument 1 must be str, not {type(data).__name__}")
         if not isinstance(fmt, str):
             raise TypeError(f"strptime() argument 2 must be str, not {type(fmt).__name__}")
-        widths = {"Y": (4, 4), "m": (1, 2), "d": (1, 2), "H": (1, 2), "I": (1, 2),
-                  "M": (1, 2), "S": (1, 2), "j": (1, 3), "y": (2, 2), "f": (1, 6)}
-        names = {"b": MONTH_NAMES, "B": MONTH_NAMES, "a": DAY_NAMES, "A": DAY_NAMES}
-        found = {}
-        pos = 0
+        # (fewest digits, most digits, lowest value, highest value): what
+        # CPython's pattern for each directive accepts (_strptime.TimeRE)
+        numbers = {"Y": (4, 4, 0, 9999), "y": (2, 2, 0, 99), "m": (1, 2, 1, 12),
+                   "d": (1, 2, 1, 31), "H": (1, 2, 0, 23), "I": (1, 2, 1, 12),
+                   "M": (1, 2, 0, 59), "S": (1, 2, 0, 61), "j": (1, 3, 1, 366),
+                   "f": (1, 6, 0, 999999)}
+        space_padded = {"d": "123456789", "H": "0123456789", "I": "123456789"}  # " 5" for 5
+        names = {"B": [n for n in MONTH_NAMES if n], "b": [n[:3] for n in MONTH_NAMES if n],
+                 "A": [n for n in DAY_NAMES if n], "a": [n[:3] for n in DAY_NAMES if n]}
 
         def mismatch():
             return ValueError(f"time data {data!r} does not match format {fmt!r}")
 
-        def read_digits(least, most):
-            nonlocal pos
-            end = pos
-            while end < len(data) and end - pos < most and data[end] in "0123456789":
-                end += 1
-            if end - pos < least:
-                raise mismatch()
-            text, pos = data[pos:end], end
-            return text
-
-        def read_name(table):
-            nonlocal pos
-            # Full names before abbreviations, so "June" is not read as "Jun" + "e".
-            candidates = [(full, i) for i, full in enumerate(table) if full]
-            candidates += [(full[:3], i) for i, full in enumerate(table) if full]
-            for text, i in candidates:
-                if data[pos:pos + len(text)].lower() == text.lower():
-                    pos += len(text)
-                    return i
-            raise mismatch()
-
-        def is_digits(text):
-            return text != "" and all(c in "0123456789" for c in text)
-
-        def read_offset():
-            """[+-]HH[:]MM[[:]SS[.ffffff]] or Z, as CPython's %z pattern reads it."""
-            nonlocal pos
-            if data[pos:pos + 1] == "Z":
-                pos += 1
-                return timedelta(0)
-            if data[pos:pos + 1] not in ("+", "-"):
-                raise mismatch()
-            sign = -1 if data[pos] == "-" else 1
-            pos += 1
-            hours = int(read_digits(2, 2))
-            pos += data[pos:pos + 1] == ":"
-            minutes = int(read_digits(2, 2))
-            seconds = microseconds = 0
-            after_colon = pos + (data[pos:pos + 1] == ":")
-            if is_digits(data[after_colon:after_colon + 2]):
-                pos = after_colon
-                seconds = int(read_digits(2, 2))
-                if data[pos:pos + 1] == "." and is_digits(data[pos + 1:pos + 2]):
-                    pos += 1
-                    microseconds = int(read_digits(1, 6).ljust(6, "0"))
-            return sign * timedelta(hours=hours, minutes=minutes, seconds=seconds,
-                                    microseconds=microseconds)
-
+        # The format as tokens: (kind, directive or literal character)
+        tokens = []
         i = 0
         while i < len(fmt):
             c = fmt[i]
@@ -2199,43 +2171,112 @@ def _register_datetime():
             if c.isspace():  # a run of whitespace matches one or more, as in CPython
                 while i < len(fmt) and fmt[i].isspace():
                     i += 1
-                if pos >= len(data) or not data[pos].isspace():
-                    raise mismatch()
-                while pos < len(data) and data[pos].isspace():
-                    pos += 1
-                continue
-            if c != "%":
-                if data[pos:pos + 1].lower() != c.lower():
-                    raise mismatch()
-                pos += 1
-                continue
-            if i == len(fmt):
+                tokens.append(("space", None))
+            elif c != "%":
+                tokens.append(("literal", c))
+            elif i == len(fmt):
                 raise ValueError(f"stray % in format {fmt!r}")
-            c = fmt[i]
-            i += 1
-            if c in widths:
-                found[c] = read_digits(*widths[c])
-            elif c in names:
-                found[c] = read_name(names[c])
-            elif c == "p":
-                if data[pos:pos + 2].upper() not in ("AM", "PM"):
-                    raise mismatch()
-                found[c] = data[pos:pos + 2].upper()
-                pos += 2
-            elif c == "z":
-                found[c] = read_offset()
-            elif c == "Z":
-                if data[pos:pos + 3].upper() not in ("UTC", "GMT"):
-                    raise mismatch()
-                pos += 3
-            elif c == "%":
-                if data[pos:pos + 1] != "%":
-                    raise mismatch()
-                pos += 1
             else:
-                raise ValueError(f"strptime directive '%{c}' is not supported in a canister")
-        if pos != len(data):
-            raise ValueError(f"unconverted data remains: {data[pos:]}")
+                c = fmt[i]
+                i += 1
+                if c in numbers:
+                    tokens.append(("number", c))
+                elif c in names:
+                    tokens.append(("name", c))
+                elif c in "pzZ%":
+                    tokens.append((c, c))
+                else:
+                    raise ValueError(f"strptime directive '%{c}' is not supported in a canister")
+
+        def digits_at(pos, most):
+            end = pos
+            while end < len(data) and end - pos < most and data[end] in "0123456789":
+                end += 1
+            return data[pos:end]
+
+        def offset_at(pos):
+            """([+-]HH[:]MM[[:]SS[.ffffff]] or Z, as CPython's %z pattern reads it, end) or None."""
+            if data[pos:pos + 1] == "Z":
+                return timedelta(0), pos + 1
+            if data[pos:pos + 1] not in ("+", "-"):
+                return None
+            sign = -1 if data[pos] == "-" else 1
+            hours = digits_at(pos + 1, 2)
+            pos += 3 + (data[pos + 3:pos + 4] == ":")
+            minutes = digits_at(pos, 2)
+            if len(hours) != 2 or len(minutes) != 2 or minutes[0] > "5":
+                return None
+            pos += 2
+            seconds = microseconds = "0"
+            after_colon = pos + (data[pos:pos + 1] == ":")
+            if len(digits_at(after_colon, 2)) == 2 and digits_at(after_colon, 2)[0] <= "5":
+                seconds = digits_at(after_colon, 2)
+                pos = after_colon + 2
+                if data[pos:pos + 1] == "." and digits_at(pos + 1, 6):
+                    microseconds = digits_at(pos + 1, 6).ljust(6, "0")
+                    pos += 1 + len(digits_at(pos + 1, 6))
+            offset = timedelta(hours=int(hours), minutes=int(minutes), seconds=int(seconds),
+                               microseconds=int(microseconds))
+            return sign * offset, pos
+
+        def candidates(kind, c, pos):
+            """Each (value, end) the token can take at pos, in the order CPython's pattern tries them."""
+            if kind == "literal":
+                if data[pos:pos + 1].lower() == c.lower():
+                    yield None, pos + 1
+            elif kind == "space":
+                end = pos
+                while end < len(data) and data[end].isspace():
+                    end += 1
+                for stop in range(end, pos, -1):
+                    yield None, stop
+            elif kind == "number":
+                least, most, low, high = numbers[c]
+                run = digits_at(pos, most)
+                for length in range(len(run), least - 1, -1):
+                    if low <= int(run[:length]) <= high:
+                        yield run[:length], pos + length
+                padded = data[pos + 1:pos + 2]
+                if c in space_padded and data[pos:pos + 1] == " " and padded and padded in space_padded[c]:
+                    yield padded, pos + 2
+            elif kind == "name":
+                for index, name in sorted(enumerate(names[c], 1), key=lambda item: -len(item[1])):
+                    if data[pos:pos + len(name)].lower() == name.lower():
+                        yield index, pos + len(name)
+            elif kind == "p":
+                if data[pos:pos + 2].upper() in ("AM", "PM"):
+                    yield data[pos:pos + 2].upper(), pos + 2
+            elif kind == "z":
+                offset = offset_at(pos)
+                if offset is not None:
+                    yield offset
+            elif kind == "Z":
+                if data[pos:pos + 3].upper() in ("UTC", "GMT"):
+                    yield None, pos + 3
+            elif data[pos:pos + 1] == "%":
+                yield None, pos + 1
+
+        def match(index, pos):
+            """The first way tokens[index:] match from pos, as a regular expression would
+            find it: (values by directive, end) or None."""
+            if index == len(tokens):
+                return {}, pos
+            kind, c = tokens[index]
+            for value, end in candidates(kind, c, pos):
+                rest = match(index + 1, end)
+                if rest is not None:
+                    found, final = rest
+                    if value is not None:
+                        found[c] = value
+                    return found, final
+            return None
+
+        matched = match(0, 0)
+        if matched is None:
+            raise mismatch()
+        found, end = matched
+        if end != len(data):
+            raise ValueError(f"unconverted data remains: {data[end:]}")
 
         year = int(found.get("Y", 1900))
         if "y" in found:
@@ -2267,21 +2308,36 @@ def _register_datetime():
 
         def __new__(cls, days=0, seconds=0, microseconds=0, milliseconds=0,
                     minutes=0, hours=0, weeks=0):
-            whole = 0
-            fraction = 0.0
-            for value, scale in ((days, 86400000000), (seconds, 1000000), (microseconds, 1),
-                                 (milliseconds, 1000), (minutes, 60000000),
-                                 (hours, 3600000000), (weeks, 604800000000)):
-                if isinstance(value, float):
-                    integral = int(value)
-                    whole += integral * scale
-                    fraction += (value - integral) * scale
-                elif isinstance(value, int):
-                    whole += value * scale
+            # CPython's C constructor (delta_new): each component's whole part
+            # is counted exactly, the fractions go into one float in this
+            # order, and that is rounded once, half to even. _pydatetime and
+            # any other order are microseconds off for some floats (#76 review).
+            total = 0
+            leftover = 0.0
+            for name, value, factor in (
+                    ("microseconds", microseconds, 1), ("milliseconds", milliseconds, 1000),
+                    ("seconds", seconds, 1000000), ("minutes", minutes, 60000000),
+                    ("hours", hours, 3600000000), ("days", days, 86400000000),
+                    ("weeks", weeks, 604800000000)):
+                if isinstance(value, int):
+                    total += value * factor
+                elif isinstance(value, float):
+                    fraction, whole = modf(value)
+                    total += int(whole) * factor
+                    if fraction:
+                        fraction, whole = modf(float(factor) * fraction)
+                        total += int(whole)
+                        leftover += fraction
                 else:
-                    raise TypeError(f"unsupported type for timedelta component: "
+                    raise TypeError(f"unsupported type for timedelta {name} component: "
                                     f"{type(value).__name__}")
-            return cls._from_microseconds(whole + round(fraction))
+            if leftover:
+                whole = c_round(leftover)
+                if abs(whole - leftover) == 0.5:
+                    odd = total & 1
+                    whole = 2.0 * c_round((leftover + odd) * 0.5) - odd
+                total += int(whole)
+            return cls._from_microseconds(total)
 
         @classmethod
         def _from_microseconds(cls, total):
@@ -2571,7 +2627,9 @@ def _register_datetime():
         hour, minute, second, microsecond = parse_hh_mm_ss_ff(text[:tz_at])
         zone = text[tz_at:]
         tz = None
-        if zone == "Z":
+        if zone[:1] == "Z":
+            if zone != "Z":
+                raise ValueError
             tz = timezone.utc
         elif zone:
             hh, mm, ss, us = parse_hh_mm_ss_ff(zone[1:])
@@ -3495,6 +3553,7 @@ def _register_enum():
                 generate = generate.__func__
 
             members = []  # (name, value), in the order they were defined
+            last_values = []  # what auto() counts from, kept as CPython's EnumDict keeps it
             namespace = {}
             for key, value in classdict.items():
                 if key in ignore or key == "_ignore_":
@@ -3502,10 +3561,20 @@ def _register_enum():
                 if not is_member(cls, qualname, key, value):
                     namespace[key] = value
                     continue
-                if isinstance(value, auto):
-                    if value.value is auto_null:
-                        value.value = generate(key, 1, len(members), [v for _, v in members])
-                    value = value.value
+                single = isinstance(value, auto)
+                if single or (type(value) is tuple and any(isinstance(v, auto) for v in value)):
+                    # auto() alone, or inside a tuple value: X = auto(), "label"
+                    resolved = []
+                    for part in ((value,) if single else value):
+                        if isinstance(part, auto):
+                            if part.value is auto_null:
+                                part.value = generate(key, 1, len(members), last_values[:])
+                            part = part.value
+                            last_values.append(part)
+                        resolved.append(part)
+                    value = resolved[0] if single else tuple(resolved)
+                else:
+                    last_values.append(value)
                 members.append((key, value))
 
             member_type = member_type_of(bases)

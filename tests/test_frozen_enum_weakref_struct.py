@@ -115,6 +115,13 @@ def auto_values(enum, note):
         SOUTH = enum.auto()
 
     note("own generator", lambda: [m.value for m in Named])
+
+    class Labelled(enum.Enum):
+        X = enum.auto(), "label"
+        Y = 5
+        Z = enum.auto(), "z"
+
+    note("auto inside a tuple", lambda: [m.value for m in Labelled])
     note("unique passes", lambda: list(enum.unique(Named)))
 
 

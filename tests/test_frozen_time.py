@@ -280,6 +280,7 @@ ISO_STRINGS = [
     "2027-01-15T08:00:00+00:00", "20270115T080000Z", "2027-01-15X08:00",
     "2027-1-15", "2027-01-15T", "2027-01-15T8:00", "2027-01-15T08:0", "2027-02-30",
     "2027-01-15T25:00", "2027-01-15T08:00:00.", "2027-01-15T08:00+", "", "x" * 12, "2027-01-15T08:00:00+24:00",
+    "2027-01-15T08:00:00Z05:00", "2027-01-15T08:00Zjunk", "2027-01-15T08:00:00ZZ",
 ]
 
 
@@ -351,3 +352,73 @@ def test_gmtime_defaults_to_the_ic_clock(canister):
     assert time.strftime("%Y-%m-%d %H:%M:%S") == "2027-01-15 08:00:00"
     assert (time.gmtime().tm_zone, time.gmtime().tm_gmtoff) == ("GMT", 0)
     assert (time.localtime().tm_zone, time.localtime().tm_gmtoff) == ("UTC", 0)
+
+
+# --- found in review: each was a wrong answer, not an exception -----------------
+
+
+def test_timedelta_from_floats_matches_cpython_to_the_microsecond(canister):
+    """Float components are split and rounded in CPython's order, or 1 in ~700 is a µs off."""
+    _, datetime = canister
+    rng = random.Random(76)
+    scales = {"days": 1e6, "seconds": 1e7, "microseconds": 1e9, "milliseconds": 1e7,
+              "minutes": 1e5, "hours": 1e4, "weeks": 1e5}
+    for _ in range(20_000):
+        kwargs = {}
+        for name in rng.sample(sorted(scales), rng.randint(1, 4)):
+            value = rng.uniform(-scales[name], scales[name])
+            kwargs[name] = value if rng.random() < 0.8 else int(value)
+        same(lambda m: m.timedelta(**kwargs), datetime, real_datetime)
+
+
+STRPTIME_CASES = [
+    ("461", "%j"), ("366", "%j"), ("000", "%j"), ("41 AM", "%I %p"), ("00 PM", "%I %p"),
+    ("Jun", "%B"), ("June", "%b"), ("Thu", "%A"), ("Thursday", "%a"), (" 5", "%d"), ("  5", "%d"),
+    ("32", "%d"), ("13", "%m"), ("00", "%m"), ("24", "%H"), ("60", "%M"), ("62", "%S"),
+    ("1301", "%m%d"), ("2027130", "%Y%m%d"), ("02", "%H%M"), ("12", "%m%d"), ("+0160", "%z"),
+    ("+01:30:60", "%z"), ("+0130:5", "%z"), ("z", "%z"), ("2027-01-15  08", "%Y-%m-%d %H"), (" ", "%d"), (" x", "%d"), (" 5", "%H"), (" 0", "%H"),
+    (" 0", "%I"), (" 9 PM", "%I %p"), (" 5", "%M"),
+]
+
+
+@pytest.mark.filterwarnings("ignore:Parsing dates involving a day of month:DeprecationWarning")
+def test_strptime_refuses_what_cpython_refuses(canister):
+    _, datetime = canister
+    for text, fmt in STRPTIME_CASES:
+        same(lambda m: m.datetime.strptime(text, fmt), datetime, real_datetime)
+    rng = random.Random(2)
+    formats = ["%j", "%d", "%m", "%H", "%I %p", "%M", "%S", "%y", "%f", "%m%d", "%H%M", "%d/%m/%Y", "%B %d", "%b %d"]
+    names = [n for n in ("January", "Jun", "June", "Sept", "May", "Mayo", "dec") if n]
+    for _ in range(20_000):
+        fmt = rng.choice(formats)
+        digits = "".join(rng.choice("0123456789") for _ in range(rng.randint(1, 4)))
+        if "%B" in fmt or "%b" in fmt:
+            text = f"{rng.choice(names)} {digits[:2]}"
+        elif "%p" in fmt:
+            text = f"{digits[:2]} {rng.choice(['AM', 'PM', 'am', 'XM'])}"
+        elif "/" in fmt:
+            text = f"{digits[:2]}/{rng.choice(['1', '01', '12', '13'])}/2027"
+        else:
+            text = digits
+        same(lambda m: m.datetime.strptime(text, fmt), datetime, real_datetime)
+
+
+def test_dates_and_zones_as_keys_match_cpython(canister):
+    """Equal dates, datetimes and zones hash alike, so they find each other as dict keys."""
+    _, datetime = canister
+    for make in (
+        lambda m: {m.date(2027, 1, 15): "x"}[m.date(2027, 1, 15)],
+        lambda m: m.date(2027, 1, 15) in {m.date(2027, 1, 15), m.date(2027, 1, 16)},
+        lambda m: m.date(2027, 1, 15) == m.datetime(2027, 1, 15),
+        lambda m: hash(m.date(2027, 1, 15)) == hash(m.date.fromordinal(m.date(2027, 1, 15).toordinal())),
+        lambda m: m.timezone(m.timedelta(hours=1)) == m.timezone(m.timedelta(hours=1), "CET"),
+        lambda m: hash(m.timezone(m.timedelta(hours=1))) == hash(m.timezone(m.timedelta(hours=1), "CET")),
+        lambda m: m.timezone(m.timedelta(0)) is m.timezone.utc,
+        lambda m: {m.timezone.utc: "utc"}[m.timezone(m.timedelta(0), "UTC")],
+        lambda m: m.timezone(m.timedelta(hours=1)) == m.timezone(m.timedelta(hours=2)),
+        lambda m: m.timezone.utc == "UTC",
+        lambda m: {m.datetime(2027, 1, 15, 9, tzinfo=m.timezone(m.timedelta(hours=1))): "x"}[
+            m.datetime(2027, 1, 15, 8, tzinfo=m.timezone.utc)],
+    ):
+        same(make, datetime, real_datetime)
+
