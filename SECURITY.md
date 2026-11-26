@@ -56,6 +56,37 @@ Basilisk compiles Python code into WebAssembly canisters that run on the Interne
 
 6. **Query calls run on a single replica and can be spoofed.** Do not rely on query responses for security-critical decisions. Use update calls or certified variables for trustworthy reads.
 
+### The Canister Template
+
+The template wasm is the canister's runtime: every canister is built by
+injecting its Python into it. Unless `BASILISK_TEMPLATE_WASM` names a template
+file, a build downloads the template of its own version's release (`v{version}`)
+and uses it only if all of this holds:
+
+- `checksums.txt` of that release carries a valid signature,
+  `checksums.txt.asc`, by the release key, fingerprint
+  `6B7B038DEB77849F1F615E67CA38831314D6AA09`. The public key ships with the
+  package (`basilisk/release_key.asc`) and is checked with `gpg` in a fresh
+  keyring, so `gpg` must be installed: without it the build stops.
+- `checksums.txt` lists this version's sdist (`ic_basilisk-{version}.tar.gz`),
+  so another release's signed file cannot be replayed.
+- The template's SHA-256 is the one `checksums.txt` lists.
+
+Only a template that passes is moved to
+`~/.config/basilisk/{version}/cpython_canister_template.verified.wasm`, where
+later builds use it without checking again; it is downloaded to a temporary file
+and moved there after verifying. The `cpython_canister_template.wasm` that
+v0.17.0 and earlier cached in the same directory, unverified, is not used. Anything else stops the build. There is no fallback to
+the `cpython-wasm-3.13.0-ic1` release, which CI publishes from `main` and does
+not sign.
+
+If a version's release has no template, the build stops too. Only
+`BASILISK_TEMPLATE_FROM_SOURCE=1` (exactly `1`) lets it use an unverified one:
+a template built from source, written to
+`cpython_canister_template.source-built.wasm` next to the verified one and
+never in its place, or one built in a source checkout. A source build's
+CPython comes from the unsigned release, so use it for development only.
+
 ## Security Checklist for Canister Developers
 
 - [ ] Apply `guard_against_non_controllers` to all admin/sensitive endpoints
@@ -74,6 +105,6 @@ Basilisk compiles Python code into WebAssembly canisters that run on the Interne
 
 2. **SSH server has no authentication in dev mode.** The `basilisk sshd` command accepts any connection by default. Only use it on `localhost` or trusted networks.
 
-3. **Template WASM integrity.** The pre-built WASM template is downloaded from GitHub Releases over HTTPS. No additional checksum verification is currently performed.
+3. **The release key cannot be revoked.** Each installed version trusts the key it shipped with. If the key is rotated, existing installs keep trusting the old key, and nothing tells them it was replaced. A cached template, and one named with `BASILISK_TEMPLATE_WASM`, are not checked at all.
 
 4. **Canister memory is not encrypted.** On standard application subnets, node operators can inspect canister memory. Use vetKD for on-chain secret management if needed.

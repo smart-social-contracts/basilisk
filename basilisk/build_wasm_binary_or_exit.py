@@ -1,7 +1,9 @@
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 
 import basilisk
@@ -14,13 +16,26 @@ TEMPLATE_DOWNLOAD_URL = (
     "/v{version}/cpython_canister_template.wasm"
 )
 
-# Fallback: CI uploads the template to the cpython-wasm release (not versioned
-# by basilisk release; the -ic suffix tracks the IC patch-set revision, keep it
-# in sync with ARTIFACT_REVISION in basilisk/compiler/cpython/install_cpython_wasm.sh)
-TEMPLATE_DOWNLOAD_URL_FALLBACK = (
-    "https://github.com/smart-social-contracts/basilisk/releases/download"
-    "/cpython-wasm-3.13.0-ic1/cpython_canister_template.wasm"
-)
+# A downloaded template must be listed in checksums.txt of its release, and
+# checksums.txt must carry a valid signature (checksums.txt.asc) by the org's
+# release key: smart-social-contracts/.github pgp-key.asc, which
+# release-verify.yml checks when a release is published (#68, SECURITY.md).
+RELEASE_KEY_FINGERPRINT = "6B7B038DEB77849F1F615E67CA38831314D6AA09"
+RELEASE_KEY_PATH = os.path.join(os.path.dirname(__file__), "release_key.asc")
+
+# The cache entry a verified download is moved to, and that later builds trust
+# as it is. Its name is new with verification: v0.17.0 and earlier cached
+# unverified downloads and source builds as cpython_canister_template.wasm in
+# the same directory, and those are not trusted.
+VERIFIED_TEMPLATE = "cpython_canister_template.verified.wasm"
+
+# A template built from source goes to a file of its own, never VERIFIED_TEMPLATE.
+SOURCE_BUILT_TEMPLATE = "cpython_canister_template.source-built.wasm"
+
+
+def _source_build_allowed() -> bool:
+    """Whether this build may use a template that no release signed (opt-in, exactly "1")."""
+    return os.environ.get("BASILISK_TEMPLATE_FROM_SOURCE") == "1"
 
 
 def ensure_rust_dependencies(paths: Paths) -> None:
@@ -75,6 +90,17 @@ def build_with_template(
     # 1. Locate the pre-built template wasm
     template_wasm_path = find_template_wasm(paths)
     if template_wasm_path is None:
+        # A source build takes its CPython from the unsigned cpython-wasm
+        # release, so it is not a silent stand-in for the signed template.
+        if not _source_build_allowed():
+            print(red(
+                f"No verified canister template for basilisk {basilisk.__version__}: the "
+                f"v{basilisk.__version__} release has none that could be downloaded. Set "
+                "BASILISK_TEMPLATE_WASM to a template file you trust. For development "
+                "only, BASILISK_TEMPLATE_FROM_SOURCE=1 builds one from source, unverified: "
+                "its CPython comes from the unsigned cpython-wasm-3.13.0-ic1 release."
+            ))
+            sys.exit(1)
         print(red("Template wasm not found. Building from source..."))
         template_wasm_path = build_template_from_source(paths, cargo_env, verbose)
 
@@ -221,17 +247,23 @@ def find_template_wasm(paths: Paths) -> str | None:
 
     Searches in order:
     1. BASILISK_TEMPLATE_WASM env var (explicit path)
-    2. ~/.config/basilisk/<version>/cpython_canister_template.wasm (cached artifact)
-    3. Download from GitHub release and cache at (2)
-    4. <compiler_dir>/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm (local build)
+    2. ~/.config/basilisk/<version>/VERIFIED_TEMPLATE (cached artifact, which only
+       a verified download puts there)
+    3. Download from the v{version} GitHub release, verify, and cache at (2)
+    4. <compiler_dir>/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm
+       (a local build), only with BASILISK_TEMPLATE_FROM_SOURCE=1
     """
     # 1. Explicit path
     explicit = os.environ.get("BASILISK_TEMPLATE_WASM")
-    if explicit and os.path.exists(explicit):
+    if explicit:
+        if not os.path.exists(explicit):
+            # Not a reason to build on some other template instead.
+            print(red(f"BASILISK_TEMPLATE_WASM is {explicit}, which does not exist."))
+            sys.exit(1)
         return explicit
 
     # 2. Cached artifact
-    artifact_path = f"{paths['global_basilisk_version_dir']}/cpython_canister_template.wasm"
+    artifact_path = f"{paths['global_basilisk_version_dir']}/{VERIFIED_TEMPLATE}"
     if os.path.exists(artifact_path):
         return artifact_path
 
@@ -240,84 +272,143 @@ def find_template_wasm(paths: Paths) -> str | None:
     if downloaded:
         return artifact_path
 
-    # 4. Local build
+    # 4. Local build: unsigned, like a source build
     compiler_dir = os.path.dirname(basilisk.__file__) + "/compiler"
     local_path = f"{compiler_dir}/cpython_canister_template/target/wasm32-wasip1/release/cpython_canister_template.wasm"
-    if os.path.exists(local_path):
+    if _source_build_allowed() and os.path.exists(local_path):
         return local_path
 
     return None
 
 
 def _download_template(dest_path: str) -> bool:
-    """Download the pre-built template WASM from the GitHub release.
+    """Download the template of this version's release, verify it, and put it at `dest_path`.
 
-    Tries the versioned release first (v{version}), then falls back to the
-    cpython-wasm release where CI uploads the latest template.
-    Returns True if the download succeeded, False otherwise.
+    Later builds use the file at `dest_path` without checking it again, so the
+    download goes to a temporary file next to it and is moved there only once
+    it has verified; anything that goes wrong first, an interrupt included,
+    leaves no file behind. Returns False if the download fails. A template
+    that does not verify stops the build. There is no fallback to another
+    release: the only other one, cpython-wasm, is not signed (#68).
     """
-    urls = [
-        TEMPLATE_DOWNLOAD_URL.format(version=basilisk.__version__),
-        TEMPLATE_DOWNLOAD_URL_FALLBACK,
-    ]
-    for url in urls:
+    url = TEMPLATE_DOWNLOAD_URL.format(version=basilisk.__version__)
+    directory = os.path.dirname(dest_path)
+    os.makedirs(directory, exist_ok=True)
+    fd, download_path = tempfile.mkstemp(dir=directory, prefix=".template-", suffix=".download")
+    os.close(fd)
+    try:
         print(f"Downloading CPython canister template from {url} ...")
         try:
-            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-            urllib.request.urlretrieve(url, dest_path)
-            size_mb = os.path.getsize(dest_path) / (1024 * 1024)
-            print(f"Template downloaded ({size_mb:.1f} MB) -> {dest_path}")
-
-            # Verify integrity: try to download .sha256 checksum and validate
-            _verify_template_checksum(url, dest_path)
-
-            return True
+            urllib.request.urlretrieve(url, download_path)
         except Exception as e:
             print(f"Download failed: {e}")
-            if os.path.exists(dest_path):
-                os.remove(dest_path)
-    return False
+            return False
+        size_mb = os.path.getsize(download_path) / (1024 * 1024)
+        print(f"Template downloaded ({size_mb:.1f} MB)")
+        try:
+            _verify_template(url, download_path)
+        except Exception as e:
+            print(red(f"The downloaded template did not verify, so it was not used: {e}"))
+            sys.exit(1)
+        os.replace(download_path, dest_path)
+        print(f"Template verified -> {dest_path}")
+        return True
+    finally:
+        _remove_if_present(download_path)
 
 
-def _verify_template_checksum(wasm_url: str, wasm_path: str) -> None:
-    """Verify downloaded WASM against a .sha256 checksum file (if available).
+class TemplateVerificationError(Exception):
+    pass
 
-    Downloads <wasm_url>.sha256 and compares the hash. If the checksum file
-    is not found (404), prints a warning but does not fail — this allows
-    older releases without checksums to still work.
-    """
-    import hashlib
 
-    checksum_url = wasm_url + ".sha256"
-    try:
-        response = urllib.request.urlopen(checksum_url)
-        expected_hash = response.read().decode("utf-8").strip().split()[0].lower()
-    except Exception:
-        print("Warning: No .sha256 checksum file found for template WASM — skipping verification")
-        return
-
+def _verify_template(wasm_url: str, wasm_path: str) -> None:
+    """Check a downloaded template against the signed checksums.txt of its release."""
+    release_url, name = wasm_url.rsplit("/", 1)
+    checksums = _fetch(f"{release_url}/checksums.txt")
+    _verify_signature(checksums, _fetch(f"{release_url}/checksums.txt.asc"))
+    listing = checksums.decode("utf-8")
+    # Every release signs its own sdist's hash; without this line another
+    # version's signed checksums.txt would verify here as well (a replay).
+    _listed_sha256(listing, f"ic_basilisk-{basilisk.__version__}.tar.gz")
+    expected = _listed_sha256(listing, name)
     with open(wasm_path, "rb") as f:
-        actual_hash = hashlib.sha256(f.read()).hexdigest().lower()
-
-    if actual_hash != expected_hash:
-        os.remove(wasm_path)
-        raise RuntimeError(
-            f"Template WASM checksum mismatch!\n"
-            f"  Expected: {expected_hash}\n"
-            f"  Actual:   {actual_hash}\n"
-            f"This could indicate a corrupted download or supply-chain attack.\n"
-            f"The file has been removed. Try again or build from source."
+        actual = hashlib.sha256(f.read()).hexdigest()
+    if actual != expected:
+        raise TemplateVerificationError(
+            f"{name} has SHA-256 {actual}, but checksums.txt lists {expected}"
         )
+
+
+def _fetch(url: str) -> bytes:
+    try:
+        with urllib.request.urlopen(url) as response:
+            return response.read()
+    except Exception as e:
+        raise TemplateVerificationError(f"could not fetch {url}: {e}") from None
+
+
+def _listed_sha256(checksums: str, name: str) -> str:
+    """The SHA-256 that a sha256sum-format checksums file lists for `name`."""
+    for line in checksums.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[1].lstrip("*") == name:
+            return fields[0].lower()
+    raise TemplateVerificationError(f"checksums.txt does not list {name}")
+
+
+def _verify_signature(checksums: bytes, signature: bytes) -> None:
+    """Check that `signature` is the release key's signature of `checksums`, with gpg."""
+    gpg = shutil.which("gpg")
+    if gpg is None:
+        raise TemplateVerificationError(
+            "gpg is not installed, so the signature on checksums.txt cannot be checked. "
+            "Install it (e.g. apt install gnupg, brew install gnupg), or set "
+            "BASILISK_TEMPLATE_WASM to a template file you trust."
+        )
+    with tempfile.TemporaryDirectory() as home:
+        checksums_path = os.path.join(home, "checksums.txt")
+        signature_path = checksums_path + ".asc"
+        with open(checksums_path, "wb") as f:
+            f.write(checksums)
+        with open(signature_path, "wb") as f:
+            f.write(signature)
+        gpg_base = [gpg, "--homedir", home, "--batch", "--quiet"]
+        subprocess.run(gpg_base + ["--import", RELEASE_KEY_PATH], check=True, capture_output=True)
+        result = subprocess.run(
+            gpg_base + ["--status-fd", "1", "--verify", signature_path, checksums_path],
+            capture_output=True,
+            text=True,
+        )
+    # VALIDSIG ends with the fingerprint of the primary key the signing subkey belongs to.
+    signers = [
+        line.split()[-1]
+        for line in result.stdout.splitlines()
+        if line.startswith("[GNUPG:] VALIDSIG ")
+    ]
+    if result.returncode != 0 or RELEASE_KEY_FINGERPRINT not in signers:
+        raise TemplateVerificationError(
+            f"checksums.txt.asc is not a valid signature by the release key "
+            f"{RELEASE_KEY_FINGERPRINT}: {result.stderr.strip() or 'no valid signature'}"
+        )
+    print(f"checksums.txt is signed by the release key {RELEASE_KEY_FINGERPRINT}")
+
+
+def _remove_if_present(path: str) -> None:
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
 
 
 def build_template_from_source(
     paths: Paths, cargo_env: dict[str, str], verbose: bool
 ) -> str:
-    """Build the CPython canister template WASM from source and cache it.
+    """Build the CPython canister template WASM from source.
 
-    This is the fallback when no pre-built template is found. It compiles the
-    template from its own Cargo.toml, runs wasi2ic, and caches the result at
-    ~/.config/basilisk/<version>/cpython_canister_template.wasm.
+    Used only with BASILISK_TEMPLATE_FROM_SOURCE=1, when no verified template
+    is found. It compiles the template from its own Cargo.toml, runs wasi2ic,
+    and puts the result at ~/.config/basilisk/<version>/SOURCE_BUILT_TEMPLATE,
+    never at VERIFIED_TEMPLATE.
 
     wasi2ic is needed to convert WASI entry points to IC canister format.
     wasm-opt is NOT run here as it can corrupt the binary.
@@ -355,24 +446,30 @@ def build_template_from_source(
     # 3. Post-process: copy raw wasm and run wasi2ic
     # wasi2ic converts WASI entry points (_start, etc.) to IC canister format.
     # Do NOT run wasm-opt — it corrupts the binary for IC deployment.
+    # It is converted in a temporary file and moved into place only once
+    # wasi2ic has succeeded, so a failed conversion leaves nothing behind.
     raw_wasm = f"{paths['global_basilisk_target_dir']}/wasm32-wasip1/release/cpython_canister_template.wasm"
-    cached_path = f"{paths['global_basilisk_version_dir']}/cpython_canister_template.wasm"
-    os.makedirs(os.path.dirname(cached_path), exist_ok=True)
-    shutil.copy(raw_wasm, cached_path)
+    built_path = f"{paths['global_basilisk_version_dir']}/{SOURCE_BUILT_TEMPLATE}"
+    os.makedirs(os.path.dirname(built_path), exist_ok=True)
+    fd, work_path = tempfile.mkstemp(dir=os.path.dirname(built_path), prefix=".template-", suffix=".build")
+    os.close(fd)
+    try:
+        shutil.copy(raw_wasm, work_path)
+        run_subprocess(
+            [
+                f"{paths['global_basilisk_rust_bin_dir']}/wasi2ic",
+                work_path,
+                work_path,
+            ],
+            cargo_env,
+            verbose,
+        )
+        os.replace(work_path, built_path)
+    finally:
+        _remove_if_present(work_path)
 
-    # wasi2ic
-    run_subprocess(
-        [
-            f"{paths['global_basilisk_rust_bin_dir']}/wasi2ic",
-            cached_path,
-            cached_path,
-        ],
-        cargo_env,
-        verbose,
-    )
-
-    print(f"Template WASM built and cached at {cached_path}")
-    return cached_path
+    print(f"Template WASM built from source at {built_path}")
+    return built_path
 
 
 def read_python_source(paths: Paths) -> str:

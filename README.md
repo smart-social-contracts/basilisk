@@ -20,6 +20,7 @@ An ICP Python Canister Development Kit and Application Framework. Write decentra
 
 - [icp-cli](https://docs.internetcomputer.org/docs/getting-started/install-cli) (`curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/latest/download/icp-cli-installer.sh | sh`)
 - Python 3.10+
+- `gpg` (`apt install gnupg`, `brew install gnupg`): the build checks the release signature of the canister template it downloads, and stops without it. See [SECURITY.md](SECURITY.md#the-canister-template).
 
 
 ### "Hello World" with icp-cli

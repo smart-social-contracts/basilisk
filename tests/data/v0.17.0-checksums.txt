@@ -1,0 +1,6 @@
+# SHA-256 checksums for release assets
+3a73d2eae0e24c1dc289e8de786a4a5486b32bd85f4e3866f2ece37040860595  cpython_canister_template.wasm
+733109a0024df0029cb70ab97e394386f8e929314538d50b52d3abead5779efb  cpython_canister_template_cedar.wasm
+38ba588d3db19e0cf62885f93ec8ee94dc6893ae05035621281e709d238d39aa  ic_basilisk-0.17.0-py3-none-any.whl
+09aabd15acb344bba34ab8cf0aae829a6f24296d3591037d472e631cb8fcb149  ic_basilisk-0.17.0.tar.gz
+294084315834a3a8e5f8978aa3b37cd5424729536a9aca4a0ec4a928ed61d37a  recipe.hbs

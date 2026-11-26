@@ -2,6 +2,7 @@ recursive-include basilisk/compiler *.py *.rs *.toml *.c *.h *.sh *.json *.wasm 
 recursive-include basilisk/canisters *.py *.did
 recursive-include basilisk/templates *
 include basilisk/py.typed
+include basilisk/release_key.asc
 recursive-exclude basilisk/templates/*/.basilisk *
 recursive-exclude basilisk/compiler/*/target *
 recursive-exclude basilisk/compiler/*/.basilisk *
