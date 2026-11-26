@@ -29,8 +29,33 @@ jobs:
       fingerprint: 6B7B038DEB77849F1F615E67CA38831314D6AA09
       revert_on_failure: ${{ github.event_name == 'release' }}
 
+  # The signature covers whatever checksums.txt lists. A release that lost an
+  # asset, such as its template, is not published (#83).
+  complete:
+    if: ${{ startsWith(github.event.release.tag_name || inputs.tag, 'v') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      # On a release event this is the tagged commit, and its list of assets.
+      - uses: actions/checkout@v4
+
+      - name: Check checksums.txt lists every asset a release carries
+        run: |
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -D "$RUNNER_TEMP" --pattern checksums.txt
+          python3 scripts/stage_release.py listed "${TAG#v}" "$RUNNER_TEMP/checksums.txt"
+
+      - name: Return the release to draft
+        if: ${{ failure() && github.event_name == 'release' }}
+        run: |
+          gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=true \
+            || echo "::warning::could not return $TAG to draft (immutable release?)"
+
   pypi:
-    needs: verify
+    needs: [verify, complete]
     if: ${{ github.event_name == 'release' }}
     runs-on: ubuntu-latest
     permissions:

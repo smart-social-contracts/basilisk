@@ -8,29 +8,28 @@ Reference this recipe in your `icp.yaml`.
 
 ### Remote (recommended)
 
-Use the latest published recipe from GitHub releases:
+Use a signed release's recipe, pinned by its `sha256`:
 
 ```yaml
 canisters:
   - name: my_canister
     recipe:
-      type: "https://github.com/smart-social-contracts/basilisk/releases/latest/download/recipe.hbs"
+      type: "https://github.com/smart-social-contracts/basilisk/releases/download/v0.17.0/recipe.hbs"
+      sha256: 294084315834a3a8e5f8978aa3b37cd5424729536a9aca4a0ec4a928ed61d37a
       configuration:
         entry: src/main.py
         shrink: true
 ```
 
-To pin a specific version:
+The recipe is a script that icp-cli runs in your shell, so always give its
+`sha256`: icp-cli then refuses any other file at that URL. Without it, anyone who
+can replace the release asset decides what your build runs. A
+`releases/latest/download/recipe.hbs` URL moves from release to release, so it
+cannot carry a `sha256`; do not use it.
 
-```yaml
-canisters:
-  - name: my_canister
-    recipe:
-      type: "https://github.com/smart-social-contracts/basilisk/releases/download/v0.13.2/recipe.hbs"
-      configuration:
-        entry: src/main.py
-        shrink: true
-```
+The hash to pin is the `recipe.hbs` line of the release's `checksums.txt`. Check
+that file's signature, `checksums.txt.asc`, against the release key first: see
+[SECURITY.md](../../SECURITY.md). Releases before v0.17.0 are not signed.
 
 ### Local development
 
@@ -73,7 +72,8 @@ canisters:
 canisters:
   - name: backend
     recipe:
-      type: "https://github.com/smart-social-contracts/basilisk/releases/latest/download/recipe.hbs"
+      type: "https://github.com/smart-social-contracts/basilisk/releases/download/v0.17.0/recipe.hbs"
+      sha256: 294084315834a3a8e5f8978aa3b37cd5424729536a9aca4a0ec4a928ed61d37a
       configuration:
         entry: src/main.py
 ```
@@ -84,7 +84,8 @@ canisters:
 canisters:
   - name: backend
     recipe:
-      type: "https://github.com/smart-social-contracts/basilisk/releases/latest/download/recipe.hbs"
+      type: "https://github.com/smart-social-contracts/basilisk/releases/download/v0.17.0/recipe.hbs"
+      sha256: 294084315834a3a8e5f8978aa3b37cd5424729536a9aca4a0ec4a928ed61d37a
       configuration:
         entry: src/main.py
         candid: backend.did

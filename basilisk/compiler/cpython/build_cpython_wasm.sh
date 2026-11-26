@@ -8,18 +8,22 @@
 #
 # Usage:
 #   WASI_SDK_PATH=/opt/wasi-sdk ./build_cpython_wasm.sh <output_dir>
+#   ./build_cpython_wasm.sh --verify-source    # steps 1 and the patch check only
 #
 # The script will:
-#   1. Clone CPython 3.13 if not already present
+#   1. Fetch the pinned CPython commit if not already present
 #   2. Configure for wasm32-wasip1 cross-compilation
 #   3. Build libpython3.13.a (static library)
 #   4. Copy headers and library to <output_dir>
 
 set -euo pipefail
 
+# Upstream sources, pinned by hash: a release is built from them (#83).
+# CPYTHON_COMMIT is what the v3.13.0 tag points to; a tag can be moved.
 CPYTHON_VERSION="3.13.0"
-CPYTHON_TAG="v${CPYTHON_VERSION}"
+CPYTHON_COMMIT="60403a5409ff2c3f3b07dd2ca91a7a3e096839c7"
 ZLIB_VERSION="1.3.1"
+ZLIB_SHA256="9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
 CPYTHON_DIR=""
 OUTPUT_DIR=""
 ZLIB_PREFIX=""
@@ -36,6 +40,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 usage() {
     echo "Usage: WASI_SDK_PATH=/path/to/wasi-sdk $0 <output_dir>"
+    echo "       $0 --verify-source"
     echo ""
     echo "Environment variables:"
     echo "  WASI_SDK_PATH     Path to WASI SDK installation (required)"
@@ -81,17 +86,24 @@ clone_cpython() {
 
     if [ -d "${CPYTHON_DIR}" ]; then
         log_info "Using cached CPython source at ${CPYTHON_DIR}"
-        return
+    else
+        log_info "Fetching CPython ${CPYTHON_VERSION} (${CPYTHON_COMMIT})..."
+        mkdir -p "${cache_dir}"
+        # Fetched by commit, so git checks every object against the pin.
+        git init -q "${CPYTHON_DIR}"
+        git -C "${CPYTHON_DIR}" fetch -q --depth 1 \
+            https://github.com/python/cpython.git "${CPYTHON_COMMIT}"
+        git -C "${CPYTHON_DIR}" checkout -q FETCH_HEAD
+        log_info "CPython source fetched to ${CPYTHON_DIR}"
     fi
 
-    log_info "Cloning CPython ${CPYTHON_TAG}..."
-    mkdir -p "${cache_dir}"
-
-    git clone --depth 1 --branch "${CPYTHON_TAG}" \
-        https://github.com/python/cpython.git \
-        "${CPYTHON_DIR}"
-
-    log_info "CPython source cloned to ${CPYTHON_DIR}"
+    local head
+    head="$(git -C "${CPYTHON_DIR}" rev-parse HEAD)"
+    if [ "${head}" != "${CPYTHON_COMMIT}" ]; then
+        log_error "CPython source at ${CPYTHON_DIR} is commit ${head}, not the pinned ${CPYTHON_COMMIT}."
+        log_error "Delete it to fetch the pinned commit."
+        exit 1
+    fi
 }
 
 apply_ic_patches() {
@@ -127,6 +139,11 @@ build_zlib_wasi() {
     if [ ! -d "${zlib_src}" ]; then
         mkdir -p "${cache_dir}"
         curl -fL "https://github.com/madler/zlib/releases/download/v${ZLIB_VERSION}/zlib-${ZLIB_VERSION}.tar.gz" -o "${cache_dir}/zlib.tar.gz"
+        if ! echo "${ZLIB_SHA256}  ${cache_dir}/zlib.tar.gz" | sha256sum -c --quiet -; then
+            log_error "zlib-${ZLIB_VERSION}.tar.gz is not the pinned ${ZLIB_SHA256}: refusing to build."
+            rm -f "${cache_dir}/zlib.tar.gz"
+            exit 1
+        fi
         tar xzf "${cache_dir}/zlib.tar.gz" -C "${cache_dir}"
         rm -f "${cache_dir}/zlib.tar.gz"
     fi
@@ -381,6 +398,12 @@ install_artifacts() {
 main() {
     if [ $# -lt 1 ]; then
         usage
+    fi
+
+    if [ "$1" = "--verify-source" ]; then
+        clone_cpython
+        apply_ic_patches
+        return
     fi
 
     OUTPUT_DIR="$(cd "$(dirname "$1")" 2>/dev/null && pwd)/$(basename "$1")" || OUTPUT_DIR="$1"

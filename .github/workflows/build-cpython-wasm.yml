@@ -6,12 +6,27 @@
 # differ from the ones the published template was built from. Otherwise it
 # hands the published template to the tests under the same artifact name, so
 # callers always download `cpython-canister-template` from this run.
+#
+# With `release: true` (release-build.yml) it always builds, from `ref`, with
+# no cache, and never reads the rolling release. Each build step records the
+# sha256 of what it built as an output, and a release stages only files with
+# those hashes (scripts/stage_release.py, #83). The published template has no
+# such record, so it cannot stand in for a release's.
 
 name: Build CPython Wasm
 
 on:
     workflow_dispatch: # Manual trigger: always builds
-    workflow_call:     # Called by test-all.yml orchestrator
+    workflow_call:     # Called by test-all.yml and release-build.yml
+        inputs:
+            ref:
+                description: "Commit to build (default: the run's)"
+                type: string
+                default: ""
+            release:
+                description: "Build for a release: always build, no cache, no rolling release"
+                type: boolean
+                default: false
         outputs:
             should-build:
                 description: "'true' when this run built the template from its own sources"
@@ -19,6 +34,16 @@ on:
             sources-hash:
                 description: "Hash of the template sources this run tested"
                 value: ${{ jobs.check-changes.outputs.sources-hash }}
+            # Recorded by the step that built each file; empty when nothing was built.
+            cpython-sha256:
+                description: "sha256 of cpython-wasm32-wasip1.tar.gz, recorded when it was built"
+                value: ${{ jobs.build-cpython-wasm.outputs.sha256 }}
+            template-sha256:
+                description: "sha256 of cpython_canister_template.wasm, recorded when it was built"
+                value: ${{ jobs.build-canister-template.outputs.template-sha256 }}
+            template-cedar-sha256:
+                description: "sha256 of cpython_canister_template_cedar.wasm, recorded when it was built"
+                value: ${{ jobs.build-canister-template.outputs.cedar-sha256 }}
 
 permissions:
     contents: read
@@ -26,6 +51,9 @@ permissions:
 env:
     # Keep in sync with CPYTHON_VERSION and ARTIFACT_REVISION below.
     ROLLING_RELEASE_URL: https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1
+    # The compiler both builds use, pinned by hash: a release is built from it.
+    WASI_SDK_VERSION: "24"
+    WASI_SDK_SHA256: c6c38aab56e5de88adf6c1ebc9c3ae8da72f88ec2b656fb024eda8d4167a0bc5
 
 jobs:
     check-changes:
@@ -35,11 +63,18 @@ jobs:
             sources-hash: ${{ steps.check.outputs.sources_hash }}
         steps:
             - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.ref }}
 
             - id: check
               run: |
                   HASH=$(bash scripts/template_sources_hash.sh)
                   echo "sources_hash=$HASH" >> "$GITHUB_OUTPUT"
+                  if [ "${{ inputs.release }}" = "true" ]; then
+                    echo "Release build — will build, and not look at the rolling release"
+                    echo "should_build=true" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
                   if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
                     echo "Manual trigger — will build"
                     echo "should_build=true" >> "$GITHUB_OUTPUT"
@@ -61,7 +96,7 @@ jobs:
     # and tested from these exact sources.
     fetch-published-template:
         needs: check-changes
-        if: needs.check-changes.outputs.should-build == 'false'
+        if: ${{ !inputs.release && needs.check-changes.outputs.should-build == 'false' }}
         runs-on: ubuntu-latest
         steps:
             - name: Download published template
@@ -79,8 +114,8 @@ jobs:
 
     # Guard against source-tree reproducibility drift (zero tolerance).
     #
-    # Clones the pinned CPython tag FRESH (never from cache), applies the repo
-    # patches, and verifies the resulting tree is byte-exactly pristine+patches.
+    # Fetches the pinned CPython commit FRESH (never from cache), applies the
+    # repo patches, and verifies the resulting tree is byte-exactly pristine+patches.
     # This catches the failure class found in the subinterpreter Step-0 audit:
     # uncommitted, load-bearing modifications living only in a build cache
     # (e.g. frozen encodings) with nothing in the repository. The main build
@@ -89,22 +124,15 @@ jobs:
     verify-source-tree:
         runs-on: ubuntu-latest
         timeout-minutes: 10
-        env:
-            CPYTHON_VERSION: "3.13.0"
         steps:
             - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.ref }}
 
-            - name: Fresh clone of pinned CPython (no cache)
+            - name: Fetch pinned CPython fresh (no cache), apply patches, verify zero drift
               run: |
-                  git clone --depth 1 --branch "v${CPYTHON_VERSION}" \
-                    https://github.com/python/cpython.git /tmp/cpython-fresh
-
-            - name: Apply patches and verify zero drift
-              run: |
-                  bash basilisk/compiler/cpython/apply_patches.sh \
-                    /tmp/cpython-fresh \
-                    basilisk/compiler/cpython/patches \
-                    --verify-exact
+                  CPYTHON_CACHE_DIR="$(mktemp -d)" \
+                  bash basilisk/compiler/cpython/build_cpython_wasm.sh --verify-source
 
     build-cpython-wasm:
         needs: [check-changes, verify-source-tree]
@@ -114,11 +142,16 @@ jobs:
         env:
             CPYTHON_VERSION: "3.13.0"
             ARTIFACT_REVISION: "ic1" # keep in sync with install_cpython_wasm.sh
-            WASI_SDK_VERSION: "24"
+        outputs:
+            sha256: ${{ steps.record.outputs.sha256 }}
         steps:
             - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.ref }}
 
+            # A release builds everything in its own run: no cache.
             - name: Cache CPython and zlib sources
+              if: ${{ !inputs.release }}
               uses: actions/cache@v4
               with:
                   path: ~/.cache/basilisk/cpython
@@ -129,6 +162,7 @@ jobs:
             # backports, instruction metering) change the produced libpython.
             # A key that misses them would serve a stale, unpatched artifact.
             - name: Cache CPython wasm build
+              if: ${{ !inputs.release }}
               uses: actions/cache@v4
               id: cpython-wasm-cache
               with:
@@ -140,6 +174,7 @@ jobs:
               run: |
                   echo "Downloading WASI SDK ${{ env.WASI_SDK_VERSION }}..."
                   curl -fLO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  echo "$WASI_SDK_SHA256  wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz" | sha256sum -c -
                   tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   sudo mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux /opt/wasi-sdk
                   echo "WASI SDK installed at /opt/wasi-sdk"
@@ -158,11 +193,17 @@ jobs:
                   ls -la ~/cpython-wasm-output/include/Python.h
                   du -sh ~/cpython-wasm-output/
 
+            # The build-time record a release stages against. In a release
+            # nothing is cached, so the tarball is this job's build.
             - name: Create release tarball
+              id: record
               run: |
                   cd ~/cpython-wasm-output
                   tar czf ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz .
                   echo "Tarball size: $(du -sh ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz | cut -f1)"
+                  SHA256=$(sha256sum ${{ runner.temp }}/cpython-wasm32-wasip1.tar.gz | cut -d' ' -f1)
+                  echo "Built cpython-wasm32-wasip1.tar.gz, sha256 $SHA256"
+                  echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
 
             - name: Upload artifact
               uses: actions/upload-artifact@v4
@@ -177,10 +218,12 @@ jobs:
         needs: [check-changes, build-cpython-wasm]
         if: needs.check-changes.outputs.should-build == 'true'
         timeout-minutes: 30
+        outputs:
+            template-sha256: ${{ steps.record.outputs.template-sha256 }}
+            cedar-sha256: ${{ steps.record.outputs.cedar-sha256 }}
         env:
             CPYTHON_VERSION: "3.13.0"
             ARTIFACT_REVISION: "ic1" # keep in sync with install_cpython_wasm.sh
-            WASI_SDK_VERSION: "24"
             # Pinned, because runner images move stable Rust under us, and
             # gradually: on 19 Nov 2026 a runner still had image 20261111.196
             # (Rust 1.99.1) while the 16 Nov image already had 1.100.0, so two
@@ -200,6 +243,8 @@ jobs:
             RUST_VERSION: "1.99.1"
         steps:
             - uses: actions/checkout@v4
+              with:
+                  ref: ${{ inputs.ref }}
 
             - name: Download CPython wasm artifact
               uses: actions/download-artifact@v4
@@ -215,6 +260,7 @@ jobs:
             - name: Install WASI SDK
               run: |
                   curl -fLO https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${{ env.WASI_SDK_VERSION }}/wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
+                  echo "$WASI_SDK_SHA256  wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz" | sha256sum -c -
                   tar xzf wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux.tar.gz
                   sudo mv wasi-sdk-${{ env.WASI_SDK_VERSION }}.0-x86_64-linux /opt/wasi-sdk
                   /opt/wasi-sdk/bin/clang --version
@@ -225,15 +271,9 @@ jobs:
                   rustup default "$RUST_VERSION"
                   rustc --version
 
+            # A version and its Cargo.lock: crates.io checks every crate's hash.
             - name: Install wasi2ic
-              run: cargo install wasi2ic
-
-            - name: Install wasm-opt (binaryen v116)
-              run: |
-                  curl -L https://github.com/WebAssembly/binaryen/releases/download/version_116/binaryen-version_116-x86_64-linux.tar.gz -o /tmp/binaryen.tar.gz
-                  tar xzf /tmp/binaryen.tar.gz -C /tmp
-                  sudo cp /tmp/binaryen-version_116/bin/wasm-opt /usr/local/bin/
-                  wasm-opt --version
+              run: cargo install wasi2ic --version 0.2.16 --locked
 
             - name: Build canister template
               run: |
@@ -284,6 +324,15 @@ jobs:
                   python3 scripts/check_no_start_function.py \
                     ${{ runner.temp }}/cpython_canister_template.wasm \
                     ${{ runner.temp }}/cpython_canister_template_cedar.wasm
+
+            # The build-time record a release stages against.
+            - name: Record the templates' hashes
+              id: record
+              run: |
+                  cd ${{ runner.temp }}
+                  sha256sum cpython_canister_template.wasm cpython_canister_template_cedar.wasm
+                  echo "template-sha256=$(sha256sum cpython_canister_template.wasm | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+                  echo "cedar-sha256=$(sha256sum cpython_canister_template_cedar.wasm | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
             - name: Upload template artifact
               uses: actions/upload-artifact@v4

@@ -27,15 +27,16 @@ jobs:
                   python-version: ${{ env.PYTHON_VERSION }}
 
             - name: Install dependencies
-              run: pip install pytest
+              # pyyaml: test_release_workflows.py reads the workflow files.
+              run: pip install pytest pyyaml
 
             - name: Run unit tests
               # test_subinterpreter_stubs self-skips when the host CPython
               # build (builddir/build/libpython3.13.a) is absent.
-              run: python -m pytest tests/test_bundle.py tests/test_apply_patches.py tests/test_subinterpreter_stubs.py tests/test_capability_intersection.py tests/test_result_validation.py tests/test_builtin_endpoints.py tests/test_lazy_module.py tests/test_frozen_json.py tests/test_frozen_hashlib.py tests/test_check_no_start_function.py tests/test_post_upgrade_wrapper.py tests/test_frozen_time.py tests/test_frozen_enum_weakref_struct.py -v
+              run: python -m pytest tests/test_bundle.py tests/test_apply_patches.py tests/test_subinterpreter_stubs.py tests/test_capability_intersection.py tests/test_result_validation.py tests/test_builtin_endpoints.py tests/test_lazy_module.py tests/test_frozen_json.py tests/test_frozen_hashlib.py tests/test_check_no_start_function.py tests/test_post_upgrade_wrapper.py tests/test_frozen_time.py tests/test_frozen_enum_weakref_struct.py tests/test_stage_release.py tests/test_release_workflows.py -v
 
     # Reproducibility guard: the repo's CPython patches must apply cleanly to
-    # a FRESH clone of the pinned tag, and the patched tree must contain no
+    # a FRESH fetch of the pinned commit, and the patched tree must contain no
     # modifications beyond the patch files (zero drift). Runs on every PR so
     # patch changes cannot merge in a state that only works against someone's
     # local build cache.
@@ -45,14 +46,7 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
-            - name: Fresh clone of pinned CPython (no cache)
+            - name: Fetch pinned CPython fresh (no cache), apply patches, verify zero drift
               run: |
-                  git clone --depth 1 --branch v3.13.0 \
-                    https://github.com/python/cpython.git /tmp/cpython-fresh
-
-            - name: Apply patches and verify zero drift
-              run: |
-                  bash basilisk/compiler/cpython/apply_patches.sh \
-                    /tmp/cpython-fresh \
-                    basilisk/compiler/cpython/patches \
-                    --verify-exact
+                  CPYTHON_CACHE_DIR="$(mktemp -d)" \
+                  bash basilisk/compiler/cpython/build_cpython_wasm.sh --verify-source

@@ -1,7 +1,13 @@
-# Cut a release: bump the version, build, and attach every artifact plus
-# checksums.txt to a draft release. It is published (and only then uploaded to
-# PyPI, by release-verify.yml) after checksums.txt is signed with the release
-# key: smart-social-contracts/.github scripts/sign-release.sh.
+# Cut a release: tag a version bump, build and test every asset from the tagged
+# commit in this run (release-build.yml), and attach them with checksums.txt to
+# a draft release. It is published (and only then uploaded to PyPI, by
+# release-verify.yml) after checksums.txt is signed with the release key:
+# smart-social-contracts/.github scripts/sign-release.sh.
+#
+# Nothing is copied from another release: the signature covers only what this
+# run built from the tagged tree (#83). The tag is pushed before the build, so
+# if a later job fails, re-run the failed jobs: they build the same commit.
+# release-rehearsal.yml runs the same build without the tag and the draft.
 name: Release
 on:
   workflow_dispatch:
@@ -20,20 +26,27 @@ on:
         required: false
         default: ''
         type: string
-env:
-    PYTHON_VERSION: "3.13"
+
+permissions:
+  contents: read
 
 jobs:
-  release:
+  tag:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.bump_version.outputs.NEW_VERSION }}
+      sha: ${{ steps.tag.outputs.sha }}
     steps:
+      - name: Releases are cut from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Release from main, not ${{ github.ref }}. release-rehearsal.yml builds any branch."
+          exit 1
+
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      
+
       - name: Bump version
         id: bump_version
         run: |
@@ -42,47 +55,22 @@ jobs:
           MAJOR=${VERSION_PARTS[0]}
           MINOR=${VERSION_PARTS[1]}
           PATCH=${VERSION_PARTS[2]}
-          
+
           case "${{ github.event.inputs.release_type }}" in
             major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
             minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
             patch) PATCH=$((PATCH + 1)) ;;
           esac
-          
+
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "Bumping version: $CURRENT_VERSION -> $NEW_VERSION"
-          
+
           # Update __init__.py
           sed -i "s/__version__ = \"$CURRENT_VERSION\"/__version__ = \"$NEW_VERSION\"/" basilisk/__init__.py
-      
-      - name: Write build info
-        run: |
-          COMMIT=$(git rev-parse HEAD | head -c 8)
-          DATE=$(git log -1 --format=%cI)
-          printf '__commit__ = "%s"\n__date__ = "%s"\n' "$COMMIT" "$DATE" > basilisk/_build_info.py
-
-      - name: Build
-        run: |
-          pip install build twine
-          python -m build
-          twine check dist/*
-
-      # The rolling release only gets a template after All Tests passed on it
-      # on main (#74). If it was built from other template sources than this
-      # commit's, it is not this commit's template: stop before tagging.
-      - name: Check the rolling template was built from this commit's sources
-        run: |
-          EXPECTED=$(bash scripts/template_sources_hash.sh)
-          RECORD=$(curl -sfL https://github.com/smart-social-contracts/basilisk/releases/download/cpython-wasm-3.13.0-ic1/template-sources.txt) || RECORD=""
-          PUBLISHED=$(printf '%s\n' "$RECORD" | awk '$1 == "sources" { print $2 }')
-          if [ "$PUBLISHED" != "$EXPECTED" ]; then
-            echo "::error::The rolling template was built from template sources ${PUBLISHED:-(none recorded)}; this commit's are $EXPECTED. Let All Tests pass on main, which publishes the template, then release."
-            exit 1
-          fi
-          printf '%s\n' "$RECORD"
 
       - name: Commit and tag version
+        id: tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -90,48 +78,56 @@ jobs:
           git commit -m "Bump version to ${{ steps.bump_version.outputs.NEW_VERSION }}"
           git tag -a "v${{ steps.bump_version.outputs.NEW_VERSION }}" -m "Release v${{ steps.bump_version.outputs.NEW_VERSION }}"
           git push origin main --tags
-      
-      - name: Download template WASM from cpython-wasm release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # The build-cpython-wasm.yml CI uploads the templates to the cpython-wasm-3.13.0-ic1 release.
-          # Download them so we can attach them to the versioned release (v{version}):
-          # the plain template is where find_template_wasm() looks; the Cedar template
-          # is what downstream projects (realms) pin via BASILISK_TEMPLATE_WASM.
-          for asset in cpython_canister_template.wasm cpython_canister_template_cedar.wasm; do
-            gh release download cpython-wasm-3.13.0-ic1 \
-              --pattern "$asset" \
-              --dir "${{ runner.temp }}" \
-              --clobber || echo "⚠️  $asset not found in cpython-wasm-3.13.0-ic1 release (skipping)"
-          done
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Stage assets and checksums
+  build:
+    needs: tag
+    uses: ./.github/workflows/release-build.yml
+    with:
+      ref: ${{ needs.tag.outputs.sha }}
+      version: ${{ needs.tag.outputs.version }}
+
+  draft:
+    needs: [tag, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: v${{ needs.tag.outputs.version }}
+    steps:
+      - name: Download the staged release
+        uses: actions/download-artifact@v4
+        with:
+          name: release
+          path: release
+
+      - name: Check it is what release-build staged
+        env:
+          CHECKSUMS_SHA256: ${{ needs.build.outputs.checksums-sha256 }}
         run: |
-          mkdir -p release
-          cp dist/* release/
-          for asset in cpython_canister_template.wasm cpython_canister_template_cedar.wasm; do
-            if [ -f "${{ runner.temp }}/$asset" ]; then
-              cp "${{ runner.temp }}/$asset" release/
-            else
-              echo "⚠️  No $asset to include"
-            fi
-          done
-          [ -f icp-cli/recipe/recipe.hbs ] && cp icp-cli/recipe/recipe.hbs release/
           cd release
-          { echo "# SHA-256 checksums for release assets"; sha256sum *; } > ../checksums.txt
-          mv ../checksums.txt .
-          cat checksums.txt
+          echo "$CHECKSUMS_SHA256  checksums.txt" | sha256sum -c -
+          grep -v '^#' checksums.txt | sha256sum --strict -c -
+
+      - name: Check the tag still names the commit that was built
+        env:
+          BUILT: ${{ needs.tag.outputs.sha }}
+        run: |
+          TAGGED=$(git ls-remote "https://github.com/$GH_REPO" "refs/tags/$TAG^{}" | cut -f1)
+          if [ "$TAGGED" != "$BUILT" ]; then
+            echo "::error::$TAG names ${TAGGED:-nothing}, but this run built $BUILT."
+            exit 1
+          fi
 
       - name: Create draft GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
           RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
-          TAG: v${{ steps.bump_version.outputs.NEW_VERSION }}
         run: |
           if [ -n "$RELEASE_NOTES" ]; then
             NOTES=(--notes "$RELEASE_NOTES")
           else
             NOTES=(--generate-notes)
           fi
-          gh release create "$TAG" --draft --title "$TAG" "${NOTES[@]}" release/*
+          gh release create "$TAG" --draft --verify-tag --title "$TAG" "${NOTES[@]}" release/*
