@@ -91,20 +91,39 @@ def test_returns_what_the_user_function_returns(calls):
     assert isinstance(result, types.GeneratorType)
 
 
-def test_a_failing_check_rejects_the_upgrade(monkeypatch):
+def ic_python_db_whose_check_raises(monkeypatch, error):
     class Database:
         @classmethod
         def get_instance(cls):
             return cls()
 
         def check_upgrade_compatibility(self):
-            raise ValueError("schema is incompatible")
+            raise error
 
     fake = types.ModuleType("ic_python_db")
     fake.Database = Database
     monkeypatch.setitem(sys.modules, "ic_python_db", fake)
-    with pytest.raises(Trapped, match="Upgrade rejected: schema is incompatible"):
+
+
+@pytest.mark.parametrize("error", [
+    ValueError("schema is incompatible"),
+    # #69: these two were swallowed, and the upgrade went through unchecked.
+    # ic-python-db (0.14.0, 0.16.0, main) raises the first one on a stored
+    # schema that is not a mapping.
+    AttributeError("'str' object has no attribute 'keys'"),
+    ImportError("cannot import name 'migrate'"),
+])
+def test_anything_the_check_raises_rejects_the_upgrade(monkeypatch, error):
+    ic_python_db_whose_check_raises(monkeypatch, error)
+    with pytest.raises(Trapped, match=f"Upgrade rejected: {error}"):
         wrapper(None)()
+
+
+def test_an_ic_python_db_without_the_check_upgrades(monkeypatch):
+    fake = types.ModuleType("ic_python_db")
+    fake.Database = type("Database", (), {})
+    monkeypatch.setitem(sys.modules, "ic_python_db", fake)
+    assert wrapper(None)() is None
 
 
 def test_without_ic_python_db_it_passes(monkeypatch):

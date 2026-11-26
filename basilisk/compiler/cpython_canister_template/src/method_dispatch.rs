@@ -75,7 +75,7 @@ pub fn call_lifecycle_hook(hook_name: &str) {
     if py_result.has_attr("send") {
         let func_name = function_name.clone();
         ic_cdk::spawn(async move {
-            drive_generator(py_result, &func_name).await;
+            drive_generator(py_result, &func_name, None).await;
         });
     }
 }
@@ -301,7 +301,7 @@ fn execute_async_generator(
     func_name: String,
 ) {
     ic_cdk::spawn(async move {
-        let result = drive_generator(generator, &func_name).await;
+        let result = drive_generator(generator, &func_name, Some(return_type.clone())).await;
 
         if manual_reply {
             return;
@@ -314,9 +314,15 @@ fn execute_async_generator(
 /// Recursively drive a Python generator. Handles both _ServiceCall yields (IC calls)
 /// and nested generator yields (sub-generators that themselves yield _ServiceCall objects).
 /// Returns the generator's return value (from StopIteration.value).
+///
+/// `return_type` is the Candid return type of the canister method being driven,
+/// if any. While the generator waits on a call, other methods run and set
+/// CURRENT_RETURN_TYPE to theirs, so it is set back before every resume:
+/// otherwise ic.reply() in a Manual method encodes with another method's type (#69).
 pub fn drive_generator(
     generator: basilisk_cpython::PyObjectRef,
     func_name: &str,
+    return_type: Option<String>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = basilisk_cpython::PyObjectRef> + 'static>> {
     let func_name = func_name.to_string();
     Box::pin(async move {
@@ -324,6 +330,11 @@ pub fn drive_generator(
         let mut send_value = basilisk_cpython::PyObjectRef::none();
 
         loop {
+            if let Some(return_type) = &return_type {
+                unsafe {
+                    crate::CURRENT_RETURN_TYPE = Some(return_type.clone());
+                }
+            }
             let result = gen.call_method_one_arg("send", &send_value);
 
             match result {
@@ -366,7 +377,7 @@ pub fn drive_generator(
                         };
                     } else if yielded.has_attr("send") {
                         // It's a sub-generator — recursively drive it
-                        send_value = drive_generator(yielded, &func_name).await;
+                        send_value = drive_generator(yielded, &func_name, return_type.clone()).await;
                     } else {
                         // Unknown yielded type — pass it through as-is
                         send_value = yielded;
