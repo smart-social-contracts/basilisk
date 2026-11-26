@@ -1,9 +1,22 @@
 import os
 
 from basilisk import (
-    update, nat64,
+    query, update, nat64,
     FileStoreError, FileTooLargeError, FileStoreLimitError,
 )
+
+# The shim allows 10,000 files. One message cannot write that many within its
+# instruction limit, though a store reaches it over many messages, so a test
+# could never get to the check. This canister lowers the shim's limit (the
+# shim and this module share globals): files still accumulate across calls,
+# and the same check in the shim's _persist_file refuses the one too many.
+PRODUCTION_MAX_FILES = _BASILISK_FS_MAX_FILE_COUNT  # noqa: F821 -- defined by the shim
+_BASILISK_FS_MAX_FILE_COUNT = 200
+
+
+@query
+def get_production_max_files() -> nat64:
+    return PRODUCTION_MAX_FILES
 
 
 @update
