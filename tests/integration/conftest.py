@@ -472,7 +472,8 @@ def parse_candid_text(response):
         return None
 
     if response.startswith("(") and response.endswith(")"):
-        inner = response[1:-1].strip()
+        # icp prints a long value on its own line, with a trailing comma: (\n  "...",\n)
+        inner = response[1:-1].strip().removesuffix(",").strip()
     else:
         inner = response
 
